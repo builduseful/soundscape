@@ -6,6 +6,8 @@
 // "The primary paradigm is of an audio routing graph, where a number of AudioNode
 // objects are connected together to define the overall audio rendering."
 
+// Web Audio API examples: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API
+
 let volumeSliderElement = document.getElementById("volumeSlider");
 let audioContext = undefined; // Leave as undefined, until user gesture is performed
 let gainNode = undefined;
@@ -67,6 +69,8 @@ async function getAudioAsync(url, audioContext) {
 
 volumeSliderElement.addEventListener("input", () => {
     if (gainNode) {
-        gainNode.gain.value = volumeSliderElement.value / 100.0;
+        gainNode.gain.cancelScheduledValues(audioContext.currentTime);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(volumeSliderElement.value, audioContext.currentTime + 0.25);
     }
 });
