@@ -8,6 +8,9 @@
 
 // Web Audio API examples: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API
 
+// Using the MediaSessionService
+// https://web.dev/media-session/
+
 let volumeSliderElement = document.getElementById("volumeSlider");
 let audioContext = undefined; // Leave as undefined, until user gesture is performed
 let gainNode = undefined;
@@ -72,5 +75,11 @@ volumeSliderElement.addEventListener("input", () => {
         gainNode.gain.cancelScheduledValues(audioContext.currentTime);
         gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
         gainNode.gain.linearRampToValueAtTime(volumeSliderElement.value, audioContext.currentTime + 0.25);
+    }
+});
+
+document.addEventListener('keyup', (event) => {
+    if (event.key === "MediaPlayPause") {
+        playPauseClick();
     }
 });
