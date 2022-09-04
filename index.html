@@ -9,7 +9,11 @@
 
     <h1>Soundscape - Minimal</h1>
 
-    <button onclick="playPauseClick()">Play/Pause</button>
+    <audio id="audioElement">
+        <source src="resources/silence-30s.ogg" type="audio/ogg">
+    </audio>
+
+    <button id="playPauseButton" onclick="playPauseClick()">Play</button>
 
     <input type="range" min="0" max="1" value="1" step="0.01" id="volumeSlider">
 
