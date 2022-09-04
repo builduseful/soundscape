@@ -44,7 +44,7 @@ async function playPauseClick() {
         audioContext = new AudioContext();
 
         var audioBuffer = await getAudioAsync("resources/rain-from-room-loop-smallest.ogg", audioContext);
-    
+
         playAudioBuffer(audioBuffer, true);
 
         await initMediaSession();
@@ -104,20 +104,8 @@ volumeSliderElement.addEventListener("input", () => {
 async function initMediaSession() {
     await playAudio();
 
-    navigator.mediaSession.metadata = new MediaMetadata({
-        title: 'Rain',
-        artist: 'Soundscape',
-        album: 'Nature',
-        artwork: [
-            { src: 'https://via.placeholder.com/96', sizes: '96x96', type: 'image/png' },
-            { src: 'https://via.placeholder.com/128', sizes: '128x128', type: 'image/png' },
-            { src: 'https://via.placeholder.com/192', sizes: '192x192', type: 'image/png' },
-            { src: 'https://via.placeholder.com/256', sizes: '256x256', type: 'image/png' },
-            { src: 'https://via.placeholder.com/384', sizes: '384x384', type: 'image/png' },
-            { src: 'https://via.placeholder.com/512', sizes: '512x512', type: 'image/png' },
-        ]
-    });
-    
+    updateMediaSessionStatus();
+
     navigator.mediaSession.setActionHandler("play", async () => {
         console.log("mediaSession - play");
         await playAudio();
@@ -146,5 +134,21 @@ async function initMediaSession() {
     audioElement.addEventListener("pause", async () => {
         console.log("audioElement - pause");
         await pauseAudio();
+    });
+}
+
+function updateMediaSessionStatus() {
+    navigator.mediaSession.metadata = new MediaMetadata({
+        title: "Rain",
+        artist: "Soundscape",
+        album: "Nature",
+        artwork: [
+            { src: "https://via.placeholder.com/96", sizes: "96x96", type: "image/png" },
+            { src: "https://via.placeholder.com/128", sizes: "128x128", type: "image/png" },
+            { src: "https://via.placeholder.com/192", sizes: "192x192", type: "image/png" },
+            { src: "https://via.placeholder.com/256", sizes: "256x256", type: "image/png" },
+            { src: "https://via.placeholder.com/384", sizes: "384x384", type: "image/png" },
+            { src: "https://via.placeholder.com/512", sizes: "512x512", type: "image/png" },
+        ]
     });
 }
