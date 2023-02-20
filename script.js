@@ -2,7 +2,7 @@
 // Open the cmd at the project root, and run:
 // > http-server
 
-// Build using the Web Audio API (https://webaudio.github.io/web-audio-api/)
+// Built using the Web Audio API (https://webaudio.github.io/web-audio-api/)
 // "The primary paradigm is of an audio routing graph, where a number of AudioNode
 // objects are connected together to define the overall audio rendering."
 
@@ -12,38 +12,64 @@
 // https://web.dev/media-session/
 
 let volumeSliderElement = document.getElementById("volumeSlider");
+let title = document.getElementById("title");
 let playPauseButton = document.getElementById("playPauseButton");
-let audioContext = undefined; // Leave as undefined, until user gesture is performed
-let gainNode = undefined;
+let nextButton = document.getElementById("nextButton");
+let previousButton = document.getElementById("previousButton");
 let audioElement = document.getElementById("audioElement");
 audioElement.volume = 1;
 audioElement.loop = true;
 
+let audioContext = undefined; // Leave as undefined, until user gesture is performed
+let currentTrackGainNode = undefined;
+let currentTrackSourceNode = undefined;
+let currentTrackIndex = 0;
+
+// List of the soundscapes
+let tracks = [
+    { title: "Rain", url: "resources/soundscapes/rain-from-room-loop-smallest.ogg", image: "resources/artwork/rain.jfif" },
+    { title: "Rain & Thunder", url: "resources/soundscapes/rain-and-thunder-loop.ogg", image: "resources/artwork/rain-and-thunder.jfif" },
+    { title: "The Open Road", url: "resources/soundscapes/open-road-loop.ogg", image: "resources/artwork/open-road.jfif" },
+    { title: "Brown Noise", url: "resources/soundscapes/brown-noise-loop.ogg", image: "resources/artwork/brown-noise.jfif" },
+    { title: "Pink Noise", url: "resources/soundscapes/pink-noise-loop.ogg", image: "resources/artwork/pink-noise.jfif" },
+    { title: "White Noise", url: "resources/soundscapes/white-noise-loop.ogg", image: "resources/artwork/white-noise.jfif" },
+]
+
 function playAudioBuffer(audioBuffer, loop) {
+    // Stop the current audio source node (if it exists)
+    if (currentTrackSourceNode) {
+        currentTrackSourceNode.stop();
+        currentTrackSourceNode.disconnect();
+        currentTrackGainNode.disconnect();
+    }
+
     // Create a new audio source node (AudioBufferSourceNode)
-    let audioSourceNode = audioContext.createBufferSource();
-    audioSourceNode.buffer = audioBuffer;
-    audioSourceNode.loop = loop;
+    currentTrackSourceNode = audioContext.createBufferSource();
+    currentTrackSourceNode.buffer = audioBuffer;
+    currentTrackSourceNode.loop = loop;
 
     // Create gain node
-    gainNode = audioContext.createGain();
+    currentTrackGainNode = audioContext.createGain();
 
     // Specify output
     let destinationNode = audioContext.destination;
 
     // Setup the audio routing graph: audio source -> gain node -> destination node (i.e. output)
-    audioSourceNode
-        .connect(gainNode)
+    currentTrackSourceNode
+        .connect(currentTrackGainNode)
         .connect(destinationNode);
 
-    audioSourceNode.start(0);
+    currentTrackSourceNode.start(0);
 }
 
 async function playPauseClick() {
     if (audioContext === undefined) {
         audioContext = new AudioContext();
 
-        var audioBuffer = await getAudioAsync("resources/rain-from-room-loop-smallest.ogg", audioContext);
+        // Load the current soundscape
+        const soundscape = tracks[currentTrackIndex];
+
+        var audioBuffer = await getAudioAsync(soundscape.url, audioContext);
 
         playAudioBuffer(audioBuffer, true);
 
@@ -63,12 +89,42 @@ async function playPauseClick() {
     }
 }
 
+async function playNextTrack() {
+    currentTrackIndex = (currentTrackIndex + 1) % tracks.length;
+
+    // Load the current soundscape
+    const track = tracks[currentTrackIndex];
+
+    audioContext = new AudioContext();
+    var audioBuffer = await getAudioAsync(track.url, audioContext);
+    playAudioBuffer(audioBuffer, true);
+    updateMediaSessionStatus();
+
+    await updateBackgroundImage();
+}
+
+async function playPreviousTrack() {
+    currentTrackIndex = (currentTrackIndex - 1 + tracks.length) % tracks.length;
+
+    // Load the current soundscape
+    const track = tracks[currentTrackIndex];
+
+    audioContext = new AudioContext();
+    var audioBuffer = await getAudioAsync(track.url, audioContext);
+    playAudioBuffer(audioBuffer, true);
+    updateMediaSessionStatus();
+
+    await updateBackgroundImage();
+}
+
 async function playAudio() {
     console.log("playAudio");
     await audioContext.resume();
     await audioElement.play();
     navigator.mediaSession.playbackState = "playing";
-    playPauseButton.innerHTML = "Pause";
+
+    // Update the play/pause button to show the correct icon
+    playPauseButton.innerHTML = `<i class="material-icons">pause</i>`;
 }
 
 async function pauseAudio() {
@@ -76,7 +132,9 @@ async function pauseAudio() {
     await audioContext.suspend();
     audioElement.pause();
     navigator.mediaSession.playbackState = "paused";
-    playPauseButton.innerHTML = "Play";
+
+    // Update the play/pause button to show the correct icon
+    playPauseButton.innerHTML = `<i class="material-icons">play_arrow</i>`;
 }
 
 /**
@@ -93,10 +151,10 @@ async function getAudioAsync(url, audioContext) {
 }
 
 volumeSliderElement.addEventListener("input", () => {
-    if (gainNode) {
-        gainNode.gain.cancelScheduledValues(audioContext.currentTime);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(volumeSliderElement.value, audioContext.currentTime + 0.25);
+    if (currentTrackGainNode) {
+        currentTrackGainNode.gain.cancelScheduledValues(audioContext.currentTime);
+        currentTrackGainNode.gain.setValueAtTime(currentTrackGainNode.gain.value, audioContext.currentTime);
+        currentTrackGainNode.gain.linearRampToValueAtTime(volumeSliderElement.value, audioContext.currentTime + 0.25);
     }
 });
 
@@ -116,9 +174,11 @@ async function initMediaSession() {
     });
     navigator.mediaSession.setActionHandler("previoustrack", async () => {
         console.log("mediaSession - previoustrack");
+        await playPreviousTrack();
     });
     navigator.mediaSession.setActionHandler("nexttrack", async () => {
         console.log("mediaSession - nexttrack");
+        await playNextTrack();
     });
     navigator.mediaSession.setActionHandler("stop", async () => {
         console.log("mediaSession - stop");
@@ -138,17 +198,74 @@ async function initMediaSession() {
 }
 
 function updateMediaSessionStatus() {
+    const track = tracks[currentTrackIndex];
+
     navigator.mediaSession.metadata = new MediaMetadata({
-        title: "Rain",
+        title: track.title,
         artist: "Soundscape",
         album: "Nature",
         artwork: [
-            { src: "https://via.placeholder.com/96", sizes: "96x96", type: "image/png" },
-            { src: "https://via.placeholder.com/128", sizes: "128x128", type: "image/png" },
-            { src: "https://via.placeholder.com/192", sizes: "192x192", type: "image/png" },
-            { src: "https://via.placeholder.com/256", sizes: "256x256", type: "image/png" },
-            { src: "https://via.placeholder.com/384", sizes: "384x384", type: "image/png" },
-            { src: "https://via.placeholder.com/512", sizes: "512x512", type: "image/png" },
+            { src: track.image, sizes: "1024x1024", type: "image/jpeg" },
         ]
     });
+}
+
+// Change the background image to the current soundscape image
+async function updateBackgroundImage() {
+    const track = tracks[currentTrackIndex];
+
+    // Load the image and set it as the background once loaded
+    const image = await loadImage(track.image);
+    document.body.style.backgroundImage = `url(${image.src})`;
+
+    await getColors();
+}
+
+// Get the primary and secondary colors from the current soundscape image using color-thief
+// then set the play/pause button background color and text color to the primary color
+async function getColors() {
+    const track = tracks[currentTrackIndex];
+
+    const colorThief = new ColorThief();
+    const image = await loadImage(track.image);
+
+    const color = colorThief.getColor(image);
+
+    const primaryColorString = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.6)`;
+    const contrastColor = getContrastColor(color);
+    const secondaryColorString = `rgba(${contrastColor[0]}, ${contrastColor[1]}, ${contrastColor[2]}, 0.6)`;
+
+    playPauseButton.style.backgroundColor = secondaryColorString;
+    playPauseButton.style.color = primaryColorString;
+
+    previousButton.style.backgroundColor = primaryColorString;
+    previousButton.style.color = secondaryColorString;
+
+    nextButton.style.backgroundColor = primaryColorString;
+    nextButton.style.color = secondaryColorString;
+
+    title.style.color = secondaryColorString;
+}
+
+// Load an image from a given url
+function loadImage(url) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.addEventListener("load", () => resolve(image));
+        image.addEventListener("error", error => reject(error));
+        image.src = url;
+    });
+}
+
+// Get contrast color based on the given background color
+function getContrastColor(color) {
+    // Calculate the relative luminance of the color using the sRGB color space
+    let r = color[0] / 255;
+    let g = color[1] / 255;
+    let b = color[2] / 255;
+    let luminance = (r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4)) * 0.2126
+        + (g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4)) * 0.7152
+        + (b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4)) * 0.0722;
+    // Calculate the contrast color based on the luminance
+    return luminance > 0.5 ? [0, 0, 0] : [255, 255, 255];
 }

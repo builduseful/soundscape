@@ -4,19 +4,31 @@
 <head>
     <title>Soundscape - Minimal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.0/color-thief.umd.js"></script>
 </head>
 
 <body>
 
-    <h1>Soundscape - Minimal</h1>
-
-    <audio id="audioElement">
-        <source src="resources/silence-30s.ogg" type="audio/ogg">
-    </audio>
-
-    <button id="playPauseButton" onclick="playPauseClick()">Play</button>
-
-    <input type="range" min="0" max="1" value="1" step="0.01" id="volumeSlider">
+    <div class="container">
+        <h1 id="title">Soundscape - Minimal</h1>
+        <div class="controls">
+            <button class="prev" id="previousButton" onclick="playPreviousTrack()">
+                <i class="material-icons">skip_previous</i>
+            </button>
+            <button class="play" id="playPauseButton" onclick="playPauseClick()">
+                <i class="material-icons">play_arrow</i>
+            </button>
+            <button class="next" id="nextButton" onclick="playNextTrack()">
+                <i class="material-icons">skip_next</i>
+            </button>
+            <input type="range" min="0" max="1" value="1" step="0.01" id="volumeSlider">
+        </div>
+        <audio id="audioElement">
+            <source src="resources/soundscapes/silence-30s.ogg" type="audio/ogg">
+        </audio>
+    </div>
 
     <script src="script.js"></script>
 
