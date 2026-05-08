@@ -16,9 +16,17 @@ export class AudioPlayer {
         return this.audioContext !== undefined;
     }
 
-    async playTrack(track, loop, resetContext = false) {
+    isPlaying() {
+        return this.hasContext() && this.audioContext.state === "running";
+    }
+
+    async playTrack(track, loop, resetContext = false, startPaused = false) {
         if (resetContext || !this.hasContext()) {
             this.audioContext = new AudioContext();
+        }
+
+        if (startPaused && this.audioContext.state === "running") {
+            await this.audioContext.suspend();
         }
 
         const audioBuffer = await getAudioAsync(track.url, this.audioContext);

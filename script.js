@@ -16,8 +16,8 @@ import { initMediaSession, updateMediaSessionStatus } from "./src/media-session.
 import { tracks } from "./src/tracks.js";
 import { updateBackgroundImage } from "./src/theme.js";
 
-const PLAY_ICON = `<i class="material-icons">play_arrow</i>`;
-const PAUSE_ICON = `<i class="material-icons">pause</i>`;
+const PLAY_LABEL = "Play";
+const PAUSE_LABEL = "Pause";
 
 const volumeSliderElement = document.getElementById("volumeSlider");
 const title = document.getElementById("title");
@@ -56,14 +56,17 @@ playPauseButton.addEventListener("click", playPauseClick);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 
+updateBackgroundImage(getCurrentTrack(), controls);
+
 async function playPauseClick() {
     if (!audioPlayer.hasContext()) {
         // Load the current soundscape
         const soundscape = getCurrentTrack();
 
         await audioPlayer.playTrack(soundscape, true);
+        const artworkUrl = await updateBackgroundImage(soundscape, controls);
 
-        await startMediaSession();
+        await startMediaSession(artworkUrl);
 
         return;
     }
@@ -98,12 +101,13 @@ function getCurrentTrack() {
 async function playCurrentTrack() {
     // Load the current soundscape
     const track = getCurrentTrack();
+    const wasPlaying = audioPlayer.isPlaying();
 
-    await audioPlayer.playTrack(track, true, true);
-    updateMediaSessionStatus(track);
+    await audioPlayer.playTrack(track, true, true, !wasPlaying);
 
     // Keep the visual state in sync whenever the current track changes.
-    await updateBackgroundImage(track, controls);
+    const artworkUrl = await updateBackgroundImage(track, controls);
+    updateMediaSessionStatus(track, artworkUrl);
 }
 
 async function playAudio() {
@@ -111,8 +115,8 @@ async function playAudio() {
     await audioPlayer.play();
     navigator.mediaSession.playbackState = "playing";
 
-    // Update the play/pause button to show the correct icon
-    playPauseButton.innerHTML = PAUSE_ICON;
+    playPauseButton.textContent = PAUSE_LABEL;
+    playPauseButton.setAttribute("aria-label", PAUSE_LABEL);
 }
 
 async function pauseAudio() {
@@ -120,10 +124,10 @@ async function pauseAudio() {
     await audioPlayer.pause();
     navigator.mediaSession.playbackState = "paused";
 
-    // Update the play/pause button to show the correct icon
-    playPauseButton.innerHTML = PLAY_ICON;
+    playPauseButton.textContent = PLAY_LABEL;
+    playPauseButton.setAttribute("aria-label", PLAY_LABEL);
 }
 
-async function startMediaSession() {
-    await initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement);
+async function startMediaSession(artworkUrl) {
+    await initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement, artworkUrl);
 }
