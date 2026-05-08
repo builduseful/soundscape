@@ -11,12 +11,17 @@
 // Using the MediaSessionService
 // https://web.dev/media-session/
 
-let volumeSliderElement = document.getElementById("volumeSlider");
-let title = document.getElementById("title");
-let playPauseButton = document.getElementById("playPauseButton");
-let nextButton = document.getElementById("nextButton");
-let previousButton = document.getElementById("previousButton");
-let audioElement = document.getElementById("audioElement");
+const FADE_DURATION_SECONDS = 0.25;
+const PLAY_ICON = `<i class="material-icons">play_arrow</i>`;
+const PAUSE_ICON = `<i class="material-icons">pause</i>`;
+
+const volumeSliderElement = document.getElementById("volumeSlider");
+const title = document.getElementById("title");
+const playPauseButton = document.getElementById("playPauseButton");
+const nextButton = document.getElementById("nextButton");
+const previousButton = document.getElementById("previousButton");
+const audioElement = document.getElementById("audioElement");
+
 audioElement.volume = 1;
 audioElement.loop = true;
 
@@ -26,50 +31,25 @@ let currentTrackSourceNode = undefined;
 let currentTrackIndex = 0;
 
 // List of the soundscapes
-let tracks = [
+const tracks = [
     { title: "Rain", url: "resources/soundscapes/rain-from-room-loop-smallest.ogg", image: "resources/artwork/rain.jfif" },
     { title: "Rain & Thunder", url: "resources/soundscapes/rain-and-thunder-loop.ogg", image: "resources/artwork/rain-and-thunder.jfif" },
     { title: "The Open Road", url: "resources/soundscapes/open-road-loop.ogg", image: "resources/artwork/open-road.jfif" },
     { title: "Brown Noise", url: "resources/soundscapes/brown-noise-loop.ogg", image: "resources/artwork/brown-noise.jfif" },
     { title: "Pink Noise", url: "resources/soundscapes/pink-noise-loop.ogg", image: "resources/artwork/pink-noise.jfif" },
     { title: "White Noise", url: "resources/soundscapes/white-noise-loop.ogg", image: "resources/artwork/white-noise.jfif" },
-]
+];
 
-function playAudioBuffer(audioBuffer, loop) {
-    // Stop the current audio source node (if it exists)
-    if (currentTrackSourceNode) {
-        currentTrackSourceNode.stop();
-        currentTrackSourceNode.disconnect();
-        currentTrackGainNode.disconnect();
-    }
-
-    // Create a new audio source node (AudioBufferSourceNode)
-    currentTrackSourceNode = audioContext.createBufferSource();
-    currentTrackSourceNode.buffer = audioBuffer;
-    currentTrackSourceNode.loop = loop;
-
-    // Create gain node
-    currentTrackGainNode = audioContext.createGain();
-
-    // Specify output
-    let destinationNode = audioContext.destination;
-
-    // Setup the audio routing graph: audio source -> gain node -> destination node (i.e. output)
-    currentTrackSourceNode
-        .connect(currentTrackGainNode)
-        .connect(destinationNode);
-
-    currentTrackSourceNode.start(0);
-}
+volumeSliderElement.addEventListener("input", updateVolume);
 
 async function playPauseClick() {
     if (audioContext === undefined) {
         audioContext = new AudioContext();
 
         // Load the current soundscape
-        const soundscape = tracks[currentTrackIndex];
+        const soundscape = getCurrentTrack();
 
-        var audioBuffer = await getAudioAsync(soundscape.url, audioContext);
+        const audioBuffer = await getAudioAsync(soundscape.url, audioContext);
 
         playAudioBuffer(audioBuffer, true);
 
@@ -92,29 +72,60 @@ async function playPauseClick() {
 async function playNextTrack() {
     currentTrackIndex = (currentTrackIndex + 1) % tracks.length;
 
+    await playCurrentTrack();
+}
+
+async function playPreviousTrack() {
+    currentTrackIndex = (currentTrackIndex - 1 + tracks.length) % tracks.length;
+
+    await playCurrentTrack();
+}
+
+function getCurrentTrack() {
+    return tracks[currentTrackIndex];
+}
+
+async function playCurrentTrack() {
     // Load the current soundscape
-    const track = tracks[currentTrackIndex];
+    const track = getCurrentTrack();
 
     audioContext = new AudioContext();
-    var audioBuffer = await getAudioAsync(track.url, audioContext);
+    const audioBuffer = await getAudioAsync(track.url, audioContext);
     playAudioBuffer(audioBuffer, true);
     updateMediaSessionStatus();
 
     await updateBackgroundImage();
 }
 
-async function playPreviousTrack() {
-    currentTrackIndex = (currentTrackIndex - 1 + tracks.length) % tracks.length;
+function playAudioBuffer(audioBuffer, loop) {
+    stopCurrentTrack();
 
-    // Load the current soundscape
-    const track = tracks[currentTrackIndex];
+    // Create a new audio source node (AudioBufferSourceNode)
+    currentTrackSourceNode = audioContext.createBufferSource();
+    currentTrackSourceNode.buffer = audioBuffer;
+    currentTrackSourceNode.loop = loop;
 
-    audioContext = new AudioContext();
-    var audioBuffer = await getAudioAsync(track.url, audioContext);
-    playAudioBuffer(audioBuffer, true);
-    updateMediaSessionStatus();
+    // Create gain node
+    currentTrackGainNode = audioContext.createGain();
 
-    await updateBackgroundImage();
+    // Specify output
+    const destinationNode = audioContext.destination;
+
+    // Setup the audio routing graph: audio source -> gain node -> destination node (i.e. output)
+    currentTrackSourceNode
+        .connect(currentTrackGainNode)
+        .connect(destinationNode);
+
+    currentTrackSourceNode.start(0);
+}
+
+function stopCurrentTrack() {
+    // Stop the current audio source node (if it exists)
+    if (currentTrackSourceNode) {
+        currentTrackSourceNode.stop();
+        currentTrackSourceNode.disconnect();
+        currentTrackGainNode.disconnect();
+    }
 }
 
 async function playAudio() {
@@ -124,7 +135,7 @@ async function playAudio() {
     navigator.mediaSession.playbackState = "playing";
 
     // Update the play/pause button to show the correct icon
-    playPauseButton.innerHTML = `<i class="material-icons">pause</i>`;
+    playPauseButton.innerHTML = PAUSE_ICON;
 }
 
 async function pauseAudio() {
@@ -134,36 +145,39 @@ async function pauseAudio() {
     navigator.mediaSession.playbackState = "paused";
 
     // Update the play/pause button to show the correct icon
-    playPauseButton.innerHTML = `<i class="material-icons">play_arrow</i>`;
+    playPauseButton.innerHTML = PLAY_ICON;
+}
+
+function updateVolume() {
+    if (currentTrackGainNode) {
+        currentTrackGainNode.gain.cancelScheduledValues(audioContext.currentTime);
+        currentTrackGainNode.gain.setValueAtTime(currentTrackGainNode.gain.value, audioContext.currentTime);
+        currentTrackGainNode.gain.linearRampToValueAtTime(volumeSliderElement.value, audioContext.currentTime + FADE_DURATION_SECONDS);
+    }
 }
 
 /**
  * Gets an AudioBuffer from a given url
- * @param {string} url 
- * @param {AudioContext} audioContext 
+ * @param {string} url
+ * @param {AudioContext} audioContext
  * @returns The AudioBuffer retrieved from the given url
  */
 async function getAudioAsync(url, audioContext) {
-    let response = await fetch(url);
-    let arrayBuffer = await response.arrayBuffer();
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
 
     return audioContext.decodeAudioData(arrayBuffer);
 }
-
-volumeSliderElement.addEventListener("input", () => {
-    if (currentTrackGainNode) {
-        currentTrackGainNode.gain.cancelScheduledValues(audioContext.currentTime);
-        currentTrackGainNode.gain.setValueAtTime(currentTrackGainNode.gain.value, audioContext.currentTime);
-        currentTrackGainNode.gain.linearRampToValueAtTime(volumeSliderElement.value, audioContext.currentTime + 0.25);
-    }
-});
-
 
 async function initMediaSession() {
     await playAudio();
 
     updateMediaSessionStatus();
+    registerMediaSessionHandlers();
+    registerAudioElementHandlers();
+}
 
+function registerMediaSessionHandlers() {
     navigator.mediaSession.setActionHandler("play", async () => {
         console.log("mediaSession - play");
         await playAudio();
@@ -185,7 +199,9 @@ async function initMediaSession() {
         await initMediaSession();
         await pauseAudio();
     });
+}
 
+function registerAudioElementHandlers() {
     // Sometimes the mediaSession events don't fire, this is backup
     audioElement.addEventListener("play", async () => {
         console.log("audioElement - play");
@@ -198,7 +214,7 @@ async function initMediaSession() {
 }
 
 function updateMediaSessionStatus() {
-    const track = tracks[currentTrackIndex];
+    const track = getCurrentTrack();
 
     navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title,
@@ -212,7 +228,7 @@ function updateMediaSessionStatus() {
 
 // Change the background image to the current soundscape image
 async function updateBackgroundImage() {
-    const track = tracks[currentTrackIndex];
+    const track = getCurrentTrack();
 
     // Load the image and set it as the background once loaded
     const image = await loadImage(track.image);
@@ -224,7 +240,7 @@ async function updateBackgroundImage() {
 // Get the primary and secondary colors from the current soundscape image using color-thief
 // then set the play/pause button background color and text color to the primary color
 async function getColors() {
-    const track = tracks[currentTrackIndex];
+    const track = getCurrentTrack();
 
     const colorThief = new ColorThief();
     const image = await loadImage(track.image);
@@ -260,10 +276,10 @@ function loadImage(url) {
 // Get contrast color based on the given background color
 function getContrastColor(color) {
     // Calculate the relative luminance of the color using the sRGB color space
-    let r = color[0] / 255;
-    let g = color[1] / 255;
-    let b = color[2] / 255;
-    let luminance = (r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4)) * 0.2126
+    const r = color[0] / 255;
+    const g = color[1] / 255;
+    const b = color[2] / 255;
+    const luminance = (r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4)) * 0.2126
         + (g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4)) * 0.7152
         + (b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4)) * 0.0722;
     // Calculate the contrast color based on the luminance
