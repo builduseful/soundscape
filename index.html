@@ -27,13 +27,13 @@
     <div class="container">
         <h1 id="title">Soundscape - Minimal</h1>
         <div class="controls">
-            <button class="prev" id="previousButton" onclick="playPreviousTrack()">
+            <button class="prev" id="previousButton">
                 <i class="material-icons">skip_previous</i>
             </button>
-            <button class="play" id="playPauseButton" onclick="playPauseClick()">
+            <button class="play" id="playPauseButton">
                 <i class="material-icons">play_arrow</i>
             </button>
-            <button class="next" id="nextButton" onclick="playNextTrack()">
+            <button class="next" id="nextButton">
                 <i class="material-icons">skip_next</i>
             </button>
             <input type="range" min="0" max="1" value="1" step="0.01" id="volumeSlider">
@@ -43,7 +43,7 @@
         </audio>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 
 </body>
 
