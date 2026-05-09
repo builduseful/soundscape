@@ -14,7 +14,6 @@
 import { AudioPlayer } from "./src/audio-player.js";
 import { initMediaSession, updateMediaSessionStatus } from "./src/media-session.js";
 import { tracks } from "./src/tracks.js";
-import { updateBackgroundImage } from "./src/theme.js";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -33,12 +32,6 @@ audioElement.loop = true;
 let currentTrackIndex = getSavedTrackIndex();
 
 const audioPlayer = new AudioPlayer(audioElement);
-const controls = {
-    title,
-    playPauseButton,
-    nextButton,
-    previousButton,
-};
 
 // Media Session connects browser/OS media controls to the app's playback actions.
 const mediaSessionActions = {
@@ -59,7 +52,7 @@ nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 
 restoreSavedVolume();
-updateBackgroundImage(getCurrentTrack(), controls);
+updateTrackTitle();
 
 async function playPauseClick() {
     if (!audioPlayer.hasContext()) {
@@ -67,9 +60,7 @@ async function playPauseClick() {
         const soundscape = getCurrentTrack();
 
         await audioPlayer.playTrack(soundscape, true);
-        const artworkUrl = await updateBackgroundImage(soundscape, controls);
-
-        await startMediaSession(artworkUrl);
+        await startMediaSession();
 
         return;
     }
@@ -112,6 +103,13 @@ function saveCurrentTrack() {
     savePreference(SAVED_TRACK_URL_KEY, getCurrentTrack().url);
 }
 
+function updateTrackTitle() {
+    const trackTitle = getCurrentTrack().title;
+
+    title.textContent = trackTitle;
+    document.title = `${trackTitle} - Soundscape`;
+}
+
 function restoreSavedVolume() {
     const savedVolumeValue = loadPreference(SAVED_VOLUME_KEY);
     const savedVolume = savedVolumeValue === null ? NaN : Number(savedVolumeValue);
@@ -146,11 +144,10 @@ async function playCurrentTrack() {
     const wasPlaying = audioPlayer.isPlaying();
 
     saveCurrentTrack();
+    updateTrackTitle();
     await audioPlayer.playTrack(track, true, true, !wasPlaying);
 
-    // Keep the visual state in sync whenever the current track changes.
-    const artworkUrl = await updateBackgroundImage(track, controls);
-    updateMediaSessionStatus(track, artworkUrl);
+    updateMediaSessionStatus(track);
 }
 
 async function playAudio() {
@@ -171,6 +168,6 @@ async function pauseAudio() {
     playPauseButton.setAttribute("aria-label", PLAY_LABEL);
 }
 
-async function startMediaSession(artworkUrl) {
-    await initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement, artworkUrl);
+async function startMediaSession() {
+    await initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement);
 }

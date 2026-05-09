@@ -78,18 +78,14 @@ test("initMediaSession starts playback, publishes metadata, and wires media key 
     };
     const track = {
         title: "Rain",
-        image: "/fallback-artwork.jpg",
     };
 
-    await initMediaSession(track, actions, audioElement, "/artwork.jpg");
+    await initMediaSession(track, actions, audioElement);
 
     assert.deepEqual(calls, ["playAudio"]);
     assert.equal(mediaSession.metadata.title, "Rain");
     assert.equal(mediaSession.metadata.artist, "Soundscape");
     assert.equal(mediaSession.metadata.album, "Nature");
-    assert.deepEqual(mediaSession.metadata.artwork, [
-        { src: "/artwork.jpg", sizes: "1024x1024", type: "image/jpeg" },
-    ]);
     assert.deepEqual([...handlers.keys()], [
         "play",
         "pause",
@@ -131,20 +127,17 @@ test("initMediaSession wires audio element play and pause fallbacks", async () =
         async initMediaSession() {},
     };
 
-    await initMediaSession({ title: "Rain", image: "/rain.jpg" }, actions, audioElement);
+    await initMediaSession({ title: "Rain" }, actions, audioElement);
     await audioElement.dispatch("play");
     await audioElement.dispatch("pause");
 
     assert.deepEqual(calls, ["playAudio", "playAudio", "pauseAudio"]);
 });
 
-test("updateMediaSessionStatus falls back to the track image for artwork", () => {
+test("updateMediaSessionStatus publishes track metadata", () => {
     const { mediaSession } = installMediaSession();
 
-    updateMediaSessionStatus({ title: "Brown Noise", image: "/brown.jpg" });
+    updateMediaSessionStatus({ title: "Brown Noise" });
 
     assert.equal(mediaSession.metadata.title, "Brown Noise");
-    assert.deepEqual(mediaSession.metadata.artwork, [
-        { src: "/brown.jpg", sizes: "1024x1024", type: "image/jpeg" },
-    ]);
 });

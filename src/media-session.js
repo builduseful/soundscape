@@ -1,7 +1,7 @@
-export async function initMediaSession(track, actions, audioElement, artworkUrl) {
+export async function initMediaSession(track, actions, audioElement) {
     await actions.playAudio();
 
-    updateMediaSessionStatus(track, artworkUrl);
+    updateMediaSessionStatus(track);
     registerMediaSessionHandlers(actions);
     registerAudioElementHandlers(actions, audioElement);
 }
@@ -42,13 +42,10 @@ function registerAudioElementHandlers(actions, audioElement) {
     });
 }
 
-export function updateMediaSessionStatus(track, artworkUrl = track.image) {
+export function updateMediaSessionStatus(track) {
     navigator.mediaSession.metadata = new MediaMetadata({
         title: track.title,
         artist: "Soundscape",
         album: "Nature",
-        artwork: [
-            { src: artworkUrl, sizes: "1024x1024", type: "image/jpeg" },
-        ]
     });
 }
