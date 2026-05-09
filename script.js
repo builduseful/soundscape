@@ -2,17 +2,12 @@
 // Open the cmd at the project root, and run:
 // > http-server
 
-// Built using the Web Audio API (https://webaudio.github.io/web-audio-api/)
-// "The primary paradigm is of an audio routing graph, where a number of AudioNode
-// objects are connected together to define the overall audio rendering."
-
-// Web Audio API examples: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API
-
-// Using the MediaSessionService
-// https://web.dev/media-session/
+// Playback is anchored by a long-lived HTMLAudioElement. Web Audio is layered
+// behind it only for the app-level gain control.
 
 import { AudioPlayer } from "./src/audio-player.js";
 import {
+    configurePlaybackAudioSession,
     initMediaSession,
     updateMediaSessionPlaybackState,
     updateMediaSessionStatus,
@@ -45,8 +40,6 @@ const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
-
-audioElement.loop = true;
 
 let currentTrackIndex = getSavedTrackIndex();
 
@@ -213,6 +206,8 @@ async function playCurrentTrack(direction = "next") {
 }
 
 async function playAudio() {
+    configurePlaybackAudioSession();
+
     if (!audioPlayer.hasTrack()) {
         saveCurrentTrack();
         await audioPlayer.playTrack(getCurrentTrack(), true);

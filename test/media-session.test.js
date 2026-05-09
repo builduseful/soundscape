@@ -26,11 +26,15 @@ afterEach(() => {
 
 function installMediaSession() {
     const handlers = new Map();
+    const positionStates = [];
     const mediaSession = {
         metadata: undefined,
         playbackState: "none",
         setActionHandler(action, handler) {
             handlers.set(action, handler);
+        },
+        setPositionState(positionState) {
+            positionStates.push(positionState);
         },
     };
 
@@ -44,7 +48,7 @@ function installMediaSession() {
         }
     };
 
-    return { handlers, mediaSession };
+    return { handlers, mediaSession, positionStates };
 }
 
 function createAudioElement() {
@@ -61,7 +65,7 @@ function createAudioElement() {
 }
 
 test("initMediaSession publishes metadata and wires media key handlers", async () => {
-    const { handlers, mediaSession } = installMediaSession();
+    const { handlers, mediaSession, positionStates } = installMediaSession();
     const audioElement = createAudioElement();
     const calls = [];
     const actions = {
@@ -88,28 +92,25 @@ test("initMediaSession publishes metadata and wires media key handlers", async (
     assert.equal(mediaSession.metadata.title, "Rain");
     assert.equal(mediaSession.metadata.artist, "Soundscape");
     assert.equal(mediaSession.metadata.album, "Nature");
+    assert.deepEqual(positionStates, [{}]);
     assert.deepEqual([...handlers.keys()], [
         "play",
         "pause",
         "previoustrack",
         "nexttrack",
-        "stop",
     ]);
 
     await handlers.get("play")();
     await handlers.get("pause")();
     await handlers.get("previoustrack")();
     await handlers.get("nexttrack")();
-    await handlers.get("stop")();
 
     assert.deepEqual(calls, [
         "playAudio",
         "pauseAudio",
         "playPreviousTrack",
         "playNextTrack",
-        "pauseAudio",
     ]);
-    assert.equal(mediaSession.playbackState, "none");
 });
 
 test("initMediaSession wires audio element play and pause state sync", async () => {
@@ -137,11 +138,12 @@ test("initMediaSession wires audio element play and pause state sync", async () 
 });
 
 test("updateMediaSessionStatus publishes track metadata", () => {
-    const { mediaSession } = installMediaSession();
+    const { mediaSession, positionStates } = installMediaSession();
 
     updateMediaSessionStatus({ title: "Brown Noise" });
 
     assert.equal(mediaSession.metadata.title, "Brown Noise");
+    assert.deepEqual(positionStates, [{}]);
 });
 
 test("updateMediaSessionPlaybackState publishes playback state", () => {

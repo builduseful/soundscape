@@ -3,6 +3,8 @@ const FADE_DURATION_SECONDS = 0.25;
 export class AudioPlayer {
     constructor(audioElement) {
         this.audioElement = audioElement;
+        this.audioElement.preload = "auto";
+        this.audioElement.loop = true;
         this.audioContext = undefined; // Leave as undefined, until user gesture is performed
         this.currentTrackUrl = undefined;
         this.mediaElementSourceNode = undefined;
@@ -26,6 +28,7 @@ export class AudioPlayer {
     }
 
     async playTrack(track, loop, resetContext = false, startPaused = false) {
+        this.assertTrackSupported(track);
         this.ensureAudioGraph();
         this.audioElement.loop = loop;
 
@@ -80,5 +83,20 @@ export class AudioPlayer {
             this.currentTrackGainNode.gain.setValueAtTime(this.currentTrackGainNode.gain.value, this.audioContext.currentTime);
             this.currentTrackGainNode.gain.linearRampToValueAtTime(this.volume, this.audioContext.currentTime + FADE_DURATION_SECONDS);
         }
+    }
+
+    assertTrackSupported(track) {
+        if (!track.mime) return;
+
+        const isSupported = this.supportsTrack(track);
+
+        if (!isSupported) {
+            throw new Error(`Unsupported audio type: ${track.mime}`);
+        }
+    }
+
+    supportsTrack(track) {
+        return typeof this.audioElement.canPlayType !== "function"
+            || this.audioElement.canPlayType(track.mime) !== "";
     }
 }

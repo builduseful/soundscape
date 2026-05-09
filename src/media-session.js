@@ -1,7 +1,6 @@
 const audioElementsWithPlaybackSync = new WeakSet();
 
 export function initMediaSession(track, actions, audioElement) {
-    configureAudioSession();
     updateMediaSessionStatus(track);
     registerMediaSessionHandlers(actions);
     registerAudioElementHandlers(actions, audioElement);
@@ -14,10 +13,6 @@ function registerMediaSessionHandlers(actions) {
     setActionHandler("pause", actions.pauseAudio);
     setActionHandler("previoustrack", actions.playPreviousTrack);
     setActionHandler("nexttrack", actions.playNextTrack);
-    setActionHandler("stop", async () => {
-        await actions.pauseAudio();
-        updateMediaSessionPlaybackState("none");
-    });
 }
 
 function registerAudioElementHandlers(actions, audioElement) {
@@ -45,6 +40,8 @@ export function updateMediaSessionStatus(track) {
     navigator.mediaSession.metadata = typeof MediaMetadata === "function"
         ? new MediaMetadata(metadata)
         : metadata;
+
+    clearMediaSessionPositionState();
 }
 
 export function updateMediaSessionPlaybackState(playbackState) {
@@ -63,13 +60,23 @@ function setActionHandler(action, handler) {
     }
 }
 
-function configureAudioSession() {
+export function configurePlaybackAudioSession() {
     if (typeof navigator === "undefined" || !("audioSession" in navigator)) return;
 
     try {
         navigator.audioSession.type = "playback";
     } catch (error) {
         console.warn("Audio Session playback type is not supported.", error);
+    }
+}
+
+function clearMediaSessionPositionState() {
+    if (!supportsMediaSession() || typeof navigator.mediaSession.setPositionState !== "function") return;
+
+    try {
+        navigator.mediaSession.setPositionState({});
+    } catch (error) {
+        console.warn("Media Session position state could not be cleared.", error);
     }
 }
 

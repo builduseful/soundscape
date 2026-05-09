@@ -4,9 +4,14 @@ import { afterEach, test } from "node:test";
 import { AudioPlayer } from "../src/audio-player.js";
 
 const originalAudioContext = globalThis.AudioContext;
+const originalNavigator = globalThis.navigator;
 
 afterEach(() => {
     globalThis.AudioContext = originalAudioContext;
+    Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: originalNavigator,
+    });
 });
 
 function createAudioElement() {
@@ -18,6 +23,9 @@ function createAudioElement() {
         loadCalls: 0,
         playCalls: 0,
         pauseCalls: 0,
+        canPlayType() {
+            return "probably";
+        },
         load() {
             this.loadCalls += 1;
         },
@@ -118,6 +126,7 @@ test("playTrack uses the media element as the browser-visible source and routes 
     assert.equal(player.hasContext(), true);
     assert.equal(player.hasTrack(), true);
     assert.equal(player.isPlaying(), true);
+    assert.equal(audioElement.preload, "auto");
     assert.equal(audioElement.src, "/sound.ogg");
     assert.equal(audioElement.loop, true);
     assert.equal(audioElement.currentTime, 0);
@@ -175,6 +184,34 @@ test("playTrack applies the latest volume to the gain node", async () => {
     await player.playTrack({ url: "/quiet.ogg" }, true);
 
     assert.equal(contexts[0].gains[0].gain.value, 0.35);
+});
+
+test("playTrack accepts supported MIME types before loading the track", async () => {
+    installAudioContext();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({
+        url: "/rain.ogg",
+        mime: "audio/ogg; codecs=vorbis",
+    }, true);
+
+    assert.equal(audioElement.src, "/rain.ogg");
+});
+
+test("playTrack rejects unsupported track MIME types before creating the audio graph", async () => {
+    const contexts = installAudioContext();
+    const audioElement = createAudioElement();
+    audioElement.canPlayType = () => "";
+    const player = new AudioPlayer(audioElement);
+
+    await assert.rejects(
+        () => player.playTrack({ url: "/rain.ogg", mime: "audio/ogg; codecs=vorbis" }, true),
+        /Unsupported audio type: audio\/ogg; codecs=vorbis/,
+    );
+
+    assert.equal(contexts.length, 0);
+    assert.equal(audioElement.loadCalls, 0);
 });
 
 test("play and pause keep the audio context and media element in sync", async () => {
