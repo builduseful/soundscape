@@ -149,13 +149,13 @@ function handleTitleAnimationEnd(event) {
 
 function restartTitleChangeAnimation(direction) {
     resetTitleAnimation();
-    void title.offsetWidth;
+    title.offsetWidth;
     title.classList.add("is-changing", `is-changing-${direction}`);
 }
 
 function restoreSavedVolume() {
     const savedVolumeValue = loadPreference(SAVED_VOLUME_KEY);
-    const savedVolume = savedVolumeValue === null ? NaN : Number(savedVolumeValue);
+    const savedVolume = savedVolumeValue === null ? Number.NaN : Number(savedVolumeValue);
     const volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1
         ? savedVolume
         : Number(volumeControl.value);
@@ -208,11 +208,11 @@ async function playCurrentTrack(direction = "next") {
 async function playAudio() {
     configurePlaybackAudioSession();
 
-    if (!audioPlayer.hasTrack()) {
+    if (audioPlayer.hasTrack()) {
+        await audioPlayer.play();
+    } else {
         saveCurrentTrack();
         await audioPlayer.playTrack(getCurrentTrack(), true);
-    } else {
-        await audioPlayer.play();
     }
 
     syncPlaybackState(true);

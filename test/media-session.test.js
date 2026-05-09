@@ -42,10 +42,8 @@ function installMediaSession() {
         configurable: true,
         value: { mediaSession },
     });
-    globalThis.MediaMetadata = class FakeMediaMetadata {
-        constructor(metadata) {
-            Object.assign(this, metadata);
-        }
+    globalThis.MediaMetadata = function FakeMediaMetadata(metadata) {
+        Object.assign(this, metadata);
     };
 
     return { handlers, mediaSession, positionStates };
@@ -86,7 +84,7 @@ test("initMediaSession publishes metadata and wires media key handlers", async (
         title: "Rain",
     };
 
-    await initMediaSession(track, actions, audioElement);
+    initMediaSession(track, actions, audioElement);
 
     assert.deepEqual(calls, []);
     assert.equal(mediaSession.metadata.title, "Rain");
@@ -130,7 +128,7 @@ test("initMediaSession wires audio element play and pause state sync", async () 
         },
     };
 
-    await initMediaSession({ title: "Rain" }, actions, audioElement);
+    initMediaSession({ title: "Rain" }, actions, audioElement);
     await audioElement.dispatch("play");
     await audioElement.dispatch("pause");
 

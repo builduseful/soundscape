@@ -9,9 +9,9 @@ export function applyThemePreference(value, root = document.documentElement) {
     const theme = normalizeThemePreference(value);
 
     if (theme === "system") {
-        root.removeAttribute("data-theme");
+        delete root.dataset.theme;
     } else {
-        root.setAttribute("data-theme", theme);
+        root.dataset.theme = theme;
     }
 }
 

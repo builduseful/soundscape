@@ -1,5 +1,3 @@
-[![Deploy web app to Azure Static Web Apps](https://github.com/jamesdeklerk/soundscape/actions/workflows/azure-staticwebapp.yml/badge.svg)](https://github.com/jamesdeklerk/soundscape/actions/workflows/azure-staticwebapp.yml)
-
 ## Testing
 
 Run the dependency-free test suite with:
