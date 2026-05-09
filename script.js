@@ -18,6 +18,8 @@ import { updateBackgroundImage } from "./src/theme.js";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
+const SAVED_VOLUME_KEY = "soundscape.volume";
+const SAVED_TRACK_URL_KEY = "soundscape.currentTrackUrl";
 
 const volumeSliderElement = document.getElementById("volumeSlider");
 const title = document.getElementById("title");
@@ -26,10 +28,9 @@ const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
 
-audioElement.volume = 1;
 audioElement.loop = true;
 
-let currentTrackIndex = 0;
+let currentTrackIndex = getSavedTrackIndex();
 
 const audioPlayer = new AudioPlayer(audioElement);
 const controls = {
@@ -51,11 +52,13 @@ const mediaSessionActions = {
 
 volumeSliderElement.addEventListener("input", () => {
     audioPlayer.updateVolume(volumeSliderElement.value);
+    savePreference(SAVED_VOLUME_KEY, volumeSliderElement.value);
 });
 playPauseButton.addEventListener("click", playPauseClick);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 
+restoreSavedVolume();
 updateBackgroundImage(getCurrentTrack(), controls);
 
 async function playPauseClick() {
@@ -98,11 +101,51 @@ function getCurrentTrack() {
     return tracks[currentTrackIndex];
 }
 
+function getSavedTrackIndex() {
+    const savedTrackUrl = loadPreference(SAVED_TRACK_URL_KEY);
+    const savedTrackIndex = tracks.findIndex((track) => track.url === savedTrackUrl);
+
+    return savedTrackIndex === -1 ? 0 : savedTrackIndex;
+}
+
+function saveCurrentTrack() {
+    savePreference(SAVED_TRACK_URL_KEY, getCurrentTrack().url);
+}
+
+function restoreSavedVolume() {
+    const savedVolumeValue = loadPreference(SAVED_VOLUME_KEY);
+    const savedVolume = savedVolumeValue === null ? NaN : Number(savedVolumeValue);
+    const volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1
+        ? savedVolume
+        : Number(volumeSliderElement.value);
+
+    volumeSliderElement.value = String(volume);
+    audioPlayer.updateVolume(volume);
+}
+
+function loadPreference(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (error) {
+        console.warn(`Could not load ${key}`, error);
+        return null;
+    }
+}
+
+function savePreference(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (error) {
+        console.warn(`Could not save ${key}`, error);
+    }
+}
+
 async function playCurrentTrack() {
     // Load the current soundscape
     const track = getCurrentTrack();
     const wasPlaying = audioPlayer.isPlaying();
 
+    saveCurrentTrack();
     await audioPlayer.playTrack(track, true, true, !wasPlaying);
 
     // Keep the visual state in sync whenever the current track changes.

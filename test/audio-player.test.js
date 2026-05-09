@@ -251,6 +251,7 @@ test("playTrack can replace the context and keep the new track paused", async ()
 
         createGain() {
             return {
+                gain: { value: 1 },
                 connect(node) {
                     return node;
                 },
@@ -268,6 +269,61 @@ test("playTrack can replace the context and keep the new track paused", async ()
     assert.equal(contexts[1].suspendCalls, 1);
     assert.equal(contexts[1].state, "suspended");
     assert.equal(contexts[1].sources[0].startCalls, 1);
+});
+
+test("playTrack applies the latest volume to newly created gain nodes", async () => {
+    const contexts = [];
+
+    globalThis.fetch = async () => ({
+        async arrayBuffer() {
+            return new ArrayBuffer(1);
+        },
+    });
+
+    globalThis.AudioContext = class FakeAudioContext {
+        state = "running";
+        destination = {};
+        gains = [];
+
+        constructor() {
+            contexts.push(this);
+        }
+
+        async decodeAudioData() {
+            return {};
+        }
+
+        createBufferSource() {
+            return {
+                connect(node) {
+                    return node;
+                },
+                start() {},
+                stop() {},
+                disconnect() {},
+            };
+        }
+
+        createGain() {
+            const gainNode = {
+                gain: { value: 1 },
+                connect(node) {
+                    return node;
+                },
+                disconnect() {},
+            };
+
+            this.gains.push(gainNode);
+            return gainNode;
+        }
+    };
+
+    const player = new AudioPlayer({ async play() {}, pause() {} });
+    player.updateVolume(0.35);
+
+    await player.playTrack({ url: "/quiet.ogg" }, true);
+
+    assert.equal(contexts[0].gains[0].gain.value, 0.35);
 });
 
 test("play and pause keep the audio context and backing media element in sync", async () => {

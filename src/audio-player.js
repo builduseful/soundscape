@@ -6,6 +6,7 @@ export class AudioPlayer {
         this.audioContext = undefined; // Leave as undefined, until user gesture is performed
         this.currentTrackGainNode = undefined;
         this.currentTrackSourceNode = undefined;
+        this.volume = 1;
     }
 
     get state() {
@@ -43,6 +44,7 @@ export class AudioPlayer {
 
         // Create gain node
         this.currentTrackGainNode = this.audioContext.createGain();
+        this.currentTrackGainNode.gain.value = this.volume;
 
         // Specify output
         const destinationNode = this.audioContext.destination;
@@ -75,10 +77,12 @@ export class AudioPlayer {
     }
 
     updateVolume(volume) {
+        this.volume = Number(volume);
+
         if (this.currentTrackGainNode) {
             this.currentTrackGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
             this.currentTrackGainNode.gain.setValueAtTime(this.currentTrackGainNode.gain.value, this.audioContext.currentTime);
-            this.currentTrackGainNode.gain.linearRampToValueAtTime(volume, this.audioContext.currentTime + FADE_DURATION_SECONDS);
+            this.currentTrackGainNode.gain.linearRampToValueAtTime(this.volume, this.audioContext.currentTime + FADE_DURATION_SECONDS);
         }
     }
 }
