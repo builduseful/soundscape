@@ -10,25 +10,46 @@
 
 <body>
     <div class="container">
-        <h1 id="title">Soundscape</h1>
-        <div class="controls">
-            <button class="prev" id="previousButton" type="button" aria-label="Previous track">
-                &lt;&lt;
-            </button>
-            <button class="play" id="playPauseButton" type="button" aria-label="Play">
-                Play
-            </button>
-            <button class="next" id="nextButton" type="button" aria-label="Next track">
-                &gt;&gt;
-            </button>
-            <input type="range" min="0" max="1" value="1" step="0.01" id="volumeSlider">
-        </div>
+        <header class="app-header">
+            <p class="app-name">Soundscape</p>
+            <theme-selector id="themeSelector" value="system"></theme-selector>
+        </header>
+        <main class="player">
+            <div class="controls" aria-label="Playback controls">
+                <div class="transport-controls">
+                    <button class="prev" id="previousButton" type="button" aria-label="Previous track">
+                        <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M6 6.75h2.5v10.5H6V6.75Zm12.5 0v10.5L9.5 12l9-5.25Z"></path>
+                        </svg>
+                    </button>
+                    <button class="play" id="playPauseButton" type="button" aria-label="Play">
+                        <svg class="button-icon play-icon play-icon--play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 5.5v13l11-6.5-11-6.5Z"></path>
+                        </svg>
+                        <svg class="button-icon play-icon play-icon--pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <rect x="7" y="5.5" width="4" height="13" rx="0.75"></rect>
+                            <rect x="13" y="5.5" width="4" height="13" rx="0.75"></rect>
+                        </svg>
+                    </button>
+                    <button class="next" id="nextButton" type="button" aria-label="Next track">
+                        <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M5.5 6.75v10.5l9-5.25-9-5.25Zm10 0H18v10.5h-2.5V6.75Z"></path>
+                        </svg>
+                    </button>
+                </div>
+                <volume-control id="volumeControl" value="1"></volume-control>
+            </div>
+            <h1 id="title" class="track-title" aria-live="polite">
+                <span class="track-title-text track-title-text--current">Soundscape</span>
+                <span class="track-title-text track-title-text--incoming" aria-hidden="true"></span>
+            </h1>
+        </main>
         <audio id="audioElement">
             <source src="resources/soundscapes/silence-30s.ogg" type="audio/ogg">
         </audio>
     </div>
 
-    <script type="module" src="script.js"></script>
+    <script type="module" src="script.js?v=layered-title-motion"></script>
 
 </body>
 
