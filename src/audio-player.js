@@ -10,6 +10,9 @@ export class AudioPlayer {
         this.mediaElementSourceNode = undefined;
         this.currentTrackGainNode = undefined;
         this.volume = 1;
+
+        this.bufferCache = new Map();
+        this.activeSource = null;
     }
 
     get state() {
@@ -23,14 +26,27 @@ export class AudioPlayer {
     isPlaying() {
         return this.hasContext() && this.audioContext.state === "running" && !this.audioElement.paused;
     }
+
     hasTrack() {
         return this.currentTrackUrl !== undefined;
     }
 
+    /**
+     * Plays a track with sample-accurate looping.
+     * 
+     * NOTE: To achieve perfect gapless transitions, we MUST fetch and decode the 
+     * audio into memory (AudioBuffer). Standard streaming via <audio> introduces 
+     * audible jitter at the loop point. We keep the <audio> element running 
+     * silently in parallel solely to maintain MediaSession/OS integration.
+     */
     async playTrack(track, loop, resetContext = false, startPaused = false) {
         this.assertTrackSupported(track);
         this.ensureAudioGraph();
-        this.audioElement.loop = loop;
+
+        if (this.activeSource) {
+            this.activeSource.stop();
+            this.activeSource = null;
+        }
 
         if (resetContext || this.currentTrackUrl !== track.url) {
             this.currentTrackUrl = track.url;
@@ -38,7 +54,17 @@ export class AudioPlayer {
             this.audioElement.load?.();
         }
 
+        // Web Audio gapless looping: Decode buffer and use high-precision source node.
+        const buffer = await this.loadBuffer(track.url);
+        this.activeSource = this.audioContext.createBufferSource();
+        this.activeSource.buffer = buffer;
+        this.activeSource.loop = loop;
+        this.activeSource.connect(this.currentTrackGainNode);
+
+        this.activeSource.start(0);
+
         this.audioElement.currentTime = 0;
+        this.audioElement.loop = loop;
 
         if (startPaused) {
             this.audioElement.pause();
@@ -49,17 +75,33 @@ export class AudioPlayer {
         await this.play();
     }
 
+    async loadBuffer(url) {
+        if (this.bufferCache.has(url)) return this.bufferCache.get(url);
+
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+
+        this.bufferCache.set(url, audioBuffer);
+        return audioBuffer;
+    }
+
     ensureAudioGraph() {
         if (this.hasContext()) return;
 
         this.audioContext = new AudioContext();
         this.mediaElementSourceNode = this.audioContext.createMediaElementSource(this.audioElement);
+
+        // Connect the media element source to a gain node with 0 volume 
+        // to ensure it "plays" through the context and updates currentTime.
+        this.silentGainNode = this.audioContext.createGain();
+        this.silentGainNode.gain.value = 0;
+        this.mediaElementSourceNode.connect(this.silentGainNode).connect(this.audioContext.destination);
+
         this.currentTrackGainNode = this.audioContext.createGain();
         this.currentTrackGainNode.gain.value = this.volume;
 
-        this.mediaElementSourceNode
-            .connect(this.currentTrackGainNode)
-            .connect(this.audioContext.destination);
+        this.currentTrackGainNode.connect(this.audioContext.destination);
     }
 
     async play() {
