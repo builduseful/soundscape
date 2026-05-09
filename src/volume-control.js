@@ -91,6 +91,8 @@ export class VolumeControl extends HTMLElement {
                     background: transparent;
                     color: var(--color-text-muted);
                     cursor: pointer;
+                    -webkit-tap-highlight-color: transparent;
+                    tap-highlight-color: transparent;
                     transition:
                         color 0.18s ease,
                         transform 0.12s ease;
@@ -200,6 +202,8 @@ export class VolumeControl extends HTMLElement {
                     touch-action: none;
                     user-select: none;
                     -webkit-user-drag: none;
+                    -webkit-tap-highlight-color: transparent;
+                    tap-highlight-color: transparent;
                     writing-mode: vertical-lr;
                 }
 

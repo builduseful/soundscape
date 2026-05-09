@@ -119,6 +119,8 @@ export class ThemeSelector extends HTMLElement {
                         cursor: pointer;
                         transition: color 0.16s ease;
                         user-select: none;
+                        -webkit-tap-highlight-color: transparent;
+                        tap-highlight-color: transparent;
                     }
 
                     svg {
