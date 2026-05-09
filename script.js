@@ -2,8 +2,9 @@
 // Open the cmd at the project root, and run:
 // > http-server
 
-// Playback is anchored by a long-lived HTMLAudioElement. Web Audio is layered
-// behind it only for the app-level gain control.
+// Browser/OS integration is anchored by one long-lived HTMLAudioElement.
+// The audible loop intentionally comes from a decoded Web Audio buffer because
+// perfect loop points are a hard product requirement for these short files.
 
 import { AudioPlayer } from "./src/audio-player.js";
 import {

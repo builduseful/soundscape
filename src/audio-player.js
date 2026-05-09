@@ -5,7 +5,7 @@ export class AudioPlayer {
         this.audioElement = audioElement;
         this.audioElement.preload = "auto";
         this.audioElement.loop = true;
-        this.audioContext = undefined; // Leave as undefined, until user gesture is performed
+        this.audioContext = undefined; // Leave as undefined until a user gesture starts playback.
         this.currentTrackUrl = undefined;
         this.mediaElementSourceNode = undefined;
         this.currentTrackGainNode = undefined;
@@ -33,11 +33,15 @@ export class AudioPlayer {
 
     /**
      * Plays a track with sample-accurate looping.
-     * 
-     * NOTE: To achieve perfect gapless transitions, we MUST fetch and decode the 
-     * audio into memory (AudioBuffer). Standard streaming via <audio> introduces 
-     * audible jitter at the loop point. We keep the <audio> element running 
-     * silently in parallel solely to maintain MediaSession/OS integration.
+     *
+     * Intentional standards exception:
+     * the general platform recommendation is to make a long-lived
+     * HTMLAudioElement the audible transport. This app has a stricter product
+     * requirement: loop points must be perfect, and native media-element looping
+     * is close but not exact enough for these short ambience files. So the
+     * audible path is a decoded AudioBufferSourceNode, while the same long-lived
+     * media element is kept in sync as the browser-visible playback surface for
+     * Media Session, hardware controls, audio focus, and preload/source state.
      */
     async playTrack(track, loop, resetContext = false, startPaused = false) {
         this.assertTrackSupported(track);
@@ -54,13 +58,11 @@ export class AudioPlayer {
             this.audioElement.load?.();
         }
 
-        // Web Audio gapless looping: Decode buffer and use high-precision source node.
         const buffer = await this.loadBuffer(track.url);
         this.activeSource = this.audioContext.createBufferSource();
         this.activeSource.buffer = buffer;
         this.activeSource.loop = loop;
         this.activeSource.connect(this.currentTrackGainNode);
-
         this.activeSource.start(0);
 
         this.audioElement.currentTime = 0;
@@ -92,8 +94,8 @@ export class AudioPlayer {
         this.audioContext = new AudioContext();
         this.mediaElementSourceNode = this.audioContext.createMediaElementSource(this.audioElement);
 
-        // Connect the media element source to a gain node with 0 volume 
-        // to ensure it "plays" through the context and updates currentTime.
+        // Keep the element connected and playing for browser/OS media plumbing,
+        // but make the decoded buffer source the only audible output.
         this.silentGainNode = this.audioContext.createGain();
         this.silentGainNode.gain.value = 0;
         this.mediaElementSourceNode.connect(this.silentGainNode).connect(this.audioContext.destination);
@@ -138,6 +140,12 @@ export class AudioPlayer {
     }
 
     supportsTrack(track) {
+        if (!track.mime) return true;
+
+        // This is intentionally only a MIME/container/codec gate. The real
+        // playback path still proves the file by fetching and decoding it into
+        // an AudioBuffer; MediaCapabilities.decodingInfo() needs bitrate,
+        // channels, and sample rate, which we do not need for this early check.
         return typeof this.audioElement.canPlayType !== "function"
             || this.audioElement.canPlayType(track.mime) !== "";
     }
