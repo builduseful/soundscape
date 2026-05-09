@@ -200,10 +200,11 @@ async function playCurrentTrack(direction = "next") {
 
     saveCurrentTrack();
     updateTrackTitle({ animate: true, direction });
-    await audioPlayer.playTrack(track, true, true, !wasPlaying);
+    const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
+    if (!didStartTrack) return;
 
     updateMediaSessionStatus(track);
-    syncPlaybackState(wasPlaying);
+    syncPlaybackState(audioPlayer.isPlaying());
 }
 
 async function playAudio() {
@@ -213,10 +214,11 @@ async function playAudio() {
         await audioPlayer.play();
     } else {
         saveCurrentTrack();
-        await audioPlayer.playTrack(getCurrentTrack(), true);
+        const didStartTrack = await audioPlayer.playTrack(getCurrentTrack(), true);
+        if (!didStartTrack) return;
     }
 
-    syncPlaybackState(true);
+    syncPlaybackState(audioPlayer.isPlaying());
 }
 
 async function pauseAudio() {

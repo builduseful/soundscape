@@ -157,6 +157,28 @@ function installFetch() {
     return calls;
 }
 
+function installDeferredFetch() {
+    const requests = [];
+
+    globalThis.fetch = (url) => new Promise((resolve) => {
+        const request = {
+            url,
+            resolveWithBytes(byteLength = 8) {
+                resolve({
+                    ok: true,
+                    async arrayBuffer() {
+                        return new ArrayBuffer(byteLength);
+                    },
+                });
+            },
+        };
+
+        requests.push(request);
+    });
+
+    return requests;
+}
+
 test("playTrack uses a decoded buffer for the audible loop and keeps the media element browser-visible", async () => {
     const contexts = installAudioContext();
     const fetchCalls = installFetch();
@@ -227,6 +249,122 @@ test("playTrack reuses decoded buffers when replaying the same track", async () 
     assert.equal(contexts[0].bufferSources.length, 2);
     assert.equal(contexts[0].bufferSources[0].stopCalls, 1);
     assert.equal(contexts[0].bufferSources[1].buffer, contexts[0].decodedBuffers[0]);
+});
+
+test("playTrack reuses an in-flight buffer load for duplicate track requests", async () => {
+    const contexts = installAudioContext();
+    const requests = installDeferredFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    const firstPlay = player.playTrack({ url: "/loop.ogg" }, true);
+    const secondPlay = player.playTrack({ url: "/loop.ogg" }, true);
+
+    assert.equal(requests.length, 1);
+    requests[0].resolveWithBytes(8);
+
+    assert.equal(await secondPlay, true);
+    assert.equal(await firstPlay, false);
+    assert.equal(contexts[0].decodedBuffers.length, 1);
+    assert.equal(contexts[0].bufferSources.length, 1);
+});
+
+test("playTrack retries a buffer load after a failed response", async () => {
+    const contexts = installAudioContext();
+    const fetchCalls = [];
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    globalThis.fetch = async (url) => {
+        fetchCalls.push(url);
+
+        if (fetchCalls.length === 1) {
+            return { ok: false, status: 503, statusText: "Service Unavailable" };
+        }
+
+        return {
+            ok: true,
+            async arrayBuffer() {
+                return new ArrayBuffer(8);
+            },
+        };
+    };
+
+    await assert.rejects(
+        () => player.playTrack({ url: "/retry.ogg" }, true),
+        /Could not load audio: 503 Service Unavailable/,
+    );
+    await player.playTrack({ url: "/retry.ogg" }, true);
+
+    assert.deepEqual(fetchCalls, ["/retry.ogg", "/retry.ogg"]);
+    assert.equal(contexts[0].decodedBuffers.length, 1);
+});
+
+test("playTrack ignores stale buffer loads when a newer track is requested", async () => {
+    const contexts = installAudioContext();
+    const requests = installDeferredFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    const firstPlay = player.playTrack({ url: "/slow.ogg" }, true);
+    const secondPlay = player.playTrack({ url: "/fast.ogg" }, true);
+
+    requests[1].resolveWithBytes(16);
+
+    assert.equal(await secondPlay, true);
+    requests[0].resolveWithBytes(8);
+    assert.equal(await firstPlay, false);
+    assert.equal(player.hasTrack(), true);
+    assert.equal(audioElement.src, "/fast.ogg");
+    assert.equal(audioElement.loadCalls, 1);
+    assert.equal(contexts[0].bufferSources.length, 1);
+    assert.equal(contexts[0].bufferSources[0].buffer.arrayBuffer.byteLength, 16);
+});
+
+test("playTrack keeps the current buffer source active while a replacement track loads", async () => {
+    const contexts = installAudioContext();
+    const requests = installDeferredFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    requests[0].resolveWithBytes(8);
+    assert.equal(await firstPlay, true);
+
+    const firstSource = contexts[0].bufferSources[0];
+    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+
+    assert.equal(firstSource.stopCalls, 0);
+    assert.equal(audioElement.src, "/first.ogg");
+    assert.equal(contexts[0].bufferSources.length, 1);
+
+    requests[1].resolveWithBytes(16);
+
+    assert.equal(await secondPlay, true);
+    assert.equal(firstSource.stopCalls, 1);
+    assert.equal(contexts[0].bufferSources.length, 2);
+    assert.equal(contexts[0].bufferSources[1].buffer.arrayBuffer.byteLength, 16);
+});
+
+test("playTrack respects a pause while a replacement track is still loading", async () => {
+    const contexts = installAudioContext();
+    const requests = installDeferredFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    requests[0].resolveWithBytes(8);
+    assert.equal(await firstPlay, true);
+
+    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+    await player.pause();
+    requests[1].resolveWithBytes(16);
+
+    assert.equal(await secondPlay, true);
+    assert.equal(player.isPlaying(), false);
+    assert.equal(audioElement.src, "/second.ogg");
+    assert.equal(audioElement.playCalls, 1);
+    assert.equal(contexts[0].state, "suspended");
 });
 
 test("playTrack can replace the current track and keep the new track paused", async () => {
@@ -307,6 +445,56 @@ test("play and pause keep a loaded track's audio context and media element in sy
     assert.equal(player.isPlaying(), true);
     assert.equal(audioElement.playCalls, 2);
     assert.equal(contexts[0].resumeCalls, 2);
+});
+
+test("pause wins if it happens while play is resuming the audio context", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/sound.ogg" }, true);
+    await player.pause();
+
+    let resolveResume;
+    contexts[0].resume = async () => {
+        contexts[0].resumeCalls += 1;
+        contexts[0].state = "running";
+        await new Promise((resolve) => {
+            resolveResume = resolve;
+        });
+    };
+
+    const playPromise = player.play();
+    await player.pause();
+    resolveResume();
+    await playPromise;
+
+    assert.equal(player.isPlaying(), false);
+    assert.equal(audioElement.playCalls, 1);
+    assert.equal(contexts[0].state, "suspended");
+});
+
+test("play suspends the audio context again if the media element cannot play", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    audioElement.play = async function play() {
+        this.playCalls += 1;
+        this.paused = false;
+        throw new Error("Media element rejected playback");
+    };
+    const player = new AudioPlayer(audioElement);
+
+    await assert.rejects(
+        () => player.playTrack({ url: "/sound.ogg" }, true),
+        /Media element rejected playback/,
+    );
+
+    assert.equal(player.isPlaying(), false);
+    assert.equal(audioElement.pauseCalls, 1);
+    assert.equal(contexts[0].state, "suspended");
+    assert.equal(contexts[0].suspendCalls, 1);
 });
 
 test("supportsTrack intentionally checks only the MIME type", () => {
