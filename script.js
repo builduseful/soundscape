@@ -12,7 +12,11 @@
 // https://web.dev/media-session/
 
 import { AudioPlayer } from "./src/audio-player.js";
-import { initMediaSession, updateMediaSessionStatus } from "./src/media-session.js";
+import {
+    initMediaSession,
+    updateMediaSessionPlaybackState,
+    updateMediaSessionStatus,
+} from "./src/media-session.js";
 import { ThemeSelector } from "./src/theme-selector.js";
 import { VolumeControl } from "./src/volume-control.js";
 import {
@@ -55,7 +59,8 @@ const mediaSessionActions = {
     // Media keys reuse the same track-change functions as the buttons.
     playPreviousTrack,
     playNextTrack,
-    initMediaSession: startMediaSession,
+    onPlaybackStart: () => syncPlaybackState(true),
+    onPlaybackPause: () => syncPlaybackState(false),
 };
 
 volumeControl.addEventListener("input", () => {
@@ -73,26 +78,13 @@ title.addEventListener("animationend", handleTitleAnimationEnd);
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
 updateTrackTitle();
+startMediaSession();
 
 async function playPauseClick() {
-    if (!audioPlayer.hasContext()) {
-        // Load the current soundscape
-        const soundscape = getCurrentTrack();
-
-        await audioPlayer.playTrack(soundscape, true);
-        await startMediaSession();
-
-        return;
-    }
-
-    if (audioPlayer.state === "running") {
+    if (audioPlayer.isPlaying()) {
         await pauseAudio();
-        return;
-    }
-
-    if (audioPlayer.state === "suspended") {
+    } else {
         await playAudio();
-        return;
     }
 }
 
@@ -217,24 +209,40 @@ async function playCurrentTrack(direction = "next") {
     await audioPlayer.playTrack(track, true, true, !wasPlaying);
 
     updateMediaSessionStatus(track);
+    syncPlaybackState(wasPlaying);
 }
 
 async function playAudio() {
-    console.log("playAudio");
-    await audioPlayer.play();
-    navigator.mediaSession.playbackState = "playing";
+    if (!audioPlayer.hasTrack()) {
+        saveCurrentTrack();
+        await audioPlayer.playTrack(getCurrentTrack(), true);
+    } else {
+        await audioPlayer.play();
+    }
 
-    playPauseButton.setAttribute("aria-label", PAUSE_LABEL);
+    syncPlaybackState(true);
 }
 
 async function pauseAudio() {
-    console.log("pauseAudio");
     await audioPlayer.pause();
-    navigator.mediaSession.playbackState = "paused";
 
-    playPauseButton.setAttribute("aria-label", PLAY_LABEL);
+    syncPlaybackState(false);
 }
 
-async function startMediaSession() {
-    await initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement);
+function syncPlaybackState(isPlaying) {
+    let playbackState = "none";
+
+    if (isPlaying) {
+        playbackState = "playing";
+    } else if (audioPlayer.hasTrack()) {
+        playbackState = "paused";
+    }
+
+    updateMediaSessionPlaybackState(playbackState);
+    playPauseButton.setAttribute("aria-label", isPlaying ? PAUSE_LABEL : PLAY_LABEL);
+}
+
+function startMediaSession() {
+    initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement);
+    syncPlaybackState(audioPlayer.isPlaying());
 }

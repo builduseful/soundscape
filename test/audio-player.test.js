@@ -4,70 +4,61 @@ import { afterEach, test } from "node:test";
 import { AudioPlayer } from "../src/audio-player.js";
 
 const originalAudioContext = globalThis.AudioContext;
-const originalFetch = globalThis.fetch;
 
 afterEach(() => {
     globalThis.AudioContext = originalAudioContext;
-    globalThis.fetch = originalFetch;
 });
 
-test("playTrack decodes the track, routes it through gain, loops it, and starts playback", async () => {
-    const fetchedUrls = [];
-    const decodedBuffers = [];
-    const contexts = [];
-    const audioBytes = new Uint8Array([1, 2, 3, 4]).buffer;
-    const decodedBuffer = { duration: 30 };
-
-    globalThis.fetch = async (url) => {
-        fetchedUrls.push(url);
-
-        return {
-            async arrayBuffer() {
-                return audioBytes;
-            },
-        };
+function createAudioElement() {
+    return {
+        paused: true,
+        src: "",
+        loop: false,
+        currentTime: 0,
+        loadCalls: 0,
+        playCalls: 0,
+        pauseCalls: 0,
+        load() {
+            this.loadCalls += 1;
+        },
+        async play() {
+            this.playCalls += 1;
+            this.paused = false;
+        },
+        pause() {
+            this.pauseCalls += 1;
+            this.paused = true;
+        },
     };
+}
+
+function installAudioContext({ initialState = "suspended" } = {}) {
+    const contexts = [];
 
     globalThis.AudioContext = class FakeAudioContext {
-        state = "running";
+        state = initialState;
         currentTime = 12;
         destination = { type: "destination" };
-        sources = [];
+        mediaSources = [];
         gains = [];
+        resumeCalls = 0;
+        suspendCalls = 0;
 
         constructor() {
             contexts.push(this);
         }
 
-        async decodeAudioData(arrayBuffer) {
-            decodedBuffers.push(arrayBuffer);
-            return decodedBuffer;
-        }
-
-        createBufferSource() {
+        createMediaElementSource(audioElement) {
             const source = {
-                buffer: undefined,
-                loop: false,
+                audioElement,
                 connectedTo: undefined,
-                startedAt: undefined,
-                stopped: false,
-                disconnected: false,
                 connect(node) {
                     this.connectedTo = node;
                     return node;
                 },
-                start(when) {
-                    this.startedAt = when;
-                },
-                stop() {
-                    this.stopped = true;
-                },
-                disconnect() {
-                    this.disconnected = true;
-                },
             };
 
-            this.sources.push(source);
+            this.mediaSources.push(source);
             return source;
         }
 
@@ -102,223 +93,83 @@ test("playTrack decodes the track, routes it through gain, loops it, and starts 
             this.gains.push(gainNode);
             return gainNode;
         }
-    };
 
-    const audioElement = {
-        async play() {},
-        pause() {},
-    };
-    const player = new AudioPlayer(audioElement);
-
-    await player.playTrack({ url: "/sound.ogg" }, true);
-
-    assert.equal(player.hasContext(), true);
-    assert.equal(player.isPlaying(), true);
-    assert.deepEqual(fetchedUrls, ["/sound.ogg"]);
-    assert.deepEqual(decodedBuffers, [audioBytes]);
-
-    const context = contexts[0];
-    const source = context.sources[0];
-    const gainNode = context.gains[0];
-
-    assert.equal(source.buffer, decodedBuffer);
-    assert.equal(source.loop, true);
-    assert.equal(source.connectedTo, gainNode);
-    assert.equal(gainNode.connectedTo, context.destination);
-    assert.equal(source.startedAt, 0);
-});
-
-test("playTrack stops and disconnects the previous source before replacing it", async () => {
-    const contexts = [];
-
-    globalThis.fetch = async () => ({
-        async arrayBuffer() {
-            return new ArrayBuffer(1);
-        },
-    });
-
-    globalThis.AudioContext = class FakeAudioContext {
-        state = "running";
-        destination = {};
-        sources = [];
-        gains = [];
-
-        constructor() {
-            contexts.push(this);
-        }
-
-        async decodeAudioData() {
-            return {};
-        }
-
-        createBufferSource() {
-            const source = {
-                loop: undefined,
-                connect(node) {
-                    return node;
-                },
-                start() {},
-                stopCalls: 0,
-                disconnectCalls: 0,
-                stop() {
-                    this.stopCalls += 1;
-                },
-                disconnect() {
-                    this.disconnectCalls += 1;
-                },
-            };
-
-            this.sources.push(source);
-            return source;
-        }
-
-        createGain() {
-            const gainNode = {
-                connect(node) {
-                    return node;
-                },
-                disconnectCalls: 0,
-                gain: {},
-                disconnect() {
-                    this.disconnectCalls += 1;
-                },
-            };
-
-            this.gains.push(gainNode);
-            return gainNode;
-        }
-    };
-
-    const player = new AudioPlayer({ async play() {}, pause() {} });
-
-    await player.playTrack({ url: "/first.ogg" }, true);
-    const firstContext = contexts[0];
-    const firstSource = firstContext.sources[0];
-    const firstGain = firstContext.gains[0];
-
-    await player.playTrack({ url: "/second.ogg" }, false);
-
-    assert.equal(firstSource.stopCalls, 1);
-    assert.equal(firstSource.disconnectCalls, 1);
-    assert.equal(firstGain.disconnectCalls, 1);
-    assert.equal(firstContext.sources[1].loop, false);
-});
-
-test("playTrack can replace the context and keep the new track paused", async () => {
-    const contexts = [];
-
-    globalThis.fetch = async () => ({
-        async arrayBuffer() {
-            return new ArrayBuffer(1);
-        },
-    });
-
-    globalThis.AudioContext = class FakeAudioContext {
-        state = "running";
-        destination = {};
-        sources = [];
-        suspendCalls = 0;
-
-        constructor() {
-            contexts.push(this);
+        async resume() {
+            this.resumeCalls += 1;
+            this.state = "running";
         }
 
         async suspend() {
             this.suspendCalls += 1;
             this.state = "suspended";
         }
-
-        async decodeAudioData() {
-            return {};
-        }
-
-        createBufferSource() {
-            const source = {
-                connect(node) {
-                    return node;
-                },
-                startCalls: 0,
-                start() {
-                    this.startCalls += 1;
-                },
-                stop() {},
-                disconnect() {},
-            };
-
-            this.sources.push(source);
-            return source;
-        }
-
-        createGain() {
-            return {
-                gain: { value: 1 },
-                connect(node) {
-                    return node;
-                },
-                disconnect() {},
-            };
-        }
     };
 
-    const player = new AudioPlayer({ async play() {}, pause() {} });
+    return contexts;
+}
 
-    await player.playTrack({ url: "/first.ogg" }, true);
-    await player.playTrack({ url: "/second.ogg" }, true, true, true);
+test("playTrack uses the media element as the browser-visible source and routes it through gain", async () => {
+    const contexts = installAudioContext();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
 
-    assert.equal(contexts.length, 2);
-    assert.equal(contexts[1].suspendCalls, 1);
-    assert.equal(contexts[1].state, "suspended");
-    assert.equal(contexts[1].sources[0].startCalls, 1);
+    await player.playTrack({ url: "/sound.ogg" }, true);
+
+    assert.equal(player.hasContext(), true);
+    assert.equal(player.hasTrack(), true);
+    assert.equal(player.isPlaying(), true);
+    assert.equal(audioElement.src, "/sound.ogg");
+    assert.equal(audioElement.loop, true);
+    assert.equal(audioElement.currentTime, 0);
+    assert.equal(audioElement.loadCalls, 1);
+    assert.equal(audioElement.playCalls, 1);
+
+    const context = contexts[0];
+    const source = context.mediaSources[0];
+    const gainNode = context.gains[0];
+
+    assert.equal(context.resumeCalls, 1);
+    assert.equal(source.audioElement, audioElement);
+    assert.equal(source.connectedTo, gainNode);
+    assert.equal(gainNode.connectedTo, context.destination);
 });
 
-test("playTrack applies the latest volume to newly created gain nodes", async () => {
-    const contexts = [];
+test("playTrack reuses the media element audio graph when replacing tracks", async () => {
+    const contexts = installAudioContext();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
 
-    globalThis.fetch = async () => ({
-        async arrayBuffer() {
-            return new ArrayBuffer(1);
-        },
-    });
+    await player.playTrack({ url: "/first.ogg" }, true);
+    await player.playTrack({ url: "/second.ogg" }, false, true);
 
-    globalThis.AudioContext = class FakeAudioContext {
-        state = "running";
-        destination = {};
-        gains = [];
+    assert.equal(contexts.length, 1);
+    assert.equal(contexts[0].mediaSources.length, 1);
+    assert.equal(audioElement.src, "/second.ogg");
+    assert.equal(audioElement.loop, false);
+    assert.equal(audioElement.loadCalls, 2);
+    assert.equal(audioElement.playCalls, 2);
+});
 
-        constructor() {
-            contexts.push(this);
-        }
+test("playTrack can replace the current track and keep the new track paused", async () => {
+    const contexts = installAudioContext({ initialState: "running" });
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
 
-        async decodeAudioData() {
-            return {};
-        }
+    await player.playTrack({ url: "/quiet.ogg" }, true, true, true);
 
-        createBufferSource() {
-            return {
-                connect(node) {
-                    return node;
-                },
-                start() {},
-                stop() {},
-                disconnect() {},
-            };
-        }
+    assert.equal(player.hasTrack(), true);
+    assert.equal(player.isPlaying(), false);
+    assert.equal(contexts[0].state, "suspended");
+    assert.equal(contexts[0].suspendCalls, 1);
+    assert.equal(audioElement.src, "/quiet.ogg");
+    assert.equal(audioElement.pauseCalls, 1);
+    assert.equal(audioElement.playCalls, 0);
+});
 
-        createGain() {
-            const gainNode = {
-                gain: { value: 1 },
-                connect(node) {
-                    return node;
-                },
-                disconnect() {},
-            };
-
-            this.gains.push(gainNode);
-            return gainNode;
-        }
-    };
-
-    const player = new AudioPlayer({ async play() {}, pause() {} });
+test("playTrack applies the latest volume to the gain node", async () => {
+    const contexts = installAudioContext();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
     player.updateVolume(0.35);
 
     await player.playTrack({ url: "/quiet.ogg" }, true);
@@ -326,40 +177,40 @@ test("playTrack applies the latest volume to newly created gain nodes", async ()
     assert.equal(contexts[0].gains[0].gain.value, 0.35);
 });
 
-test("play and pause keep the audio context and backing media element in sync", async () => {
-    let playCalls = 0;
-    let pauseCalls = 0;
-
-    const audioElement = {
-        async play() {
-            playCalls += 1;
-        },
-        pause() {
-            pauseCalls += 1;
-        },
-    };
+test("play and pause keep the audio context and media element in sync", async () => {
+    const contexts = installAudioContext();
+    const audioElement = createAudioElement();
     const player = new AudioPlayer(audioElement);
-    player.audioContext = {
-        state: "suspended",
-        async resume() {
-            this.state = "running";
-        },
-        async suspend() {
-            this.state = "suspended";
-        },
-    };
 
     await player.play();
     assert.equal(player.state, "running");
-    assert.equal(playCalls, 1);
+    assert.equal(player.isPlaying(), true);
+    assert.equal(audioElement.playCalls, 1);
 
     await player.pause();
     assert.equal(player.state, "suspended");
-    assert.equal(pauseCalls, 1);
+    assert.equal(player.isPlaying(), false);
+    assert.equal(audioElement.pauseCalls, 1);
+    assert.equal(contexts[0].suspendCalls, 1);
+});
+
+test("isPlaying returns false if the audio element is paused even if the context is running", async () => {
+    installAudioContext({ initialState: "running" });
+    const audioElement = createAudioElement();
+    audioElement.paused = true;
+    const player = new AudioPlayer(audioElement);
+
+    assert.equal(player.isPlaying(), false);
+});
+
+test("pause is a no-op before the audio graph exists", async () => {
+    const player = new AudioPlayer(createAudioElement());
+
+    await assert.doesNotReject(() => player.pause());
 });
 
 test("updateVolume fades from the current gain value", () => {
-    const player = new AudioPlayer({ async play() {}, pause() {} });
+    const player = new AudioPlayer(createAudioElement());
     const calls = [];
     player.audioContext = { currentTime: 5 };
     player.currentTrackGainNode = {
@@ -386,8 +237,8 @@ test("updateVolume fades from the current gain value", () => {
     ]);
 });
 
-test("updateVolume is a no-op before a track has created a gain node", () => {
-    const player = new AudioPlayer({ async play() {}, pause() {} });
+test("updateVolume is a no-op before the gain node exists", () => {
+    const player = new AudioPlayer(createAudioElement());
 
     assert.doesNotThrow(() => player.updateVolume(0.5));
 });

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
-import { initMediaSession, updateMediaSessionStatus } from "../src/media-session.js";
+import {
+    initMediaSession,
+    updateMediaSessionPlaybackState,
+    updateMediaSessionStatus,
+} from "../src/media-session.js";
 
 const originalMediaMetadata = globalThis.MediaMetadata;
 const originalNavigator = globalThis.navigator;
@@ -24,6 +28,7 @@ function installMediaSession() {
     const handlers = new Map();
     const mediaSession = {
         metadata: undefined,
+        playbackState: "none",
         setActionHandler(action, handler) {
             handlers.set(action, handler);
         },
@@ -55,7 +60,7 @@ function createAudioElement() {
     };
 }
 
-test("initMediaSession starts playback, publishes metadata, and wires media key handlers", async () => {
+test("initMediaSession publishes metadata and wires media key handlers", async () => {
     const { handlers, mediaSession } = installMediaSession();
     const audioElement = createAudioElement();
     const calls = [];
@@ -72,9 +77,6 @@ test("initMediaSession starts playback, publishes metadata, and wires media key 
         async playNextTrack() {
             calls.push("playNextTrack");
         },
-        async initMediaSession() {
-            calls.push("initMediaSession");
-        },
     };
     const track = {
         title: "Rain",
@@ -82,7 +84,7 @@ test("initMediaSession starts playback, publishes metadata, and wires media key 
 
     await initMediaSession(track, actions, audioElement);
 
-    assert.deepEqual(calls, ["playAudio"]);
+    assert.deepEqual(calls, []);
     assert.equal(mediaSession.metadata.title, "Rain");
     assert.equal(mediaSession.metadata.artist, "Soundscape");
     assert.equal(mediaSession.metadata.album, "Nature");
@@ -102,36 +104,36 @@ test("initMediaSession starts playback, publishes metadata, and wires media key 
 
     assert.deepEqual(calls, [
         "playAudio",
-        "playAudio",
         "pauseAudio",
         "playPreviousTrack",
         "playNextTrack",
-        "initMediaSession",
         "pauseAudio",
     ]);
+    assert.equal(mediaSession.playbackState, "none");
 });
 
-test("initMediaSession wires audio element play and pause fallbacks", async () => {
+test("initMediaSession wires audio element play and pause state sync", async () => {
     installMediaSession();
     const audioElement = createAudioElement();
     const calls = [];
     const actions = {
-        async playAudio() {
-            calls.push("playAudio");
-        },
-        async pauseAudio() {
-            calls.push("pauseAudio");
-        },
+        async playAudio() {},
+        async pauseAudio() {},
         async playPreviousTrack() {},
         async playNextTrack() {},
-        async initMediaSession() {},
+        onPlaybackStart() {
+            calls.push("onPlaybackStart");
+        },
+        onPlaybackPause() {
+            calls.push("onPlaybackPause");
+        },
     };
 
     await initMediaSession({ title: "Rain" }, actions, audioElement);
     await audioElement.dispatch("play");
     await audioElement.dispatch("pause");
 
-    assert.deepEqual(calls, ["playAudio", "playAudio", "pauseAudio"]);
+    assert.deepEqual(calls, ["onPlaybackStart", "onPlaybackPause"]);
 });
 
 test("updateMediaSessionStatus publishes track metadata", () => {
@@ -140,4 +142,23 @@ test("updateMediaSessionStatus publishes track metadata", () => {
     updateMediaSessionStatus({ title: "Brown Noise" });
 
     assert.equal(mediaSession.metadata.title, "Brown Noise");
+});
+
+test("updateMediaSessionPlaybackState publishes playback state", () => {
+    const { mediaSession } = installMediaSession();
+
+    updateMediaSessionPlaybackState("playing");
+
+    assert.equal(mediaSession.playbackState, "playing");
+});
+
+test("media session helpers are no-ops when the API is unavailable", () => {
+    Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: {},
+    });
+
+    assert.doesNotThrow(() => initMediaSession({ title: "Rain" }, {}, createAudioElement()));
+    assert.doesNotThrow(() => updateMediaSessionStatus({ title: "Rain" }));
+    assert.doesNotThrow(() => updateMediaSessionPlaybackState("paused"));
 });

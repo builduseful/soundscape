@@ -4,13 +4,14 @@ export class AudioPlayer {
     constructor(audioElement) {
         this.audioElement = audioElement;
         this.audioContext = undefined; // Leave as undefined, until user gesture is performed
+        this.currentTrackUrl = undefined;
+        this.mediaElementSourceNode = undefined;
         this.currentTrackGainNode = undefined;
-        this.currentTrackSourceNode = undefined;
         this.volume = 1;
     }
 
     get state() {
-        return this.audioContext.state;
+        return this.audioContext?.state ?? "suspended";
     }
 
     hasContext() {
@@ -18,62 +19,57 @@ export class AudioPlayer {
     }
 
     isPlaying() {
-        return this.hasContext() && this.audioContext.state === "running";
+        return this.hasContext() && this.audioContext.state === "running" && !this.audioElement.paused;
+    }
+    hasTrack() {
+        return this.currentTrackUrl !== undefined;
     }
 
     async playTrack(track, loop, resetContext = false, startPaused = false) {
-        if (resetContext || !this.hasContext()) {
-            this.audioContext = new AudioContext();
+        this.ensureAudioGraph();
+        this.audioElement.loop = loop;
+
+        if (resetContext || this.currentTrackUrl !== track.url) {
+            this.currentTrackUrl = track.url;
+            this.audioElement.src = track.url;
+            this.audioElement.load?.();
         }
 
-        if (startPaused && this.audioContext.state === "running") {
+        this.audioElement.currentTime = 0;
+
+        if (startPaused) {
+            this.audioElement.pause();
             await this.audioContext.suspend();
+            return;
         }
 
-        const audioBuffer = await getAudioAsync(track.url, this.audioContext);
-        this.playAudioBuffer(audioBuffer, loop);
+        await this.play();
     }
 
-    playAudioBuffer(audioBuffer, loop) {
-        this.stopCurrentTrack();
+    ensureAudioGraph() {
+        if (this.hasContext()) return;
 
-        // Create a new audio source node (AudioBufferSourceNode)
-        this.currentTrackSourceNode = this.audioContext.createBufferSource();
-        this.currentTrackSourceNode.buffer = audioBuffer;
-        this.currentTrackSourceNode.loop = loop;
-
-        // Create gain node
+        this.audioContext = new AudioContext();
+        this.mediaElementSourceNode = this.audioContext.createMediaElementSource(this.audioElement);
         this.currentTrackGainNode = this.audioContext.createGain();
         this.currentTrackGainNode.gain.value = this.volume;
 
-        // Specify output
-        const destinationNode = this.audioContext.destination;
-
-        // Setup the audio routing graph: audio source -> gain node -> destination node (i.e. output)
-        this.currentTrackSourceNode
+        this.mediaElementSourceNode
             .connect(this.currentTrackGainNode)
-            .connect(destinationNode);
-
-        this.currentTrackSourceNode.start(0);
-    }
-
-    stopCurrentTrack() {
-        // Stop the current audio source node (if it exists)
-        if (this.currentTrackSourceNode) {
-            this.currentTrackSourceNode.stop();
-            this.currentTrackSourceNode.disconnect();
-            this.currentTrackGainNode.disconnect();
-        }
+            .connect(this.audioContext.destination);
     }
 
     async play() {
+        this.ensureAudioGraph();
         await this.audioContext.resume();
         await this.audioElement.play();
     }
 
     async pause() {
-        await this.audioContext.suspend();
+        if (!this.hasContext()) return;
+
         this.audioElement.pause();
+        await this.audioContext.suspend();
     }
 
     updateVolume(volume) {
@@ -85,17 +81,4 @@ export class AudioPlayer {
             this.currentTrackGainNode.gain.linearRampToValueAtTime(this.volume, this.audioContext.currentTime + FADE_DURATION_SECONDS);
         }
     }
-}
-
-/**
- * Gets an AudioBuffer from a given url
- * @param {string} url
- * @param {AudioContext} audioContext
- * @returns The AudioBuffer retrieved from the given url
- */
-async function getAudioAsync(url, audioContext) {
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-
-    return audioContext.decodeAudioData(arrayBuffer);
 }
