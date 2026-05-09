@@ -82,8 +82,8 @@ export class VolumeControl extends HTMLElement {
                     z-index: 2;
                     display: grid;
                     place-items: center;
-                    width: 42px;
-                    height: 42px;
+                    width: 50px;
+                    height: 50px;
                     margin: 0;
                     padding: 0;
                     border: 0;
@@ -123,8 +123,8 @@ export class VolumeControl extends HTMLElement {
                 }
 
                 svg {
-                    width: 18px;
-                    height: 18px;
+                    width: 22px;
+                    height: 22px;
                     fill: none;
                     stroke: currentColor;
                     stroke-linecap: round;
@@ -153,8 +153,8 @@ export class VolumeControl extends HTMLElement {
                     display: grid;
                     align-items: start;
                     justify-items: center;
-                    width: 42px;
-                    height: 164px;
+                    width: 50px;
+                    height: 188px;
                     pointer-events: none;
                     transform: translateX(-50%);
                     transform-origin: 50% 100%;
@@ -170,14 +170,14 @@ export class VolumeControl extends HTMLElement {
                 .popover {
                     display: grid;
                     place-items: center;
-                    width: 42px;
-                    height: 164px;
-                    padding: 16px 0 50px;
+                    width: 50px;
+                    height: 188px;
+                    padding: 18px 0 58px;
                     border: 1px solid var(--color-border-subtle);
                     border-radius: 999px;
                     background: var(--color-surface);
                     box-shadow: var(--shadow-surface);
-                    clip-path: inset(122px 0 0 round 999px);
+                    clip-path: inset(140px 0 0 round 999px);
                     opacity: 0;
                     transform-origin: 50% 100%;
                     user-select: none;
@@ -194,7 +194,7 @@ export class VolumeControl extends HTMLElement {
                 }
 
                 input[type="range"] {
-                    height: 106px;
+                    height: 120px;
                     margin: 0;
                     accent-color: var(--color-primary);
                     cursor: pointer;

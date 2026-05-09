@@ -79,9 +79,9 @@ export class ThemeSelector extends HTMLElement {
                     .theme-selector {
                         position: relative;
                         display: grid;
-                        grid-template-columns: repeat(3, 28px);
-                        gap: 3px;
-                        padding: 3px;
+                        grid-template-columns: repeat(3, 34px);
+                        gap: 4px;
+                        padding: 4px;
                         background: var(--color-surface-muted);
                         border: 1px solid var(--color-border-subtle);
                         border-radius: 999px;
@@ -90,12 +90,12 @@ export class ThemeSelector extends HTMLElement {
                     .theme-selector::before {
                         content: "";
                         position: absolute;
-                        inset: 3px auto 3px 3px;
-                        width: 28px;
+                        inset: 4px auto 4px 4px;
+                        width: 34px;
                         border-radius: 999px;
                         background: var(--color-surface);
                         box-shadow: var(--shadow-surface);
-                        transform: translateX(calc(var(--theme-index, 0) * 31px));
+                        transform: translateX(calc(var(--theme-index, 0) * 38px));
                         transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
                         pointer-events: none;
                     }
@@ -112,8 +112,8 @@ export class ThemeSelector extends HTMLElement {
                         display: grid;
                         place-items: center;
                         min-width: 0;
-                        width: 28px;
-                        height: 28px;
+                        width: 34px;
+                        height: 34px;
                         border-radius: 999px;
                         color: var(--color-text-muted);
                         cursor: pointer;
@@ -124,8 +124,8 @@ export class ThemeSelector extends HTMLElement {
                     }
 
                     svg {
-                        width: 15px;
-                        height: 15px;
+                        width: 18px;
+                        height: 18px;
                         fill: none;
                         stroke: currentColor;
                         stroke-linecap: round;
