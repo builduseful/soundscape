@@ -403,11 +403,11 @@ test("playTrack accepts supported MIME types before loading the track", async ()
     const player = new AudioPlayer(audioElement);
 
     await player.playTrack({
-        url: "/rain.ogg",
-        mime: "audio/ogg; codecs=vorbis",
+        url: "/rain.opus",
+        mime: "audio/ogg; codecs=opus",
     }, true);
 
-    assert.equal(audioElement.src, "/rain.ogg");
+    assert.equal(audioElement.src, "/rain.opus");
 });
 
 test("playTrack rejects unsupported track MIME types before creating the audio graph", async () => {
@@ -418,8 +418,8 @@ test("playTrack rejects unsupported track MIME types before creating the audio g
     const player = new AudioPlayer(audioElement);
 
     await assert.rejects(
-        () => player.playTrack({ url: "/rain.ogg", mime: "audio/ogg; codecs=vorbis" }, true),
-        /Unsupported audio type: audio\/ogg; codecs=vorbis/,
+        () => player.playTrack({ url: "/rain.opus", mime: "audio/ogg; codecs=opus" }, true),
+        /Unsupported audio type: audio\/ogg; codecs=opus/,
     );
 
     assert.equal(contexts.length, 0);
@@ -506,10 +506,10 @@ test("supportsTrack intentionally checks only the MIME type", () => {
     };
 
     const player = new AudioPlayer(audioElement);
-    const result = player.supportsTrack({ url: "/rain.ogg", mime: "audio/ogg; codecs=vorbis" });
+    const result = player.supportsTrack({ url: "/rain.opus", mime: "audio/ogg; codecs=opus" });
 
     assert.equal(result, true);
-    assert.deepEqual(checkedTypes, ["audio/ogg; codecs=vorbis"]);
+    assert.deepEqual(checkedTypes, ["audio/ogg; codecs=opus"]);
 });
 
 test("supportsTrack accepts tracks without a declared MIME type", () => {
