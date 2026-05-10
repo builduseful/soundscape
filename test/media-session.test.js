@@ -4,6 +4,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import {
     initMediaSession,
     updateMediaSessionPlaybackState,
+    updateMediaSessionPositionState,
     updateMediaSessionStatus,
 } from "../src/media-session.js";
 
@@ -152,6 +153,27 @@ test("updateMediaSessionPlaybackState publishes playback state", () => {
     assert.equal(mediaSession.playbackState, "playing");
 });
 
+test("updateMediaSessionPositionState publishes Web Audio position", () => {
+    const { positionStates } = installMediaSession();
+    const positionState = {
+        duration: 30,
+        playbackRate: 1,
+        position: 12,
+    };
+
+    updateMediaSessionPositionState(positionState);
+
+    assert.deepEqual(positionStates, [positionState]);
+});
+
+test("updateMediaSessionPositionState clears position when no buffer is loaded", () => {
+    const { positionStates } = installMediaSession();
+
+    updateMediaSessionPositionState(null);
+
+    assert.deepEqual(positionStates, [{}]);
+});
+
 test("media session helpers are no-ops when the API is unavailable", () => {
     Object.defineProperty(globalThis, "navigator", {
         configurable: true,
@@ -160,5 +182,6 @@ test("media session helpers are no-ops when the API is unavailable", () => {
 
     assert.doesNotThrow(() => initMediaSession({ title: "Rain" }, {}, createAudioElement()));
     assert.doesNotThrow(() => updateMediaSessionStatus({ title: "Rain" }));
+    assert.doesNotThrow(() => updateMediaSessionPositionState(null));
     assert.doesNotThrow(() => updateMediaSessionPlaybackState("paused"));
 });

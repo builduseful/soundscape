@@ -1,7 +1,7 @@
 const FADE_DURATION_SECONDS = 0.25;
 
 export class AudioPlayer {
-    constructor(audioElement) {
+    constructor(audioElement, { onStateChange } = {}) {
         this.audioElement = audioElement;
         this.audioElement.preload = "auto";
         this.audioElement.loop = true;
@@ -13,8 +13,11 @@ export class AudioPlayer {
 
         this.bufferCache = new Map();
         this.activeSource = null;
+        this.activeBuffer = null;
+        this.activeSourceStartedAt = 0;
         this.playbackRequestId = 0;
         this.shouldPlay = false;
+        this.onStateChange = onStateChange;
     }
 
     get state() {
@@ -31,6 +34,29 @@ export class AudioPlayer {
 
     hasTrack() {
         return this.currentTrackUrl !== undefined;
+    }
+
+    wantsPlayback() {
+        return this.shouldPlay && this.hasTrack();
+    }
+
+    getCurrentPosition() {
+        if (!this.hasContext() || !this.activeBuffer) return 0;
+
+        const duration = this.activeBuffer.duration;
+        if (!duration) return 0;
+
+        return (this.audioContext.currentTime - this.activeSourceStartedAt) % duration;
+    }
+
+    getMediaSessionPositionState() {
+        if (!this.activeBuffer) return null;
+
+        return {
+            duration: this.activeBuffer.duration,
+            playbackRate: 1,
+            position: Math.min(this.getCurrentPosition(), this.activeBuffer.duration),
+        };
     }
 
     /**
@@ -81,10 +107,14 @@ export class AudioPlayer {
         const nextSource = this.audioContext.createBufferSource();
         nextSource.buffer = buffer;
         nextSource.loop = loop;
+        nextSource.loopStart = 0;
+        nextSource.loopEnd = buffer.duration;
         nextSource.connect(this.currentTrackGainNode);
-        nextSource.start(0);
+        nextSource.start(this.audioContext.currentTime);
 
         this.activeSource = nextSource;
+        this.activeBuffer = buffer;
+        this.activeSourceStartedAt = this.audioContext.currentTime;
         this.currentTrackUrl = track.url;
         previousSource?.stop();
 
@@ -137,6 +167,9 @@ export class AudioPlayer {
         if (this.hasContext()) return;
 
         this.audioContext = new AudioContext();
+        this.audioContext.addEventListener?.("statechange", () => {
+            this.onStateChange?.();
+        });
         this.mediaElementSourceNode = this.audioContext.createMediaElementSource(this.audioElement);
 
         // Keep the element connected and playing for browser/OS media plumbing,

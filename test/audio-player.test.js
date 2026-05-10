@@ -48,6 +48,7 @@ function installAudioContext({ initialState = "suspended" } = {}) {
         bufferSources = [];
         gains = [];
         decodedBuffers = [];
+        eventHandlers = new Map();
         resumeCalls = 0;
         suspendCalls = 0;
 
@@ -95,6 +96,14 @@ function installAudioContext({ initialState = "suspended" } = {}) {
 
             this.gains.push(gainNode);
             return gainNode;
+        }
+
+        addEventListener(type, handler) {
+            this.eventHandlers.set(type, handler);
+        }
+
+        dispatch(type) {
+            this.eventHandlers.get(type)?.();
         }
 
         createBufferSource() {
@@ -211,7 +220,9 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
     assert.equal(silentGainNode.connectedTo, context.destination);
     assert.equal(audibleSource.buffer, context.decodedBuffers[0]);
     assert.equal(audibleSource.loop, true);
-    assert.deepEqual(audibleSource.startCalls, [0]);
+    assert.equal(audibleSource.loopStart, 0);
+    assert.equal(audibleSource.loopEnd, context.decodedBuffers[0].duration);
+    assert.deepEqual(audibleSource.startCalls, [context.currentTime]);
     assert.equal(audibleSource.connectedTo, audibleGainNode);
     assert.equal(audibleGainNode.connectedTo, context.destination);
 });
@@ -394,6 +405,59 @@ test("playTrack applies the latest volume to the gain node", async () => {
     await player.playTrack({ url: "/quiet.ogg" }, true);
 
     assert.equal(contexts[0].gains[1].gain.value, 0.35);
+});
+
+test("getMediaSessionPositionState reports decoded buffer loop position", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/quiet.opus" }, true);
+    contexts[0].currentTime += 7;
+
+    assert.deepEqual(player.getMediaSessionPositionState(), {
+        duration: 30,
+        playbackRate: 1,
+        position: 7,
+    });
+
+    await player.pause();
+
+    assert.deepEqual(player.getMediaSessionPositionState(), {
+        duration: 30,
+        playbackRate: 1,
+        position: 7,
+    });
+});
+
+test("getMediaSessionPositionState wraps long-running loop position", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/quiet.opus" }, true);
+    contexts[0].currentTime += 37;
+
+    assert.equal(player.getCurrentPosition(), 7);
+});
+
+test("AudioContext state changes notify the app shell", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    let stateChangeCount = 0;
+    const player = new AudioPlayer(audioElement, {
+        onStateChange() {
+            stateChangeCount += 1;
+        },
+    });
+
+    await player.playTrack({ url: "/quiet.opus" }, true);
+    contexts[0].dispatch("statechange");
+
+    assert.equal(stateChangeCount, 1);
 });
 
 test("playTrack accepts supported MIME types before loading the track", async () => {

@@ -44,6 +44,20 @@ export function updateMediaSessionStatus(track) {
     clearMediaSessionPositionState();
 }
 
+export function updateMediaSessionPositionState(positionState) {
+    if (!supportsMediaSession() || typeof navigator.mediaSession.setPositionState !== "function") return;
+
+    try {
+        if (positionState) {
+            navigator.mediaSession.setPositionState(positionState);
+        } else {
+            navigator.mediaSession.setPositionState({});
+        }
+    } catch (error) {
+        console.warn("Media Session position state could not be updated.", error);
+    }
+}
+
 export function updateMediaSessionPlaybackState(playbackState) {
     if (!supportsMediaSession()) return;
 
@@ -71,13 +85,7 @@ export function configurePlaybackAudioSession() {
 }
 
 function clearMediaSessionPositionState() {
-    if (!supportsMediaSession() || typeof navigator.mediaSession.setPositionState !== "function") return;
-
-    try {
-        navigator.mediaSession.setPositionState({});
-    } catch (error) {
-        console.warn("Media Session position state could not be cleared.", error);
-    }
+    updateMediaSessionPositionState(null);
 }
 
 function supportsMediaSession() {

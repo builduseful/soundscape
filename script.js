@@ -11,6 +11,7 @@ import {
     configurePlaybackAudioSession,
     initMediaSession,
     updateMediaSessionPlaybackState,
+    updateMediaSessionPositionState,
     updateMediaSessionStatus,
 } from "./src/media-session.js";
 import { ThemeSelector } from "./src/theme-selector.js";
@@ -28,6 +29,7 @@ const PAUSE_LABEL = "Pause";
 const SAVED_VOLUME_KEY = "soundscape.volume";
 const SAVED_TRACK_URL_KEY = "soundscape.currentTrackUrl";
 const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
+const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
 
 customElements.define("theme-selector", ThemeSelector);
 customElements.define("volume-control", VolumeControl);
@@ -43,8 +45,11 @@ const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 
 let currentTrackIndex = getSavedTrackIndex();
+let mediaSessionPositionTimer = 0;
 
-const audioPlayer = new AudioPlayer(audioElement);
+const audioPlayer = new AudioPlayer(audioElement, {
+    onStateChange: () => syncPlaybackState(audioPlayer.isPlaying()),
+});
 
 // Media Session connects browser/OS media controls to the app's playback actions.
 const mediaSessionActions = {
@@ -68,6 +73,7 @@ themeSelector.addEventListener("theme-change", (event) => {
     updateThemePreference(event.detail.theme);
 });
 title.addEventListener("animationend", handleTitleAnimationEnd);
+document.addEventListener("visibilitychange", handleVisibilityChange);
 
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
@@ -227,6 +233,18 @@ async function pauseAudio() {
     syncPlaybackState(false);
 }
 
+async function handleVisibilityChange() {
+    if (document.hidden || !audioPlayer.wantsPlayback()) return;
+
+    try {
+        await audioPlayer.play();
+    } catch (error) {
+        console.warn("Could not resume playback after visibility change.", error);
+    }
+
+    syncPlaybackState(audioPlayer.isPlaying());
+}
+
 function syncPlaybackState(isPlaying) {
     let playbackState = "none";
 
@@ -237,7 +255,25 @@ function syncPlaybackState(isPlaying) {
     }
 
     updateMediaSessionPlaybackState(playbackState);
+    syncMediaSessionPositionState();
+    updateMediaSessionPositionTimer(isPlaying);
     playPauseButton.setAttribute("aria-label", isPlaying ? PAUSE_LABEL : PLAY_LABEL);
+}
+
+function syncMediaSessionPositionState() {
+    updateMediaSessionPositionState(audioPlayer.getMediaSessionPositionState());
+}
+
+function updateMediaSessionPositionTimer(isPlaying) {
+    if (!isPlaying) {
+        clearInterval(mediaSessionPositionTimer);
+        mediaSessionPositionTimer = 0;
+        return;
+    }
+
+    if (mediaSessionPositionTimer) return;
+
+    mediaSessionPositionTimer = setInterval(syncMediaSessionPositionState, MEDIA_SESSION_POSITION_INTERVAL_MS);
 }
 
 function startMediaSession() {
