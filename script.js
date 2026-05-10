@@ -78,6 +78,7 @@ themeSelector.addEventListener("theme-change", (event) => {
 title.addEventListener("animationend", handleTitleAnimationEnd);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener("keydown", handleDocumentKeydown);
+document.addEventListener("keyup", handleDocumentKeyup);
 
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
@@ -93,7 +94,7 @@ async function playPauseClick() {
 }
 
 async function handleDocumentKeydown(event) {
-    if (event.repeat || isEditableOrNativeControl(event.target)) return;
+    if (event.repeat || shouldIgnoreGlobalShortcut(event)) return;
 
     if (event.key === KEY_SPACE) {
         event.preventDefault();
@@ -113,11 +114,33 @@ async function handleDocumentKeydown(event) {
     }
 }
 
-function isEditableOrNativeControl(element) {
-    if (!(element instanceof Element)) return false;
+function handleDocumentKeyup(event) {
+    if (event.key !== KEY_SPACE || shouldIgnoreGlobalShortcut(event)) return;
 
-    return element.isContentEditable
-        || Boolean(element.closest("button, input, select, textarea, [contenteditable='true']"));
+    event.preventDefault();
+}
+
+function shouldIgnoreGlobalShortcut(event) {
+    const target = event.target instanceof Element ? event.target : null;
+
+    if (!target) return false;
+
+    if (
+        target.isContentEditable
+        || target.closest("input, select, textarea, [contenteditable='true']")
+    ) {
+        return true;
+    }
+
+    const button = target.closest("button");
+
+    return Boolean(button && !isTransportButton(button));
+}
+
+function isTransportButton(button) {
+    return button === playPauseButton
+        || button === nextButton
+        || button === previousButton;
 }
 
 async function playNextTrack() {
