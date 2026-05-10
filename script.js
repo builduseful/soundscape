@@ -26,6 +26,9 @@ import { tracks } from "./src/tracks.js";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
+const KEY_SPACE = " ";
+const KEY_ARROW_RIGHT = "ArrowRight";
+const KEY_ARROW_LEFT = "ArrowLeft";
 const SAVED_VOLUME_KEY = "soundscape.volume";
 const SAVED_TRACK_URL_KEY = "soundscape.currentTrackUrl";
 const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
@@ -74,6 +77,7 @@ themeSelector.addEventListener("theme-change", (event) => {
 });
 title.addEventListener("animationend", handleTitleAnimationEnd);
 document.addEventListener("visibilitychange", handleVisibilityChange);
+document.addEventListener("keydown", handleDocumentKeydown);
 
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
@@ -86,6 +90,34 @@ async function playPauseClick() {
     } else {
         await playAudio();
     }
+}
+
+async function handleDocumentKeydown(event) {
+    if (event.repeat || isEditableOrNativeControl(event.target)) return;
+
+    if (event.key === KEY_SPACE) {
+        event.preventDefault();
+        await playPauseClick();
+        return;
+    }
+
+    if (event.key === KEY_ARROW_RIGHT) {
+        event.preventDefault();
+        await playNextTrack();
+        return;
+    }
+
+    if (event.key === KEY_ARROW_LEFT) {
+        event.preventDefault();
+        await playPreviousTrack();
+    }
+}
+
+function isEditableOrNativeControl(element) {
+    if (!(element instanceof Element)) return false;
+
+    return element.isContentEditable
+        || Boolean(element.closest("button, input, select, textarea, [contenteditable='true']"));
 }
 
 async function playNextTrack() {
