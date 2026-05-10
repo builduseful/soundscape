@@ -10,6 +10,96 @@
 
 <body>
     <div class="container">
+        <svg class="soundscape-visual" id="soundscapeVisual" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+            <defs>
+                <pattern id="staticDots" width="34" height="34" patternUnits="userSpaceOnUse">
+                    <path d="M6 7h1M18 3h1M29 15h1M12 24h1M25 30h1" class="visual-mark"></path>
+                </pattern>
+            </defs>
+
+            <g class="visual-scene visual-scene--rain">
+                <path class="rain-sheet rain-sheet--soft" d="M82-90l-86 860M218-76l-82 840M364-96l-88 870M514-82l-84 850M672-94l-90 870M828-70l-82 840M984-98l-88 874M1126-82l-84 848"></path>
+                <path class="rain-sheet rain-sheet--clear" d="M152-54l-62 690M296-32l-64 692M438-58l-62 704M586-40l-66 696M742-56l-62 706M894-36l-66 692M1042-58l-62 704"></path>
+                <path class="rain-ripple rain-ripple--a" d="M258 618c38-12 78-12 116 0M742 636c46-14 92-14 138 0M472 676c56-18 118-18 174 0"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--garden-rain">
+                <path class="rain-sheet rain-sheet--soft" d="M126-82l-74 820M302-76l-78 832M486-92l-76 846M688-78l-80 832M878-94l-76 846M1064-76l-80 836"></path>
+                <path class="rain-sheet rain-sheet--mist" d="M206-34l-46 566M394-46l-48 590M622-32l-46 570M816-52l-50 604M1006-36l-46 570"></path>
+                <path class="garden-leaf garden-leaf--a" d="M258 572c48-46 104-50 166-12M764 508c64-52 132-54 204-8M384 402c42-34 88-34 138 0"></path>
+                <path class="rain-ripple rain-ripple--b" d="M226 638c34-10 70-10 104 0M892 632c42-14 88-14 130 0"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--heavy-rain">
+                <path class="rain-sheet rain-sheet--heavy" d="M38-94l-88 880M164-88l-86 874M292-102l-92 900M426-86l-88 872M558-106l-92 908M700-90l-88 878M836-104l-92 906M978-88l-88 880M1114-102l-92 900M1248-88l-88 878"></path>
+                <path class="rain-sheet rain-sheet--clear" d="M104-72l-66 760M252-58l-70 780M396-78l-68 776M546-58l-70 770M692-78l-68 778M846-56l-70 770M996-76l-68 776M1140-58l-70 770"></path>
+                <path class="rain-ripple rain-ripple--storm" d="M146 632c78-18 158-18 236 0M468 658c96-24 198-24 294 0M832 630c78-18 158-18 236 0"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--rain-thunder">
+                <path class="storm-flash storm-flash--soft" d="M196 204c250-58 558-58 808 0"></path>
+                <path class="rain-sheet rain-sheet--clear" d="M92-86l-76 830M256-70l-78 828M424-92l-74 838M610-76l-80 842M792-94l-76 836M964-72l-80 836M1138-92l-76 840"></path>
+                <path class="lightning-bolt lightning-bolt--single" d="M676 70 560 296h116l-92 284 244-368H700l92-142"></path>
+                <path class="rain-ripple rain-ripple--a" d="M236 646c52-16 108-16 160 0M768 650c62-18 128-18 190 0"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--heavy-thunderstorm">
+                <path class="storm-flash storm-flash--wide" d="M98 158c304-72 700-72 1004 0M184 248c258-48 574-48 832 0"></path>
+                <path class="rain-sheet rain-sheet--heavy" d="M28-102l-92 900M160-84l-90 886M296-106l-94 912M432-88l-92 900M570-106l-94 912M716-88l-92 902M856-106l-94 912M1002-88l-92 902M1140-108l-94 914M1278-86l-92 900"></path>
+                <path class="lightning-bolt lightning-bolt--storm" d="M660 48 500 326h150L532 682 850 232H694l98-184"></path>
+                <path class="rain-ripple rain-ripple--storm" d="M140 640c98-22 200-22 298 0M492 670c112-26 232-26 344 0M880 638c76-18 154-18 230 0"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--fireplace">
+                <path class="ember-line ember-line--base" d="M346 636c154 28 354 28 508 0"></path>
+                <path class="flame-line flame-line--outer" d="M456 636c-74-118 68-166 12-300 110 84 46 180 146 300"></path>
+                <path class="flame-line flame-line--middle" d="M592 636c-58-92 70-148 14-256 100 76 34 156 118 256"></path>
+                <path class="flame-line flame-line--inner" d="M526 636c-34-70 30-118 12-184 72 64 18 126 88 184"></path>
+                <circle class="ember ember--a" cx="424" cy="626" r="2"></circle>
+                <circle class="ember ember--b" cx="604" cy="650" r="1.7"></circle>
+                <circle class="ember ember--c" cx="756" cy="626" r="2"></circle>
+            </g>
+
+            <g class="visual-scene visual-scene--deep-fireplace">
+                <path class="ember-line ember-line--base" d="M268 636c214 58 450 58 664 0M366 672c148 18 320 18 468 0"></path>
+                <path class="flame-line flame-line--deep" d="M420 644c-108-158 124-218 22-398 152 116 58 260 188 398"></path>
+                <path class="flame-line flame-line--outer" d="M604 644c-86-130 114-206 18-354 142 106 46 224 174 354"></path>
+                <path class="flame-line flame-line--inner" d="M532 644c-50-94 58-148 16-246 94 82 22 166 110 246"></path>
+                <circle class="ember ember--a" cx="362" cy="638" r="2.2"></circle>
+                <circle class="ember ember--b" cx="584" cy="666" r="1.8"></circle>
+                <circle class="ember ember--c" cx="830" cy="636" r="2.2"></circle>
+            </g>
+
+            <g class="visual-scene visual-scene--open-road">
+                <path class="road-line road-line--edge" d="M188 684 548 120M1012 684 652 120"></path>
+                <path class="road-line road-line--horizon" d="M316 284h568M238 434h724"></path>
+                <g class="road-dashes">
+                    <path class="road-dash road-dash--a" d="M600 154v38"></path>
+                    <path class="road-dash road-dash--b" d="M600 254v58"></path>
+                    <path class="road-dash road-dash--c" d="M600 402v94"></path>
+                    <path class="road-dash road-dash--d" d="M600 610v128"></path>
+                </g>
+            </g>
+
+            <g class="visual-scene visual-scene--white-noise">
+                <rect class="static-field static-field--base" x="156" y="92" width="888" height="536" fill="url(#staticDots)"></rect>
+                <path class="static-spark static-spark--a" d="M214 188h1M348 114h1M522 234h1M710 168h1M888 262h1M992 132h1M278 474h1M468 584h1M684 458h1M934 542h1"></path>
+                <path class="static-spark static-spark--b" d="M188 324h1M396 292h1M578 362h1M826 334h1M1032 386h1M306 612h1M536 508h1M744 610h1M956 466h1"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--pink-noise">
+                <rect class="static-field static-field--soft" x="176" y="108" width="848" height="504" fill="url(#staticDots)"></rect>
+                <path class="noise-wave noise-wave--mid" d="M164 300c128-86 220-86 348 0s220 86 348 0 220-86 348 0"></path>
+                <path class="noise-wave noise-wave--low" d="M140 522c160-132 284-132 444 0s284 132 444 0"></path>
+            </g>
+
+            <g class="visual-scene visual-scene--brown-noise">
+                <path class="noise-wave noise-wave--deep" d="M118 198c218 156 746 156 964 0"></path>
+                <path class="noise-wave noise-wave--heavy" d="M86 382c242 190 786 190 1028 0"></path>
+                <path class="noise-wave noise-wave--deep" d="M146 568c206 138 702 138 908 0"></path>
+                <path class="static-spark static-spark--low" d="M276 126h1M448 648h1M724 92h1M928 620h1"></path>
+            </g>
+        </svg>
         <header class="app-header">
             <p class="app-name">Soundscape</p>
             <theme-selector id="themeSelector" value="system"></theme-selector>
@@ -49,7 +139,7 @@
         <audio id="audioElement" preload="auto"></audio>
     </div>
 
-    <script type="module" src="script.js?v=layered-title-motion"></script>
+    <script type="module" src="script.js?v=refined-soundscape-visuals"></script>
 
 </body>
 

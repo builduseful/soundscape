@@ -103,6 +103,213 @@ body {
     grid-template-rows: auto 1fr auto;
     min-height: 100svh;
     padding: 26px;
+    position: relative;
+    isolation: isolate;
+}
+
+.soundscape-visual {
+    color: rgba(0, 0, 0, 0.42);
+    height: 100%;
+    inset: 0;
+    opacity: 0.36;
+    pointer-events: none;
+    position: fixed;
+    width: 100%;
+    z-index: 0;
+}
+
+:root[data-theme="dark"] .soundscape-visual {
+    color: rgba(255, 255, 255, 0.44);
+    opacity: 0.32;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .soundscape-visual {
+        color: rgba(255, 255, 255, 0.44);
+        opacity: 0.32;
+    }
+}
+
+.visual-scene {
+    display: none;
+}
+
+.soundscape-visual[data-visual="rain"] .visual-scene--rain,
+.soundscape-visual[data-visual="garden-rain"] .visual-scene--garden-rain,
+.soundscape-visual[data-visual="heavy-rain"] .visual-scene--heavy-rain,
+.soundscape-visual[data-visual="rain-thunder"] .visual-scene--rain-thunder,
+.soundscape-visual[data-visual="heavy-thunderstorm"] .visual-scene--heavy-thunderstorm,
+.soundscape-visual[data-visual="fireplace"] .visual-scene--fireplace,
+.soundscape-visual[data-visual="deep-fireplace"] .visual-scene--deep-fireplace,
+.soundscape-visual[data-visual="open-road"] .visual-scene--open-road,
+.soundscape-visual[data-visual="white-noise"] .visual-scene--white-noise,
+.soundscape-visual[data-visual="pink-noise"] .visual-scene--pink-noise,
+.soundscape-visual[data-visual="brown-noise"] .visual-scene--brown-noise {
+    display: inline;
+}
+
+.visual-mark,
+.rain-sheet,
+.rain-ripple,
+.garden-leaf,
+.storm-flash,
+.lightning-bolt,
+.ember-line,
+.flame-line,
+.road-line,
+.road-dash,
+.static-spark,
+.noise-wave {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+}
+
+.visual-mark,
+.static-spark {
+    stroke-width: 1;
+}
+
+.rain-sheet {
+    opacity: 0.38;
+    stroke-dasharray: 20 96;
+    stroke-dashoffset: 0;
+    stroke-width: 0.95;
+}
+
+.rain-sheet--soft {
+    opacity: 0.24;
+    stroke-dasharray: 12 84;
+    stroke-width: 0.72;
+}
+
+.rain-sheet--clear {
+    opacity: 0.42;
+    stroke-dasharray: 24 106;
+    stroke-width: 1;
+}
+
+.rain-sheet--mist {
+    opacity: 0.2;
+    stroke-dasharray: 8 72;
+    stroke-width: 0.65;
+}
+
+.rain-sheet--heavy {
+    opacity: 0.5;
+    stroke-dasharray: 28 68;
+    stroke-width: 1.08;
+}
+
+.rain-ripple {
+    opacity: 0.22;
+    stroke-width: 0.9;
+}
+
+.rain-ripple--storm {
+    opacity: 0.28;
+    stroke-width: 1;
+}
+
+.garden-leaf {
+    opacity: 0.28;
+    stroke-width: 1;
+}
+
+.storm-flash {
+    opacity: 0;
+    stroke-width: 1.1;
+}
+
+.lightning-bolt {
+    opacity: 0.12;
+    stroke-width: 1.25;
+}
+
+.lightning-bolt--storm {
+    stroke-width: 1.45;
+}
+
+.ember-line {
+    opacity: 0.3;
+    stroke-width: 1.1;
+}
+
+.flame-line {
+    opacity: 0.42;
+    stroke-width: 1.25;
+    transform-box: fill-box;
+    transform-origin: center bottom;
+}
+
+.flame-line--inner {
+    opacity: 0.34;
+}
+
+.flame-line--deep {
+    opacity: 0.46;
+    stroke-width: 1.35;
+}
+
+.ember {
+    fill: currentColor;
+    opacity: 0.28;
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.road-line {
+    opacity: 0.3;
+    stroke-width: 1;
+}
+
+.road-line--horizon {
+    opacity: 0.16;
+}
+
+.road-dash {
+    opacity: 0.36;
+    stroke-width: 1.15;
+    transform-box: fill-box;
+    transform-origin: center bottom;
+}
+
+.static-field {
+    opacity: 0.28;
+}
+
+.static-field--soft {
+    opacity: 0.18;
+}
+
+.static-spark {
+    opacity: 0.38;
+    stroke-width: 1.25;
+}
+
+.static-spark--low {
+    opacity: 0.18;
+}
+
+.noise-wave {
+    opacity: 0.28;
+    stroke-width: 1.05;
+}
+
+.noise-wave--low {
+    opacity: 0.22;
+}
+
+.noise-wave--deep {
+    opacity: 0.22;
+    stroke-width: 1.1;
+}
+
+.noise-wave--heavy {
+    opacity: 0.3;
+    stroke-width: 1.25;
 }
 
 .app-header,
@@ -111,6 +318,8 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 26px;
+    position: relative;
+    z-index: 1;
 }
 
 .app-footer {
@@ -132,7 +341,9 @@ body {
     justify-items: center;
     margin-inline: auto;
     max-width: 980px;
+    position: relative;
     width: 100%;
+    z-index: 1;
 }
 
 .track-title {
@@ -286,6 +497,134 @@ button.play[aria-label="Pause"] .play-icon--pause {
         animation: track-title-incoming-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
+    .rain-sheet--soft {
+        animation: visual-rain-fall 6.8s linear infinite;
+    }
+
+    .rain-sheet--clear {
+        animation: visual-rain-fall 4.8s linear infinite;
+    }
+
+    .rain-sheet--mist {
+        animation: visual-rain-fall 8.8s linear infinite reverse;
+    }
+
+    .rain-sheet--heavy {
+        animation: visual-rain-fall 3.2s linear infinite;
+    }
+
+    .rain-ripple {
+        animation: visual-ripple 5.6s ease-in-out infinite;
+    }
+
+    .rain-ripple--b {
+        animation-delay: -1.8s;
+    }
+
+    .rain-ripple--storm {
+        animation-duration: 3.8s;
+    }
+
+    .garden-leaf {
+        animation: visual-leaf-sway 8s ease-in-out infinite alternate;
+        transform-box: fill-box;
+        transform-origin: center;
+    }
+
+    .garden-leaf--a {
+        animation-delay: -2s;
+    }
+
+    .storm-flash {
+        animation: visual-cloud-flash 9s ease-in-out infinite;
+    }
+
+    .storm-flash--wide {
+        animation-duration: 6.8s;
+    }
+
+    .lightning-bolt {
+        animation: visual-lightning 9s steps(1, end) infinite;
+    }
+
+    .lightning-bolt--storm {
+        animation-duration: 6.8s;
+    }
+
+    .flame-line {
+        animation: visual-flame 4.8s ease-in-out infinite alternate;
+    }
+
+    .flame-line--middle,
+    .flame-line--deep {
+        animation-delay: -1.4s;
+        animation-duration: 5.4s;
+    }
+
+    .flame-line--inner {
+        animation-delay: -2.6s;
+        animation-duration: 4s;
+    }
+
+    .ember-line {
+        animation: visual-ember-base 6s ease-in-out infinite alternate;
+    }
+
+    .ember {
+        animation: visual-ember-rise 5.6s ease-in-out infinite;
+    }
+
+    .ember--b {
+        animation-delay: -1.8s;
+    }
+
+    .ember--c {
+        animation-delay: -3.2s;
+    }
+
+    .road-dash {
+        animation: visual-road-dash 4.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    }
+
+    .road-dash--b {
+        animation-delay: -1.1s;
+    }
+
+    .road-dash--c {
+        animation-delay: -2.2s;
+    }
+
+    .road-dash--d {
+        animation-delay: -3.3s;
+    }
+
+    .road-line--horizon {
+        animation: visual-road-horizon 7s ease-in-out infinite alternate;
+    }
+
+    .static-field,
+    .static-spark {
+        animation: visual-static 0.7s steps(2, end) infinite;
+    }
+
+    .static-spark--b {
+        animation-delay: -0.34s;
+    }
+
+    .noise-wave--mid {
+        animation: visual-wave-drift 11s ease-in-out infinite alternate;
+    }
+
+    .noise-wave--low,
+    .noise-wave--deep,
+    .noise-wave--heavy {
+        animation: visual-wave-heavy 16s ease-in-out infinite alternate;
+    }
+
+    .noise-wave--heavy {
+        animation-duration: 20s;
+    }
+
     .track-title.is-changing-next {
         --title-exit-x: -12px;
         --title-enter-x: 12px;
@@ -319,6 +658,200 @@ button.play[aria-label="Pause"] .play-icon--pause {
         100% {
             opacity: 1;
             transform: translateX(0);
+        }
+    }
+
+    @keyframes visual-rain-fall {
+        from {
+            stroke-dashoffset: 0;
+            transform: translate3d(0, 0, 0);
+        }
+
+        to {
+            stroke-dashoffset: -228;
+            transform: translate3d(-18px, 16px, 0);
+        }
+    }
+
+    @keyframes visual-ripple {
+        from {
+            opacity: 0.08;
+            stroke-dasharray: 1 34;
+            stroke-dashoffset: 18;
+        }
+
+        42% {
+            opacity: 0.3;
+            stroke-dasharray: 42 18;
+            stroke-dashoffset: 0;
+        }
+
+        100% {
+            opacity: 0.06;
+            stroke-dasharray: 1 42;
+            stroke-dashoffset: -22;
+        }
+    }
+
+    @keyframes visual-leaf-sway {
+        from {
+            opacity: 0.2;
+            transform: rotate(-0.7deg) translateY(2px);
+        }
+
+        to {
+            opacity: 0.34;
+            transform: rotate(0.8deg) translateY(-3px);
+        }
+    }
+
+    @keyframes visual-cloud-flash {
+        0%,
+        67%,
+        74%,
+        100% {
+            opacity: 0;
+        }
+
+        69% {
+            opacity: 0.16;
+        }
+
+        71% {
+            opacity: 0.04;
+        }
+
+        72% {
+            opacity: 0.2;
+        }
+    }
+
+    @keyframes visual-lightning {
+        0%,
+        66%,
+        69%,
+        71%,
+        100% {
+            opacity: 0.08;
+        }
+
+        67%,
+        70% {
+            opacity: 0.62;
+        }
+    }
+
+    @keyframes visual-flame {
+        from {
+            opacity: 0.28;
+            transform: translate3d(-4px, 8px, 0) scaleX(0.96) scaleY(0.98);
+        }
+
+        to {
+            opacity: 0.55;
+            transform: translate3d(5px, -10px, 0) scaleX(1.04) scaleY(1.03);
+        }
+    }
+
+    @keyframes visual-ember-base {
+        from {
+            opacity: 0.2;
+            transform: translateY(4px);
+        }
+
+        to {
+            opacity: 0.4;
+            transform: translateY(-3px);
+        }
+    }
+
+    @keyframes visual-ember-rise {
+        0% {
+            opacity: 0;
+            transform: translate3d(0, 10px, 0) scale(0.7);
+        }
+
+        24% {
+            opacity: 0.38;
+        }
+
+        100% {
+            opacity: 0;
+            transform: translate3d(10px, -74px, 0) scale(0.3);
+        }
+    }
+
+    @keyframes visual-road-dash {
+        0% {
+            opacity: 0.06;
+            transform: translateY(-48px) scaleY(0.55);
+        }
+
+        34% {
+            opacity: 0.36;
+        }
+
+        100% {
+            opacity: 0.02;
+            transform: translateY(120px) scaleY(1.7);
+        }
+    }
+
+    @keyframes visual-road-horizon {
+        from {
+            opacity: 0.1;
+            transform: translateY(-3px);
+        }
+
+        to {
+            opacity: 0.22;
+            transform: translateY(4px);
+        }
+    }
+
+    @keyframes visual-static {
+        0% {
+            opacity: 0.18;
+            transform: translate3d(0, 0, 0);
+        }
+
+        33% {
+            opacity: 0.36;
+            transform: translate3d(7px, -3px, 0);
+        }
+
+        66% {
+            opacity: 0.24;
+            transform: translate3d(-5px, 4px, 0);
+        }
+
+        100% {
+            opacity: 0.3;
+            transform: translate3d(2px, 2px, 0);
+        }
+    }
+
+    @keyframes visual-wave-drift {
+        from {
+            opacity: 0.18;
+            transform: translate3d(-26px, 0, 0);
+        }
+
+        to {
+            opacity: 0.34;
+            transform: translate3d(26px, 0, 0);
+        }
+    }
+
+    @keyframes visual-wave-heavy {
+        from {
+            opacity: 0.18;
+            transform: translate3d(-18px, 8px, 0) scaleY(0.98);
+        }
+
+        to {
+            opacity: 0.34;
+            transform: translate3d(18px, -8px, 0) scaleY(1.02);
         }
     }
 }
