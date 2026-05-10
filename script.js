@@ -46,7 +46,6 @@ const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
-const soundscapeVisual = document.getElementById("soundscapeVisual");
 
 let currentTrackIndex = getSavedTrackIndex();
 let mediaSessionPositionTimer = 0;
@@ -84,7 +83,6 @@ document.addEventListener("keyup", handleDocumentKeyup);
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
 updateTrackTitle();
-updateSoundscapeVisual();
 startMediaSession();
 
 async function playPauseClick() {
@@ -194,10 +192,6 @@ function updateTrackTitle({ animate = false, direction = "next" } = {}) {
     restartTitleChangeAnimation(direction);
 }
 
-function updateSoundscapeVisual() {
-    soundscapeVisual.dataset.visual = getCurrentTrack().visual;
-}
-
 function setTrackTitle(trackTitle) {
     currentTitle.textContent = trackTitle;
     incomingTitle.textContent = "";
@@ -267,7 +261,6 @@ async function playCurrentTrack(direction = "next") {
 
     saveCurrentTrack();
     updateTrackTitle({ animate: true, direction });
-    updateSoundscapeVisual();
     const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
     if (!didStartTrack) return;
 
