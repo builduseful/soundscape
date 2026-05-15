@@ -91,6 +91,8 @@ export class VolumeControl extends HTMLElement {
                         border: 0;
                         border-radius: 999px;
                         background: transparent;
+                        background-color: transparent;
+                        box-shadow: none;
                         color: var(--color-text-muted);
                         cursor: pointer;
                         -webkit-tap-highlight-color: transparent;
@@ -101,13 +103,13 @@ export class VolumeControl extends HTMLElement {
                     }
 
                     button:hover,
-                    :scope(:hover) button,
-                    :scope(:focus-within) button,
-                    :scope([open]) button {
+                    :scope:hover button,
+                    :scope:focus-within button,
+                    :scope[open] button {
                         color: var(--color-text);
+                        background-color: transparent;
                     }
 
-                    :scope:has(button:focus-visible) .popover,
                     .popover:has(input[type="range"]:focus-visible) {
                         box-shadow: var(--shadow-surface), 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
                     }
@@ -118,10 +120,6 @@ export class VolumeControl extends HTMLElement {
 
                     button:focus-visible {
                         color: var(--color-text);
-                    }
-
-                    button:active {
-                        transform: scale(0.95);
                     }
 
                     svg {
@@ -139,12 +137,12 @@ export class VolumeControl extends HTMLElement {
                         transition: opacity 0.16s ease;
                     }
 
-                    :scope([muted]) .wave,
-                    :scope([muted]) .wave-large {
+                    :scope[muted] .wave,
+                    :scope[muted] .wave-small {
                         opacity: 0.22;
                     }
 
-                    :scope([muted]) .mute-slash {
+                    :scope[muted] .mute-slash {
                         opacity: 1;
                     }
 
@@ -163,9 +161,9 @@ export class VolumeControl extends HTMLElement {
                         z-index: 1;
                     }
 
-                    :scope(:hover) .popover-anchor,
-                    :scope(:focus-within) .popover-anchor,
-                    :scope([open]) .popover-anchor {
+                    :scope:hover .popover-anchor,
+                    :scope:focus-within .popover-anchor,
+                    :scope[open] .popover-anchor {
                         pointer-events: auto;
                     }
 
@@ -188,9 +186,9 @@ export class VolumeControl extends HTMLElement {
                             opacity 0.16s ease;
                     }
 
-                    :scope(:hover) .popover,
-                    :scope(:focus-within) .popover,
-                    :scope([open]) .popover {
+                    :scope:hover .popover,
+                    :scope:focus-within .popover,
+                    :scope[open] .popover {
                         clip-path: inset(0 0 0 round 999px);
                         opacity: 1;
                     }
