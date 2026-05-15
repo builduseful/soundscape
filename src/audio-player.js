@@ -17,6 +17,7 @@ export class AudioPlayer {
         this.activeSourceStartedAt = 0;
         this.playbackRequestId = 0;
         this.playbackRequested = false;
+        this.browserPlaybackSyncSuppressed = false;
         this.onStateChange = onStateChange;
     }
 
@@ -38,6 +39,10 @@ export class AudioPlayer {
 
     isPlaybackRequested() {
         return this.playbackRequested && this.hasTrack();
+    }
+
+    isBrowserPlaybackSyncSuppressed() {
+        return this.browserPlaybackSyncSuppressed;
     }
 
     getCurrentPosition() {
@@ -127,6 +132,7 @@ export class AudioPlayer {
         this.audioElement.loop = loop;
 
         if (!this.playbackRequested) {
+            await this.refreshPausedBrowserPlaybackSurface();
             return true;
         }
 
@@ -212,6 +218,26 @@ export class AudioPlayer {
 
         this.audioElement.pause();
         await this.audioContext.suspend();
+    }
+
+    async refreshPausedBrowserPlaybackSurface() {
+        if (!this.audioElement.paused) return;
+
+        // Re-activate the browser-visible media element after a paused track
+        // swap so OS media controls keep targeting this media session.
+        this.browserPlaybackSyncSuppressed = true;
+
+        try {
+            await this.audioElement.play();
+            this.audioElement.pause();
+            this.audioElement.currentTime = 0;
+        } catch (error) {
+            this.audioElement.pause();
+            console.warn("Could not refresh the browser playback surface.", error);
+        } finally {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            this.browserPlaybackSyncSuppressed = false;
+        }
     }
 
     updateVolume(volume) {

@@ -289,6 +289,8 @@ async function pauseAudio() {
 }
 
 async function handleBrowserPlaybackStart() {
+    if (audioPlayer.isBrowserPlaybackSyncSuppressed()) return;
+
     try {
         if (!audioPlayer.isPlaying()) {
             await playAudio();
@@ -303,6 +305,8 @@ async function handleBrowserPlaybackStart() {
 }
 
 async function handleBrowserPlaybackPause() {
+    if (audioPlayer.isBrowserPlaybackSyncSuppressed()) return;
+
     try {
         if (audioPlayer.isPlaybackRequested()) {
             await pauseAudio();

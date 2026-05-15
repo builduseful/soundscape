@@ -374,11 +374,12 @@ test("playTrack respects a pause while a replacement track is still loading", as
     assert.equal(await secondPlay, true);
     assert.equal(player.isPlaying(), false);
     assert.equal(audioElement.src, "/second.ogg");
-    assert.equal(audioElement.playCalls, 1);
+    assert.equal(audioElement.playCalls, 2);
+    assert.equal(audioElement.pauseCalls, 3);
     assert.equal(contexts[0].state, "suspended");
 });
 
-test("playTrack can replace the current track and keep the new track paused", async () => {
+test("playTrack refreshes the browser playback surface when replacing a paused track", async () => {
     const contexts = installAudioContext({ initialState: "running" });
     installFetch();
     const audioElement = createAudioElement();
@@ -391,8 +392,10 @@ test("playTrack can replace the current track and keep the new track paused", as
     assert.equal(contexts[0].state, "suspended");
     assert.equal(contexts[0].suspendCalls, 1);
     assert.equal(audioElement.src, "/quiet.ogg");
-    assert.equal(audioElement.pauseCalls, 1);
-    assert.equal(audioElement.playCalls, 0);
+    assert.equal(audioElement.currentTime, 0);
+    assert.equal(audioElement.pauseCalls, 2);
+    assert.equal(audioElement.playCalls, 1);
+    assert.equal(player.isBrowserPlaybackSyncSuppressed(), false);
 });
 
 test("playTrack applies the latest volume to the gain node", async () => {
