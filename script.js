@@ -14,8 +14,8 @@ import {
     updateMediaSessionPositionState,
     updateMediaSessionStatus,
 } from "./src/media-session.js";
-import { ThemeSelector } from "./src/theme-selector.js";
-import { VolumeControl } from "./src/volume-control.js";
+import { ThemeSelector } from "./src/components/theme-selector.js";
+import { VolumeControl } from "./src/components/volume-control.js";
 import {
     applyThemePreference,
     loadThemePreference,

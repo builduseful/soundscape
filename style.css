@@ -171,10 +171,6 @@ body {
     align-items: center;
 }
 
-volume-control {
-    display: block;
-}
-
 button {
     display: grid;
     place-items: center;
