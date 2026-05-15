@@ -16,7 +16,7 @@ export class AudioPlayer {
         this.activeBuffer = null;
         this.activeSourceStartedAt = 0;
         this.playbackRequestId = 0;
-        this.shouldPlay = false;
+        this.playbackRequested = false;
         this.onStateChange = onStateChange;
     }
 
@@ -36,8 +36,8 @@ export class AudioPlayer {
         return this.currentTrackUrl !== undefined;
     }
 
-    wantsPlayback() {
-        return this.shouldPlay && this.hasTrack();
+    isPlaybackRequested() {
+        return this.playbackRequested && this.hasTrack();
     }
 
     getCurrentPosition() {
@@ -76,7 +76,7 @@ export class AudioPlayer {
         this.ensureAudioGraph();
         const requestId = ++this.playbackRequestId;
         const shouldLoadMediaElement = resetContext || this.currentTrackUrl !== track.url;
-        this.shouldPlay = !startPaused;
+        this.playbackRequested = !startPaused;
 
         let buffer;
 
@@ -94,7 +94,7 @@ export class AudioPlayer {
             return false;
         }
 
-        if (!this.shouldPlay) {
+        if (!this.playbackRequested) {
             this.audioElement.pause();
             await this.audioContext.suspend();
         }
@@ -126,7 +126,7 @@ export class AudioPlayer {
         this.audioElement.currentTime = 0;
         this.audioElement.loop = loop;
 
-        if (!this.shouldPlay) {
+        if (!this.playbackRequested) {
             return true;
         }
 
@@ -186,27 +186,27 @@ export class AudioPlayer {
 
     async play() {
         this.ensureAudioGraph();
-        this.shouldPlay = true;
+        this.playbackRequested = true;
         await this.audioContext.resume();
-        if (!this.shouldPlay) return;
+        if (!this.playbackRequested) return;
 
         try {
             await this.audioElement.play();
         } catch (error) {
-            this.shouldPlay = false;
+            this.playbackRequested = false;
             this.audioElement.pause();
             await this.audioContext.suspend();
             throw error;
         }
 
-        if (!this.shouldPlay) {
+        if (!this.playbackRequested) {
             this.audioElement.pause();
             await this.audioContext.suspend();
         }
     }
 
     async pause() {
-        this.shouldPlay = false;
+        this.playbackRequested = false;
 
         if (!this.hasContext()) return;
 

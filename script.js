@@ -61,8 +61,8 @@ const mediaSessionActions = {
     // Media keys reuse the same track-change functions as the buttons.
     playPreviousTrack,
     playNextTrack,
-    onPlaybackStart: () => syncPlaybackState(true),
-    onPlaybackPause: () => syncPlaybackState(false),
+    onBrowserPlaybackStart: handleBrowserPlaybackStart,
+    onBrowserPlaybackPause: handleBrowserPlaybackPause,
 };
 
 volumeControl.addEventListener("input", () => {
@@ -288,8 +288,36 @@ async function pauseAudio() {
     syncPlaybackState(false);
 }
 
+async function handleBrowserPlaybackStart() {
+    try {
+        if (!audioPlayer.isPlaying()) {
+            await playAudio();
+            return;
+        }
+
+        syncPlaybackState(true);
+    } catch (error) {
+        console.warn("Could not resume playback after the media element started.", error);
+        syncPlaybackState(audioPlayer.isPlaying());
+    }
+}
+
+async function handleBrowserPlaybackPause() {
+    try {
+        if (audioPlayer.isPlaybackRequested()) {
+            await pauseAudio();
+            return;
+        }
+
+        syncPlaybackState(false);
+    } catch (error) {
+        console.warn("Could not pause playback after the media element paused.", error);
+        syncPlaybackState(audioPlayer.isPlaying());
+    }
+}
+
 async function handleVisibilityChange() {
-    if (document.hidden || !audioPlayer.wantsPlayback()) return;
+    if (document.hidden || !audioPlayer.isPlaybackRequested()) return;
 
     try {
         await audioPlayer.play();

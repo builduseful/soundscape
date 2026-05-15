@@ -498,15 +498,18 @@ test("play and pause keep a loaded track's audio context and media element in sy
     const player = new AudioPlayer(audioElement);
 
     await player.playTrack({ url: "/sound.ogg" }, true);
+    assert.equal(player.isPlaybackRequested(), true);
     await player.pause();
     assert.equal(player.state, "suspended");
     assert.equal(player.isPlaying(), false);
+    assert.equal(player.isPlaybackRequested(), false);
     assert.equal(audioElement.pauseCalls, 1);
     assert.equal(contexts[0].suspendCalls, 1);
 
     await player.play();
     assert.equal(player.state, "running");
     assert.equal(player.isPlaying(), true);
+    assert.equal(player.isPlaybackRequested(), true);
     assert.equal(audioElement.playCalls, 2);
     assert.equal(contexts[0].resumeCalls, 2);
 });

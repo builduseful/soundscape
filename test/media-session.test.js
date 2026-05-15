@@ -95,24 +95,27 @@ test("initMediaSession publishes metadata and wires media key handlers", async (
     assert.deepEqual([...handlers.keys()], [
         "play",
         "pause",
+        "stop",
         "previoustrack",
         "nexttrack",
     ]);
 
     await handlers.get("play")();
     await handlers.get("pause")();
+    await handlers.get("stop")();
     await handlers.get("previoustrack")();
     await handlers.get("nexttrack")();
 
     assert.deepEqual(calls, [
         "playAudio",
         "pauseAudio",
+        "pauseAudio",
         "playPreviousTrack",
         "playNextTrack",
     ]);
 });
 
-test("initMediaSession wires audio element play and pause state sync", async () => {
+test("initMediaSession wires browser audio element play and pause events", async () => {
     installMediaSession();
     const audioElement = createAudioElement();
     const calls = [];
@@ -121,11 +124,11 @@ test("initMediaSession wires audio element play and pause state sync", async () 
         async pauseAudio() {},
         async playPreviousTrack() {},
         async playNextTrack() {},
-        onPlaybackStart() {
-            calls.push("onPlaybackStart");
+        onBrowserPlaybackStart() {
+            calls.push("onBrowserPlaybackStart");
         },
-        onPlaybackPause() {
-            calls.push("onPlaybackPause");
+        onBrowserPlaybackPause() {
+            calls.push("onBrowserPlaybackPause");
         },
     };
 
@@ -133,7 +136,7 @@ test("initMediaSession wires audio element play and pause state sync", async () 
     await audioElement.dispatch("play");
     await audioElement.dispatch("pause");
 
-    assert.deepEqual(calls, ["onPlaybackStart", "onPlaybackPause"]);
+    assert.deepEqual(calls, ["onBrowserPlaybackStart", "onBrowserPlaybackPause"]);
 });
 
 test("updateMediaSessionStatus publishes track metadata", () => {

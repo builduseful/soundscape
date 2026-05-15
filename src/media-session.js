@@ -11,6 +11,7 @@ function registerMediaSessionHandlers(actions) {
 
     setActionHandler("play", actions.playAudio);
     setActionHandler("pause", actions.pauseAudio);
+    setActionHandler("stop", actions.pauseAudio);
     setActionHandler("previoustrack", actions.playPreviousTrack);
     setActionHandler("nexttrack", actions.playNextTrack);
 }
@@ -21,10 +22,10 @@ function registerAudioElementHandlers(actions, audioElement) {
     audioElementsWithPlaybackSync.add(audioElement);
 
     audioElement.addEventListener("play", () => {
-        actions.onPlaybackStart?.();
+        actions.onBrowserPlaybackStart?.();
     });
     audioElement.addEventListener("pause", () => {
-        actions.onPlaybackPause?.();
+        actions.onBrowserPlaybackPause?.();
     });
 }
 
