@@ -8,19 +8,35 @@ const originalLocalStorage = globalThis.localStorage;
 const originalMatchMedia = globalThis.matchMedia;
 const originalMediaMetadata = globalThis.MediaMetadata;
 const originalNavigator = globalThis.navigator;
+const originalClearInterval = globalThis.clearInterval;
+const originalSetInterval = globalThis.setInterval;
+const originalClearTimeout = globalThis.clearTimeout;
+const originalSetTimeout = globalThis.setTimeout;
 
 class FakeElement {
     constructor() {
         this.attributes = new Map();
         this.eventHandlers = new Map();
+        this.classNames = new Set();
         this.textContent = "";
         this.value = "1";
         this.dataset = {};
+        this.isContentEditable = false;
+        this.closestMatch = null;
+        this.offsetWidth = 0;
         this.classList = {
-            add() {},
-            remove() {},
-            contains() {
-                return false;
+            add: (...names) => {
+                for (const name of names) {
+                    this.classNames.add(name);
+                }
+            },
+            remove: (...names) => {
+                for (const name of names) {
+                    this.classNames.delete(name);
+                }
+            },
+            contains: (name) => {
+                return this.classNames.has(name);
             },
         };
     }
@@ -32,16 +48,29 @@ class FakeElement {
         this.eventHandlers.set(type, handlers);
     }
 
-    async dispatch(type, event = {}) {
+    removeEventListener(type, handler) {
         const handlers = this.eventHandlers.get(type) ?? [];
 
-        for (const handler of handlers) {
-            await handler({ target: this, ...event });
-        }
+        this.eventHandlers.set(type, handlers.filter((candidate) => candidate !== handler));
     }
 
-    closest() {
-        return null;
+    async dispatch(type, event = {}) {
+        const handlers = this.eventHandlers.get(type) ?? [];
+        const dispatchedEvent = createFakeEvent(this, event);
+
+        for (const handler of handlers) {
+            await handler(dispatchedEvent);
+        }
+
+        return dispatchedEvent;
+    }
+
+    closest(selector) {
+        if (typeof this.closestMatch === "function") {
+            return this.closestMatch(selector);
+        }
+
+        return this.closestMatch === selector ? this : null;
     }
 
     querySelector(selector) {
@@ -49,8 +78,32 @@ class FakeElement {
         return this.children.get(selector) ?? null;
     }
 
+    getAttribute(name) {
+        return this.attributes.get(name) ?? null;
+    }
+
+    hasAttribute(name) {
+        return this.attributes.has(name);
+    }
+
+    removeAttribute(name) {
+        this.attributes.delete(name);
+    }
+
     setAttribute(name, value) {
         this.attributes.set(name, String(value));
+    }
+
+    toggleAttribute(name, force) {
+        const shouldSet = force === undefined ? !this.hasAttribute(name) : Boolean(force);
+
+        if (shouldSet) {
+            this.setAttribute(name, "");
+        } else {
+            this.removeAttribute(name);
+        }
+
+        return shouldSet;
     }
 }
 
@@ -65,8 +118,8 @@ class FakeAudioElement extends FakeElement {
         this.pauseCalls = 0;
     }
 
-    canPlayType() {
-        return "probably";
+    canPlayType(mime) {
+        return mime.includes("audio/mpeg") || mime.includes("audio/ogg") || mime.includes("audio/opus") || mime.includes("audio/wav") ? "probably" : "";
     }
 
     load() {
@@ -79,23 +132,35 @@ class FakeAudioElement extends FakeElement {
         await this.dispatch("play");
     }
 
-    pause() {
+    async pause() {
         this.pauseCalls += 1;
         this.paused = true;
-        void this.dispatch("pause");
+        await this.dispatch("pause");
     }
 }
 
-export function installAppTestEnvironment() {
+export function installAppTestEnvironment({
+    fetch = defaultFetch,
+    matchMediaMatches = false,
+    storageEntries = {},
+} = {}) {
+    const audioContexts = [];
     const mediaSessionHandlers = new Map();
+    const mediaSessionPositionStates = [];
     const elements = new Map();
     const title = new FakeElement();
     const currentTitle = new FakeElement();
     const incomingTitle = new FakeElement();
     const audioElement = new FakeAudioElement();
     const documentHandlers = new Map();
-    const storage = new Map();
+    const intervals = new Map();
+    const timeouts = new Map();
+    const storage = createStorageMap(storageEntries);
+    let nextIntervalId = 1;
+    let nextTimeoutId = 1;
 
+    currentTitle.classList.add("track-title-text--current");
+    incomingTitle.classList.add("track-title-text--incoming");
     title.children = new Map([
         [".track-title-text--current", currentTitle],
         [".track-title-text--incoming", incomingTitle],
@@ -129,26 +194,37 @@ export function installAppTestEnvironment() {
             handlers.push(handler);
             documentHandlers.set(type, handlers);
         },
-        async dispatch(type, event = {}) {
+        removeEventListener(type, handler) {
             const handlers = documentHandlers.get(type) ?? [];
 
+            documentHandlers.set(type, handlers.filter((candidate) => candidate !== handler));
+        },
+        async dispatch(type, event = {}) {
+            const handlers = documentHandlers.get(type) ?? [];
+            const dispatchedEvent = createFakeEvent(this, event);
+
             for (const handler of handlers) {
-                await handler(event);
+                await handler(dispatchedEvent);
             }
+
+            return dispatchedEvent;
         },
         getElementById(id) {
             return elements.get(id);
         },
     };
     globalThis.localStorage = {
+        shouldFail: false,
         getItem(key) {
+            if (this.shouldFail) throw new Error("Storage failed");
             return storage.get(key) ?? null;
         },
         setItem(key, value) {
+            if (this.shouldFail) throw new Error("Storage failed");
             storage.set(key, String(value));
         },
     };
-    globalThis.matchMedia = () => ({ matches: false });
+    globalThis.matchMedia = () => ({ matches: matchMediaMatches });
     globalThis.MediaMetadata = function FakeMediaMetadata(metadata) {
         Object.assign(this, metadata);
     };
@@ -161,22 +237,61 @@ export function installAppTestEnvironment() {
                 setActionHandler(action, handler) {
                     mediaSessionHandlers.set(action, handler);
                 },
-                setPositionState() {},
+                setPositionState(positionState) {
+                    mediaSessionPositionStates.push(positionState);
+                },
             },
         },
     });
-    globalThis.fetch = async () => ({
-        ok: true,
-        async arrayBuffer() {
-            return new ArrayBuffer(8);
-        },
-    });
+    globalThis.fetch = fetch;
+    globalThis.setInterval = (handler, delay) => {
+        const id = nextIntervalId++;
+
+        intervals.set(id, { delay, handler });
+        return id;
+    };
+    globalThis.clearInterval = (id) => {
+        intervals.delete(id);
+    };
+    globalThis.setTimeout = (handler, delay) => {
+        const id = nextTimeoutId++;
+
+        if (delay === 0) {
+            originalSetTimeout(() => {
+                if (timeouts.has(id)) {
+                    timeouts.delete(id);
+                    handler();
+                }
+            }, 0);
+        }
+
+        timeouts.set(id, { delay, handler });
+        return id;
+    };
+    globalThis.clearTimeout = (id) => {
+        timeouts.delete(id);
+    };
     globalThis.AudioContext = class FakeAudioContext {
         state = "suspended";
         currentTime = 12;
         destination = {};
+        bufferSources = [];
+        gains = [];
+        eventHandlers = new Map();
+        decodeAudioDataCalls = 0;
+        decodeAudioDataShouldFail = false;
 
-        addEventListener() {}
+        constructor() {
+            audioContexts.push(this);
+        }
+
+        addEventListener(type, handler) {
+            this.eventHandlers.set(type, handler);
+        }
+
+        async dispatch(type) {
+            await this.eventHandlers.get(type)?.();
+        }
 
         createMediaElementSource() {
             return {
@@ -187,52 +302,84 @@ export function installAppTestEnvironment() {
         }
 
         createGain() {
-            return {
+            const gainNode = {
                 gain: {
+                    calls: [],
                     value: 1,
-                    cancelScheduledValues() {},
-                    setValueAtTime() {},
-                    linearRampToValueAtTime() {},
+                    cancelScheduledValues(time) {
+                        this.calls.push({ name: "cancelScheduledValues", time });
+                    },
+                    setValueAtTime(value, time) {
+                        this.calls.push({ name: "setValueAtTime", value, time });
+                    },
+                    linearRampToValueAtTime(value, time) {
+                        this.calls.push({ name: "linearRampToValueAtTime", value, time });
+                        this.value = value;
+                    },
                 },
                 connect(node) {
                     return node;
                 },
             };
+
+            this.gains.push(gainNode);
+            return gainNode;
         }
 
         createBufferSource() {
-            return {
+            const source = {
                 connect() {},
                 start() {},
                 stop() {},
             };
+
+            this.bufferSources.push(source);
+            return source;
         }
 
         async decodeAudioData(arrayBuffer) {
+            this.decodeAudioDataCalls++;
+            if (this.decodeAudioDataShouldFail) {
+                throw new Error("Decode failed");
+            }
             return { arrayBuffer, duration: 30 };
         }
 
         async resume() {
             this.state = "running";
+            await this.dispatch("statechange");
         }
 
         async suspend() {
             this.state = "suspended";
+            await this.dispatch("statechange");
         }
     };
 
     return {
+        audioContexts,
         audioElement,
         elements,
+        intervals,
+        timeouts,
         mediaActions: createMediaActions(mediaSessionHandlers),
         mediaSessionHandlers,
+        mediaSessionPositionStates,
         navigator: globalThis.navigator,
         storage,
+        triggerInterval(id) {
+            return intervals.get(id)?.handler();
+        },
+        async triggerTimeout(id) {
+            const timeout = timeouts.get(id);
+            timeouts.delete(id);
+            return await timeout?.handler();
+        },
     };
 }
 
-export async function startAppTestEnvironment() {
-    const environment = installAppTestEnvironment();
+export async function startAppTestEnvironment(options) {
+    const environment = installAppTestEnvironment(options);
 
     await importApp();
 
@@ -255,6 +402,10 @@ export function restoreAppTestEnvironment() {
     globalThis.localStorage = originalLocalStorage;
     globalThis.matchMedia = originalMatchMedia;
     globalThis.MediaMetadata = originalMediaMetadata;
+    globalThis.clearInterval = originalClearInterval;
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearTimeout = originalClearTimeout;
+    globalThis.setTimeout = originalSetTimeout;
     Object.defineProperty(globalThis, "navigator", {
         configurable: true,
         value: originalNavigator,
@@ -267,6 +418,7 @@ function createMediaActions(mediaSessionHandlers) {
         pause: () => runMediaAction(mediaSessionHandlers, "pause"),
         play: () => runMediaAction(mediaSessionHandlers, "play"),
         previous: () => runMediaAction(mediaSessionHandlers, "previoustrack"),
+        stop: () => runMediaAction(mediaSessionHandlers, "stop"),
     };
 }
 
@@ -278,4 +430,45 @@ function runMediaAction(mediaSessionHandlers, action) {
     }
 
     return handler();
+}
+
+function createStorageMap(storageEntries) {
+    if (storageEntries instanceof Map) {
+        return new Map(storageEntries);
+    }
+
+    if (Array.isArray(storageEntries)) {
+        return new Map(storageEntries);
+    }
+
+    return new Map(Object.entries(storageEntries));
+}
+
+function createFakeEvent(defaultTarget, event) {
+    const dispatchedEvent = {
+        defaultPrevented: false,
+        preventDefault() {
+            this.defaultPrevented = true;
+        },
+        target: defaultTarget,
+        ...event,
+    };
+
+    if (typeof event.preventDefault === "function") {
+        dispatchedEvent.preventDefault = function preventDefault() {
+            event.preventDefault();
+            this.defaultPrevented = true;
+        };
+    }
+
+    return dispatchedEvent;
+}
+
+async function defaultFetch() {
+    return {
+        ok: true,
+        async arrayBuffer() {
+            return new ArrayBuffer(8);
+        },
+    };
 }

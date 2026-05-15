@@ -357,6 +357,44 @@ test("playTrack keeps the current buffer source active while a replacement track
     assert.equal(contexts[0].bufferSources[1].buffer.arrayBuffer.byteLength, 16);
 });
 
+test("playTrack keeps the current track active if a replacement track fails to load", async () => {
+    const contexts = installAudioContext();
+    const fetchCalls = [];
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    globalThis.fetch = async (url) => {
+        fetchCalls.push(url);
+
+        if (url === "/broken.ogg") {
+            return { ok: false, status: 404, statusText: "Not Found" };
+        }
+
+        return {
+            ok: true,
+            async arrayBuffer() {
+                return new ArrayBuffer(8);
+            },
+        };
+    };
+
+    await player.playTrack({ url: "/first.ogg" }, true);
+    const firstSource = contexts[0].bufferSources[0];
+
+    await assert.rejects(
+        () => player.playTrack({ url: "/broken.ogg" }, true),
+        /Could not load audio: 404 Not Found/,
+    );
+
+    assert.deepEqual(fetchCalls, ["/first.ogg", "/broken.ogg"]);
+    assert.equal(player.hasTrack(), true);
+    assert.equal(player.isPlaying(), true);
+    assert.equal(audioElement.src, "/first.ogg");
+    assert.equal(audioElement.loadCalls, 1);
+    assert.equal(contexts[0].bufferSources.length, 1);
+    assert.equal(firstSource.stopCalls, 0);
+});
+
 test("playTrack respects a pause while a replacement track is still loading", async () => {
     const contexts = installAudioContext();
     const requests = installDeferredFetch();

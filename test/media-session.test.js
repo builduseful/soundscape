@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 
 import {
+    configurePlaybackAudioSession,
     initMediaSession,
     updateMediaSessionPlaybackState,
     updateMediaSessionPositionState,
@@ -11,13 +12,16 @@ import {
 const originalMediaMetadata = globalThis.MediaMetadata;
 const originalNavigator = globalThis.navigator;
 const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
 
 beforeEach(() => {
     console.log = () => {};
+    console.warn = () => {};
 });
 
 afterEach(() => {
     console.log = originalConsoleLog;
+    console.warn = originalConsoleWarn;
     globalThis.MediaMetadata = originalMediaMetadata;
     Object.defineProperty(globalThis, "navigator", {
         configurable: true,
@@ -148,6 +152,19 @@ test("updateMediaSessionStatus publishes track metadata", () => {
     assert.deepEqual(positionStates, [{}]);
 });
 
+test("updateMediaSessionStatus falls back to plain metadata without MediaMetadata", () => {
+    const { mediaSession } = installMediaSession();
+    globalThis.MediaMetadata = undefined;
+
+    updateMediaSessionStatus({ title: "White Noise" });
+
+    assert.deepEqual(mediaSession.metadata, {
+        title: "White Noise",
+        artist: "Soundscape",
+        album: "Nature",
+    });
+});
+
 test("updateMediaSessionPlaybackState publishes playback state", () => {
     const { mediaSession } = installMediaSession();
 
@@ -177,6 +194,19 @@ test("updateMediaSessionPositionState clears position when no buffer is loaded",
     assert.deepEqual(positionStates, [{}]);
 });
 
+test("updateMediaSessionPositionState tolerates browser position errors", () => {
+    const { mediaSession } = installMediaSession();
+    mediaSession.setPositionState = () => {
+        throw new Error("invalid position state");
+    };
+
+    assert.doesNotThrow(() => updateMediaSessionPositionState({
+        duration: 30,
+        playbackRate: 1,
+        position: 12,
+    }));
+});
+
 test("media session helpers are no-ops when the API is unavailable", () => {
     Object.defineProperty(globalThis, "navigator", {
         configurable: true,
@@ -187,4 +217,39 @@ test("media session helpers are no-ops when the API is unavailable", () => {
     assert.doesNotThrow(() => updateMediaSessionStatus({ title: "Rain" }));
     assert.doesNotThrow(() => updateMediaSessionPositionState(null));
     assert.doesNotThrow(() => updateMediaSessionPlaybackState("paused"));
+});
+
+test("configurePlaybackAudioSession sets playback type when available", () => {
+    const audioSession = { type: "auto" };
+
+    Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: { audioSession },
+    });
+
+    configurePlaybackAudioSession();
+
+    assert.equal(audioSession.type, "playback");
+});
+
+test("configurePlaybackAudioSession tolerates unavailable or read-only audio sessions", () => {
+    Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: {},
+    });
+
+    assert.doesNotThrow(() => configurePlaybackAudioSession());
+
+    Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: {
+            audioSession: {
+                set type(_value) {
+                    throw new Error("read only");
+                },
+            },
+        },
+    });
+
+    assert.doesNotThrow(() => configurePlaybackAudioSession());
 });
