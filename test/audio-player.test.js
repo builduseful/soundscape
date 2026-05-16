@@ -198,6 +198,7 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
 
     assert.equal(player.hasContext(), true);
     assert.equal(player.hasTrack(), true);
+    assert.equal(player.getTrackUrl(), "/sound.ogg");
     assert.equal(player.isPlaying(), true);
     assert.equal(audioElement.preload, "auto");
     assert.equal(audioElement.src, "/sound.ogg");

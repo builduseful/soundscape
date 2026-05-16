@@ -116,6 +116,7 @@ class FakeAudioElement extends FakeElement {
         this.loadCalls = 0;
         this.playCalls = 0;
         this.pauseCalls = 0;
+        this.playShouldFail = false;
     }
 
     canPlayType(mime) {
@@ -129,6 +130,11 @@ class FakeAudioElement extends FakeElement {
     async play() {
         this.playCalls += 1;
         this.paused = false;
+
+        if (this.playShouldFail) {
+            throw new Error("Media element rejected playback");
+        }
+
         await this.dispatch("play");
     }
 

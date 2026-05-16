@@ -37,6 +37,10 @@ export class AudioPlayer {
         return this.currentTrackUrl !== undefined;
     }
 
+    getTrackUrl() {
+        return this.currentTrackUrl;
+    }
+
     isPlaybackRequested() {
         return this.playbackRequested && this.hasTrack();
     }

@@ -144,15 +144,36 @@ function isTransportButton(button) {
 }
 
 async function playNextTrack() {
-    currentTrackIndex = (currentTrackIndex + 1) % tracks.length;
-
-    await playCurrentTrack("next");
+    return changeTrack(1, "next");
 }
 
 async function playPreviousTrack() {
-    currentTrackIndex = (currentTrackIndex - 1 + tracks.length) % tracks.length;
+    return changeTrack(-1, "previous");
+}
 
-    await playCurrentTrack("previous");
+async function changeTrack(offset, direction) {
+    const previousTrackIndex = currentTrackIndex;
+    currentTrackIndex = (currentTrackIndex + offset + tracks.length) % tracks.length;
+    const attemptedTrack = getCurrentTrack();
+
+    try {
+        return await playCurrentTrack(direction);
+    } catch (error) {
+        if (audioPlayer.getTrackUrl() === attemptedTrack.url) {
+            updateMediaSessionStatus(attemptedTrack);
+            syncPlaybackState(audioPlayer.isPlaying());
+            console.warn("Could not start soundscape track.", error);
+            return false;
+        }
+
+        currentTrackIndex = previousTrackIndex;
+        saveCurrentTrack();
+        updateTrackTitle();
+        updateMediaSessionStatus(getCurrentTrack());
+        syncPlaybackState(audioPlayer.isPlaying());
+        console.warn("Could not change soundscape track.", error);
+        return false;
+    }
 }
 
 function getCurrentTrack() {
@@ -262,10 +283,11 @@ async function playCurrentTrack(direction = "next") {
     saveCurrentTrack();
     updateTrackTitle({ animate: true, direction });
     const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
-    if (!didStartTrack) return;
+    if (!didStartTrack) return false;
 
     updateMediaSessionStatus(track);
     syncPlaybackState(audioPlayer.isPlaying());
+    return true;
 }
 
 async function playAudio() {

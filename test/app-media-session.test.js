@@ -7,7 +7,10 @@ import {
 } from "../test-helpers/app-test-harness.js";
 import { tracks } from "../src/tracks.js";
 
+const originalConsoleWarn = console.warn;
+
 afterEach(() => {
+    console.warn = originalConsoleWarn;
     restoreAppTestEnvironment();
 });
 
@@ -32,6 +35,16 @@ function getTitleParts(elements) {
 
 function getLastItem(items) {
     return items.at(-1);
+}
+
+function captureConsoleWarn() {
+    const warnings = [];
+
+    console.warn = (...args) => {
+        warnings.push(args);
+    };
+
+    return warnings;
 }
 
 async function waitFor(condition) {
@@ -93,6 +106,26 @@ test("restores saved track, volume, and theme before the first play", async () =
     await mediaActions.pause();
 });
 
+test("invalid saved preferences fall back to safe defaults", async () => {
+    const { elements, navigator } = await startAppTestEnvironment({
+        storageEntries: {
+            "soundscape.currentTrackUrl": "resources/soundscapes/missing.opus",
+            "soundscape.themePreference": "sepia",
+            "soundscape.volume": "loud",
+        },
+    });
+    const { current, incoming } = getTitleParts(elements);
+
+    assert.equal(current.textContent, tracks[0].title);
+    assert.equal(incoming.textContent, "");
+    assert.equal(document.title, `${tracks[0].title} - Soundscape`);
+    assert.equal(document.documentElement.dataset.theme, undefined);
+    assert.equal(elements.get("themeSelector").getAttribute("value"), "system");
+    assert.equal(elements.get("volumeControl").value, "1");
+    assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
+    assert.equal(navigator.mediaSession.playbackState, "none");
+});
+
 test("volume and theme controls persist app preferences", async () => {
     const { audioContexts, audioElement, elements, mediaActions, storage } = await startAppTestEnvironment();
     const themeSelector = elements.get("themeSelector");
@@ -111,6 +144,31 @@ test("volume and theme controls persist app preferences", async () => {
     assert.equal(audioElement.playCalls, 1);
 
     await mediaActions.pause();
+});
+
+test("button controls drive playback and track changes", async () => {
+    const { audioElement, elements, navigator } = await startAppTestEnvironment();
+    const playPauseButton = elements.get("playPauseButton");
+
+    await playPauseButton.dispatch("click");
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(playPauseButton.getAttribute("aria-label"), "Pause");
+    assert.equal(audioElement.playCalls, 1);
+
+    await elements.get("nextButton").dispatch("click");
+    assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(audioElement.playCalls, 2);
+
+    await elements.get("previousButton").dispatch("click");
+    assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(audioElement.playCalls, 3);
+
+    await playPauseButton.dispatch("click");
+    assert.equal(navigator.mediaSession.playbackState, "paused");
+    assert.equal(playPauseButton.getAttribute("aria-label"), "Play");
+    assert.equal(audioElement.pauseCalls, 1);
 });
 
 test("global keyboard shortcuts drive playback and track changes", async () => {
@@ -270,8 +328,7 @@ test("volume changes use linear ramping for smooth transitions", async () => {
     const volumeControl = elements.get("volumeControl");
 
     await mediaActions.play();
-    
-    // We expect 2 gains: silent gain (0) and track gain (initial volume 1)
+
     const trackGain = audioContexts[0].gains[1];
     assert.equal(trackGain.gain.value, 1);
 
@@ -294,34 +351,62 @@ test("track swapping while paused refreshes the browser playback surface", async
     assert.equal(audioElement.playCalls, 1);
     assert.equal(audioElement.pauseCalls, 1);
 
-    // Swap track while paused
     await mediaActions.next();
-    
-    // refreshPausedBrowserPlaybackSurface uses setTimeout(0) which now runs automatically.
-    // We just need to wait for the next tick to ensure the pause/play cycle finished.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Should have called play and then pause to refresh the surface
     assert.equal(audioElement.playCalls, 2);
-    assert.equal(audioElement.pauseCalls, 3); // Initial pause + refresh pause + play then pause
+    assert.equal(audioElement.pauseCalls, 3);
 });
 
 test("app handles track load failures gracefully", async () => {
-    const { audioContexts, mediaActions } = await startAppTestEnvironment();
-    
-    // First play to ensure the audio graph is created
+    const { audioContexts, audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment();
+    const warnings = captureConsoleWarn();
+
     await mediaActions.play();
     const context = audioContexts[0];
-    
+    const { current, incoming, title } = getTitleParts(elements);
+
     context.decodeAudioDataShouldFail = true;
 
-    // Next track change should fail during the load phase
-    await assert.rejects(
-        () => mediaActions.next(),
-        /Decode failed/
-    );
+    await assert.doesNotReject(() => mediaActions.next());
 
-    assert.ok(context.decodeAudioDataCalls >= 1);
+    assert.equal(context.decodeAudioDataCalls, 2);
+    assert.equal(audioElement.src, tracks[0].url);
+    assert.equal(audioElement.playCalls, 1);
+    assert.equal(current.textContent, tracks[0].title);
+    assert.equal(incoming.textContent, "");
+    assert.equal(title.classList.contains("is-changing"), false);
+    assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[0].url);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][0], /Could not change soundscape track/);
+});
+
+test("media play failures after a track switch keep the switched track selected", async () => {
+    const { audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment({
+        matchMediaMatches: true,
+    });
+    const warnings = captureConsoleWarn();
+
+    await mediaActions.play();
+    audioElement.playShouldFail = true;
+
+    assert.equal(await mediaActions.next(), false);
+
+    const { current, incoming, title } = getTitleParts(elements);
+
+    assert.equal(audioElement.src, tracks[1].url);
+    assert.equal(audioElement.playCalls, 2);
+    assert.equal(current.textContent, tracks[1].title);
+    assert.equal(incoming.textContent, "");
+    assert.equal(title.classList.contains("is-changing"), false);
+    assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
+    assert.equal(navigator.mediaSession.playbackState, "paused");
+    assert.equal(elements.get("playPauseButton").getAttribute("aria-label"), "Play");
+    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[1].url);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][0], /Could not start soundscape track/);
 });
 
 test("playback resumes when the document becomes visible if it was playing", async () => {
@@ -330,19 +415,15 @@ test("playback resumes when the document becomes visible if it was playing", asy
     await mediaActions.play();
     assert.equal(navigator.mediaSession.playbackState, "playing");
 
-    // Mock document hidden state
     globalThis.document.hidden = true;
     await document.dispatch("visibilitychange");
-    
-    // It should still be playing in the app state (we don't automatically pause on hide, 
-    // but we do try to ensure it's playing on show if playback was requested)
+
     assert.equal(navigator.mediaSession.playbackState, "playing");
 
     globalThis.document.hidden = false;
     await document.dispatch("visibilitychange");
 
     assert.equal(navigator.mediaSession.playbackState, "playing");
-    // Should have called play twice (once for initial play, once for visibility change)
     assert.equal(audioElement.playCalls, 2);
 
     await mediaActions.pause();
@@ -375,14 +456,16 @@ test("media stop key pauses the app", async () => {
 test("app handles localStorage failures without crashing", async () => {
     const { elements, storage } = await startAppTestEnvironment();
     const volumeControl = elements.get("volumeControl");
+    const warnings = captureConsoleWarn();
 
     globalThis.localStorage.shouldFail = true;
 
-    // Should not throw
     volumeControl.value = "0.1";
     await volumeControl.dispatch("input");
 
     assert.equal(storage.get("soundscape.volume"), undefined);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][0], /Could not save soundscape\.volume/);
 
     globalThis.localStorage.shouldFail = false;
 });
