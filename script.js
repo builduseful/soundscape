@@ -16,6 +16,7 @@ import {
 } from "./src/media-session.js";
 import { ThemeSelector } from "./src/components/theme-selector.js";
 import { VolumeControl } from "./src/components/volume-control.js";
+import { registerServiceWorker } from "./src/pwa.js";
 import {
     applyThemePreference,
     loadThemePreference,
@@ -84,6 +85,7 @@ updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
 updateTrackTitle();
 startMediaSession();
+registerServiceWorker();
 
 async function playPauseClick() {
     if (audioPlayer.isPlaying()) {

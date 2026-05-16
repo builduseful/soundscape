@@ -1,0 +1,44 @@
+{
+    "id": "./",
+    "name": "Soundscape",
+    "short_name": "Soundscape",
+    "description": "A calm ambience player for seamless looping background audio.",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#111111",
+    "theme_color": "#111111",
+    "categories": ["music", "health", "lifestyle"],
+    "icons": [
+        {
+            "src": "resources/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "resources/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "resources/icons/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "resources/icons/maskable-icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "resources/icons/maskable-icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        }
+    ]
+}

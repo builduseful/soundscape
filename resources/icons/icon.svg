@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Soundscape">
+    <rect width="512" height="512" rx="112" fill="#111111"/>
+    <path fill="none" stroke="#f1f1f1" stroke-linecap="round" stroke-width="28" d="M112 220c34-38 68-38 102 0s68 38 102 0 68-38 102 0"/>
+    <path fill="none" stroke="#f1f1f1" stroke-linecap="round" stroke-width="28" d="M112 292c34-38 68-38 102 0s68 38 102 0 68-38 102 0"/>
+</svg>
