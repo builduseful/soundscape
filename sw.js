@@ -1,4 +1,4 @@
-const CACHE_NAME = "soundscape-v2026-05-16-3";
+const CACHE_NAME = "soundscape-v2026-05-31-1";
 
 const APP_SHELL_ASSETS = [
     "./",
