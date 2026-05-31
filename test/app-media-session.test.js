@@ -90,7 +90,7 @@ test("restores saved track, volume, and theme before the first play", async () =
     const { current } = getTitleParts(elements);
 
     assert.equal(current.textContent, tracks[1].title);
-    assert.equal(document.title, `${tracks[1].title} - Soundscape`);
+    assert.equal(document.title, tracks[1].title);
     assert.equal(document.documentElement.dataset.theme, "dark");
     assert.equal(elements.get("themeSelector").getAttribute("value"), "dark");
     assert.equal(elements.get("volumeControl").value, "0.42");
@@ -118,7 +118,7 @@ test("invalid saved preferences fall back to safe defaults", async () => {
 
     assert.equal(current.textContent, tracks[0].title);
     assert.equal(incoming.textContent, "");
-    assert.equal(document.title, `${tracks[0].title} - Soundscape`);
+    assert.equal(document.title, tracks[0].title);
     assert.equal(document.documentElement.dataset.theme, undefined);
     assert.equal(elements.get("themeSelector").getAttribute("value"), "system");
     assert.equal(elements.get("volumeControl").value, "1");
@@ -224,7 +224,7 @@ test("track title changes animate and settle after animationend", async () => {
 
     assert.equal(current.textContent, tracks[0].title);
     assert.equal(incoming.textContent, tracks[1].title);
-    assert.equal(document.title, `${tracks[1].title} - Soundscape`);
+    assert.equal(document.title, tracks[1].title);
     assert.equal(title.classList.contains("is-changing"), true);
     assert.equal(title.classList.contains("is-changing-next"), true);
     assert.equal(navigator.mediaSession.playbackState, "paused");

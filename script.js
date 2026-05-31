@@ -211,14 +211,14 @@ function updateTrackTitle({ animate = false, direction = "next" } = {}) {
     }
 
     incomingTitle.textContent = trackTitle;
-    document.title = `${trackTitle} - Soundscape`;
+    document.title = trackTitle;
     restartTitleChangeAnimation(direction);
 }
 
 function setTrackTitle(trackTitle) {
     currentTitle.textContent = trackTitle;
     incomingTitle.textContent = "";
-    document.title = `${trackTitle} - Soundscape`;
+    document.title = trackTitle;
 }
 
 function resetTitleAnimation() {
