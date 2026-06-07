@@ -49,6 +49,7 @@ const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 
 let currentTrackIndex = getSavedTrackIndex();
+let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
 
 const audioPlayer = new AudioPlayer(audioElement, {
@@ -154,13 +155,22 @@ async function playPreviousTrack() {
 }
 
 async function changeTrack(offset, direction) {
+    const trackChangeId = ++currentTrackChangeId;
     const previousTrackIndex = currentTrackIndex;
     currentTrackIndex = (currentTrackIndex + offset + tracks.length) % tracks.length;
     const attemptedTrack = getCurrentTrack();
 
     try {
-        return await playCurrentTrack(direction);
+        const result = await playCurrentTrack(direction);
+        if (trackChangeId !== currentTrackChangeId) {
+            return false;
+        }
+        return result;
     } catch (error) {
+        if (trackChangeId !== currentTrackChangeId) {
+            return false;
+        }
+
         if (audioPlayer.getTrackUrl() === attemptedTrack.url) {
             updateMediaSessionStatus(attemptedTrack);
             syncPlaybackState(audioPlayer.isPlaying());
@@ -284,10 +294,10 @@ async function playCurrentTrack(direction = "next") {
 
     saveCurrentTrack();
     updateTrackTitle({ animate: true, direction });
+    updateMediaSessionStatus(track);
     const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
     if (!didStartTrack) return false;
 
-    updateMediaSessionStatus(track);
     syncPlaybackState(audioPlayer.isPlaying());
     return true;
 }

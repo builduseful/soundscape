@@ -409,6 +409,52 @@ test("media play failures after a track switch keep the switched track selected"
     assert.match(warnings[0][0], /Could not start soundscape track/);
 });
 
+test("concurrent track switches do not cause title/state reversion on intermediate failure", async () => {
+    const { audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment({
+        matchMediaMatches: true,
+    });
+
+    await mediaActions.play(); // Start on track 0. playCalls is now 1.
+
+    // Suspend the first switch's play() so we can run a newer switch while the
+    // older one is still in flight. Without the stale-change guard, the older
+    // switch's catch block reverts state that the newer switch has already set.
+    let resolveFirstPlay;
+    audioElement.playGates.push(new Promise((resolve) => {
+        resolveFirstPlay = resolve;
+    }));
+    audioElement.playShouldFail = true;
+    const firstNext = mediaActions.next(); // track 0 -> track 1
+
+    // Wait until the first switch has consumed the gate and is parked inside
+    // play(). playCalls advances from 1 to 2 when firstNext's playTrack calls
+    // audioElement.play(), at which point the gate has been shifted off the
+    // queue.
+    await waitFor(() => audioElement.playCalls === 2 && audioElement.playGates.length === 0);
+
+    // Now run a second switch that succeeds. The newer switch must update state
+    // (currentTrackIndex, saved URL, title, media session) before we let the
+    // older one fail.
+    audioElement.playShouldFail = false;
+    const secondNext = mediaActions.next(); // track 1 -> track 2
+    await secondNext;
+
+    // The newer switch has settled. Let the older switch fail; its catch must
+    // NOT roll back currentTrackIndex, the saved URL, the title, or the media
+    // session metadata.
+    resolveFirstPlay();
+    await firstNext;
+
+    const { current, incoming, title } = getTitleParts(elements);
+
+    assert.equal(current.textContent, tracks[2].title);
+    assert.equal(incoming.textContent, "");
+    assert.equal(title.classList.contains("is-changing"), false);
+    assert.equal(navigator.mediaSession.metadata.title, tracks[2].title);
+    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[2].url);
+});
+
+
 test("playback resumes when the document becomes visible if it was playing", async () => {
     const { audioElement, mediaActions, navigator } = await startAppTestEnvironment();
 
