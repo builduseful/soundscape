@@ -17,6 +17,25 @@
 - Preserve stale-request guards around track changes. Buffer fetch/decode work can finish out of order, and older requests must not replace newer playback.
 - Treat Media Session and Audio Session APIs as progressive enhancements. When available, keep metadata, playback state, actions, and decoded-buffer position state in sync; when unavailable, playback should still work.
 
+## Development
+
+- Start the local dev server with `npm start` (see `package.json` for the exact command).
+- **Agents only:** The shell tool has a timeout, so `npm start` will be killed before the server is ready. To start the server in a detached background process, use:
+  ```powershell
+  Start-Process -FilePath "pwsh" -ArgumentList "-Command", "npx serve@14.2.6 . --listen 4321 --no-port-switching" -WindowStyle Hidden -PassThru
+  ```
+  Then navigate the browser — the browser will retry until the server is ready.
+  - To stop the server:
+    ```powershell
+    Get-NetTCPConnection -LocalPort 4321 -ErrorAction SilentlyContinue |
+        Where-Object { $_.State -eq 'Listen' } |
+        Select-Object -ExpandProperty OwningProcess -Unique |
+        ForEach-Object { Stop-Process -Id ([int]$_) -Force -ErrorAction SilentlyContinue }
+    ```
+    If the command returns no output, the process may have already dropped its listening socket but still be running. Verify with `Get-Process -Name "node"` or `Get-NetTCPConnection -LocalPort 4321` and force-kill the remaining node process if needed.
+  - The app uses a service worker, so the browser may display a cached version of the page after the server is stopped. To confirm the server is actually running, use the browser's Network panel or perform a hard reload (`Ctrl+Shift+R`).
+- Do not open `index.html` directly via `file://`; the app requires HTTP for module loading and service worker support.
+
 ## Testing
 
-- Run `node --test` for the dependency-free unit tests.
+- Run `npm test` for the dependency-free unit tests (see `package.json` for the exact command).

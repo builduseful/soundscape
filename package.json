@@ -1,6 +1,7 @@
 {
   "type": "module",
   "scripts": {
+    "start": "npx serve@14.2.6 . --listen 4321 --no-port-switching",
     "test": "node --test"
   }
 }
