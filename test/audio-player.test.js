@@ -502,6 +502,38 @@ test("AudioContext state changes notify the app shell", async () => {
     assert.equal(stateChangeCount, 1);
 });
 
+test("playTrack snaps the source start time when the context resumes after a suspended load", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/quiet.opus" }, true);
+    // Simulate the gap between source.start() and the actual resume event. In a
+    // real browser the AudioContext clock keeps advancing while the context is
+    // suspended, so the currentTime captured at start() is stale by the time
+    // playback actually begins.
+    contexts[0].currentTime = 12.5;
+    contexts[0].dispatch("statechange");
+
+    assert.equal(player.getCurrentPosition(), 0);
+});
+
+test("playTrack leaves the source start time alone when the context is already running", async () => {
+    const contexts = installAudioContext({ initialState: "running" });
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/quiet.opus" }, true);
+    contexts[0].currentTime += 4;
+    contexts[0].dispatch("statechange");
+
+    // Source started in a running context, so the snap path must not fire and
+    // position tracks the clock from the start() call.
+    assert.equal(player.getCurrentPosition(), 4);
+});
+
 test("playTrack accepts supported MIME types before loading the track", async () => {
     installAudioContext();
     installFetch();

@@ -15,6 +15,7 @@ export class AudioPlayer {
         this.activeSource = null;
         this.activeBuffer = null;
         this.activeSourceStartedAt = 0;
+        this.activeSourceQueued = false;
         this.playbackRequestId = 0;
         this.playbackRequested = false;
         this.browserPlaybackSyncSuppressed = false;
@@ -125,6 +126,10 @@ export class AudioPlayer {
         this.activeBuffer = buffer;
         this.activeSourceStartedAt = this.audioContext.currentTime;
         this.currentTrackUrl = track.url;
+        // If the AudioContext is still suspended, the source's start event is queued
+        // and won't actually play until resume(). Mark it so the statechange handler
+        // can snap the start time to the real playback start.
+        this.activeSourceQueued = this.audioContext.state !== "running";
         previousSource?.stop();
 
         if (shouldLoadMediaElement) {
@@ -178,7 +183,7 @@ export class AudioPlayer {
 
         this.audioContext = new AudioContext();
         this.audioContext.addEventListener?.("statechange", () => {
-            this.onStateChange?.();
+            this.handleAudioContextStateChange();
         });
         this.mediaElementSourceNode = this.audioContext.createMediaElementSource(this.audioElement);
 
@@ -192,6 +197,17 @@ export class AudioPlayer {
         this.currentTrackGainNode.gain.value = this.volume;
 
         this.currentTrackGainNode.connect(this.audioContext.destination);
+    }
+
+    handleAudioContextStateChange() {
+        // When the context transitions to "running" for a freshly queued source,
+        // snap activeSourceStartedAt to the real playback start so Media Session
+        // position doesn't drift by the time spent in loadBuffer / decoding.
+        if (this.audioContext.state === "running" && this.activeSourceQueued) {
+            this.activeSourceStartedAt = this.audioContext.currentTime;
+            this.activeSourceQueued = false;
+        }
+        this.onStateChange?.();
     }
 
     async play() {

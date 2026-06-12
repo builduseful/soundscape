@@ -1,4 +1,4 @@
-const CACHE_NAME = "soundscape-v2026-05-31-1";
+const CACHE_NAME = "soundscape-v2026-06-11-1";
 
 const APP_SHELL_ASSETS = [
     "./",
@@ -77,7 +77,7 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    event.respondWith(cacheFirst(request));
+    event.respondWith(tryCacheThenFetch(request));
 });
 
 async function handleNavigation(request) {
@@ -85,38 +85,35 @@ async function handleNavigation(request) {
 
     try {
         const response = await fetch(request);
-        await cache.put("./index.html", response.clone());
+        await cacheIfOk(cache, "./index.html", response);
         return response;
-    } catch (error) {
+    } catch {
         return await cache.match("./index.html") ?? Response.error();
     }
 }
 
-async function cacheFirst(request) {
+async function tryCacheThenFetch(request) {
     const cache = await caches.open(CACHE_NAME);
     const cachedResponse = await cache.match(request, { ignoreSearch: true });
 
     if (cachedResponse) return cachedResponse;
 
     const response = await fetch(request);
-
-    if (response.ok) {
-        await cache.put(request, response.clone());
-    }
-
+    await cacheIfOk(cache, request, response);
     return response;
 }
 
 async function handleRangeRequest(request) {
     const cache = await caches.open(CACHE_NAME);
-    let response = await cache.match(request, { ignoreSearch: true });
+    const cacheKey = cleanCacheKey(request);
 
-    if (!response) {
+    let response = await cache.match(cacheKey, { ignoreSearch: true });
+
+    // A partial (206) response can't be used to serve arbitrary byte ranges,
+    // so fetch the full resource when the cache is missing or contains a fragment.
+    if (!response || response.status === 206) {
         response = await fetchWithoutRange(request);
-
-        if (response.ok) {
-            await cache.put(request.url, response.clone());
-        }
+        await cacheIfOk(cache, cacheKey, response);
     }
 
     return createPartialResponse(request, response);
@@ -124,19 +121,25 @@ async function handleRangeRequest(request) {
 
 async function fetchWithoutRange(request) {
     const headers = new Headers(request.headers);
-
     headers.delete("range");
+    return fetch(new Request(request, { headers }));
+}
 
-    return await fetch(new Request(request.url, {
+async function cacheIfOk(cache, key, response) {
+    if (response.ok && response.status === 200) {
+        await cache.put(key, response.clone());
+    }
+}
+
+function cleanCacheKey(request) {
+    return new Request(request.url, {
         cache: request.cache,
         credentials: request.credentials,
-        headers,
-        integrity: request.integrity,
-        mode: request.mode === "navigate" ? "same-origin" : request.mode,
+        mode: request.mode,
         redirect: request.redirect,
         referrer: request.referrer,
         referrerPolicy: request.referrerPolicy,
-    }));
+    });
 }
 
 async function createPartialResponse(request, response) {

@@ -1,3 +1,5 @@
+import { normalizeThemePreference } from "../theme-utils.js";
+
 const THEME_OPTIONS = [
     {
         value: "system",
@@ -182,7 +184,7 @@ export class ThemeSelector extends HTMLElement {
     }
 
     normalizeValue(value) {
-        return THEME_OPTIONS.some((option) => option.value === value) ? value : "system";
+        return normalizeThemePreference(value);
     }
 
     updateCheckedOption() {

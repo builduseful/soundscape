@@ -95,6 +95,8 @@ test("service worker precaches every cataloged soundscape and handles byte range
     }
 
     assert.match(source, /request\.headers\.has\("range"\)/);
+    assert.match(source, /response\.ok\s*&&\s*response\.status\s*===\s*200/);
+    assert.match(source, /cacheKey/);
     assert.match(source, /favicon-16\.png/);
     assert.match(source, /favicon-32\.png/);
     assert.match(source, /if \(!response\.ok\) return response/);

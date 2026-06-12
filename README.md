@@ -14,10 +14,14 @@ It supports:
 
 ## Running
 
-Serve the project root with any static file server, then open `index.html`.
+```sh
+npm start
+```
+
+Then open `http://localhost:8080`. The app requires a static file server because it uses ES modules and a service worker.
 
 ## Testing
 
 ```sh
-node --test
+npm test
 ```
