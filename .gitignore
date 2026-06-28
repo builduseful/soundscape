@@ -1,3 +1,9 @@
 resources/gitignore/
 
 .vs/
+
+# Ignore temp files
+.temp/
+
+.playwright/
+.playwright-cli/

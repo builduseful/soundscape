@@ -1,5 +1,40 @@
 # Repository Guidelines
 
+## Overview
+
+Soundscape is a browser-based Progressive Web App (PWA) that plays seamless looping ambient background audio (rain, thunderstorms, fireplace, open road, and white/pink/brown noise). It supports play/pause/prev/next controls, persistent volume/theme/track preferences, light/dark/system themes, and Media Session integration for browser and OS media controls, with sample-accurate looping via Web Audio.
+
+## Project Structure
+
+```
+soundscape/
+├── index.html              # App entry point, loads script.js and styles
+├── style.css               # App-wide styling (component internals live in @scope blocks)
+├── script.js               # App bootstrap: wires audio, UI, state, and components
+├── sw.js                   # Service worker for offline/PWA support
+├── manifest.webmanifest    # PWA manifest
+├── CNAME                   # Custom domain for deployment
+├── package.json            # Scripts and metadata (npm start, npm test)
+├── src/
+│   ├── audio-player.js          # Web Audio + HTMLAudioElement playback engine
+│   ├── media-session.js         # Media Session API integration (metadata, actions)
+│   ├── pwa.js                   # PWA lifecycle (registration, install prompts)
+│   ├── theme-utils.js           # Light/dark/system theme helpers
+│   ├── tracks.js                # Track catalog and metadata
+│   └── components/
+│       ├── theme-selector.js    # Custom element for theme mode selection
+│       └── volume-control.js    # Custom element for volume slider
+├── resources/
+│   ├── icons/                   # PWA/favicon icons (png + svg)
+│   └── soundscapes/             # Looping ambience audio files (.opus)
+├── scripts/
+│   └── export-icons.sh         # Icon generation helper
+├── test/                        # Unit tests (dependency-free)
+├── test-helpers/
+│   └── app-test-harness.js     # Shared test fixtures/utilities
+└── .opencode/                  # Opencode agent/skill config (not app code)
+```
+
 ## Custom Elements
 
 - App-owned custom elements live in `src/components`.
