@@ -10,6 +10,7 @@ import { AudioPlayer } from "./src/audio-player.js";
 import {
     configurePlaybackAudioSession,
     initMediaSession,
+    registerMediaSessionHandlers,
     updateMediaSessionPlaybackState,
     updateMediaSessionPositionState,
     updateMediaSessionStatus,
@@ -24,6 +25,7 @@ import {
     saveThemePreference,
 } from "./src/theme-utils.js";
 import { tracks } from "./src/tracks.js";
+import { VERSION } from "./src/version.js";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -47,6 +49,7 @@ const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
+const appVersion = document.getElementById("appVersion");
 
 let currentTrackIndex = getSavedTrackIndex();
 let currentTrackChangeId = 0;
@@ -87,6 +90,7 @@ restoreSavedVolume();
 updateTrackTitle();
 startMediaSession();
 registerServiceWorker();
+appVersion.textContent = `v${VERSION}`;
 
 async function playPauseClick() {
     if (audioPlayer.isPlaying()) {
@@ -294,32 +298,47 @@ async function playCurrentTrack(direction = "next") {
 
     saveCurrentTrack();
     updateTrackTitle({ animate: true, direction });
-    updateMediaSessionStatus(track);
     const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
     if (!didStartTrack) return false;
 
+    // Set metadata and re-register action handlers after the new source has
+    // started. Some browsers reset the Media Session association when the
+    // <audio> element's src changes, so refreshing the handlers here keeps
+    // keyboard/earphone controls working across track changes.
+    updateMediaSessionStatus(track);
+    registerMediaSessionHandlers(mediaSessionActions);
     syncPlaybackState(audioPlayer.isPlaying());
     return true;
 }
 
 async function playAudio() {
-    configurePlaybackAudioSession();
+    try {
+        configurePlaybackAudioSession();
 
-    if (audioPlayer.hasTrack()) {
-        await audioPlayer.play();
-    } else {
-        saveCurrentTrack();
-        const didStartTrack = await audioPlayer.playTrack(getCurrentTrack(), true);
-        if (!didStartTrack) return;
+        if (audioPlayer.hasTrack()) {
+            await audioPlayer.play();
+        } else {
+            saveCurrentTrack();
+            const didStartTrack = await audioPlayer.playTrack(getCurrentTrack(), true);
+            if (!didStartTrack) return;
+        }
+
+        syncPlaybackState(audioPlayer.isPlaying());
+    } catch (error) {
+        console.warn("Could not start playback.", error);
+        syncPlaybackState(audioPlayer.isPlaying());
     }
-
-    syncPlaybackState(audioPlayer.isPlaying());
 }
 
 async function pauseAudio() {
-    await audioPlayer.pause();
+    try {
+        await audioPlayer.pause();
 
-    syncPlaybackState(false);
+        syncPlaybackState(false);
+    } catch (error) {
+        console.warn("Could not pause playback.", error);
+        syncPlaybackState(audioPlayer.isPlaying());
+    }
 }
 
 async function handleBrowserPlaybackStart() {
@@ -379,6 +398,7 @@ function syncPlaybackState(isPlaying) {
     syncMediaSessionPositionState();
     updateMediaSessionPositionTimer(isPlaying);
     playPauseButton.setAttribute("aria-label", isPlaying ? PAUSE_LABEL : PLAY_LABEL);
+    playPauseButton.dataset.playing = isPlaying ? "true" : "false";
 }
 
 function syncMediaSessionPositionState() {

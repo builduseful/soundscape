@@ -94,7 +94,7 @@ test("initMediaSession publishes metadata and wires media key handlers", async (
     assert.deepEqual(calls, []);
     assert.equal(mediaSession.metadata.title, "Rain");
     assert.equal(mediaSession.metadata.artist, "Soundscape");
-    assert.equal(mediaSession.metadata.album, "Nature");
+    assert.equal(mediaSession.metadata.album, "Soundscape");
     assert.deepEqual(positionStates, [{}]);
     assert.deepEqual([...handlers.keys()], [
         "play",
@@ -161,7 +161,7 @@ test("updateMediaSessionStatus falls back to plain metadata without MediaMetadat
     assert.deepEqual(mediaSession.metadata, {
         title: "White Noise",
         artist: "Soundscape",
-        album: "Nature",
+        album: "Soundscape",
     });
 });
 

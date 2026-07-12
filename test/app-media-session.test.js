@@ -79,6 +79,32 @@ test("media next key keeps working after changing tracks while paused", async ()
     assert.equal(navigator.mediaSession.playbackState, "paused");
 });
 
+test("media session action handlers are refreshed after track changes", async () => {
+    const environment = await startAppTestEnvironment();
+    const { audioElement, mediaActions, navigator } = environment;
+
+    await mediaActions.play();
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    const callsAfterInit = environment.mediaSessionHandlerCalls;
+
+    await mediaActions.next();
+    assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
+    assert.equal(audioElement.playCalls, 2);
+
+    // The app should re-register Media Session action handlers after the
+    // <audio> element's src changes, so keyboard/earphone controls keep working.
+    assert.ok(
+        environment.mediaSessionHandlerCalls > callsAfterInit,
+        "action handlers should be refreshed after a track change",
+    );
+
+    await mediaActions.pause();
+    assert.equal(navigator.mediaSession.playbackState, "paused");
+
+    await mediaActions.play();
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+});
+
 test("restores saved track, volume, and theme before the first play", async () => {
     const { audioContexts, audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment({
         storageEntries: {

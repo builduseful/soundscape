@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { AudioPlayer } from "../src/audio-player.js";
+import { applyLoopCrossfade, AudioPlayer } from "../src/audio-player.js";
 
 const originalAudioContext = globalThis.AudioContext;
 const originalFetch = globalThis.fetch;
@@ -47,6 +47,7 @@ function installAudioContext({ initialState = "suspended" } = {}) {
         mediaSources = [];
         bufferSources = [];
         gains = [];
+        createdBuffers = [];
         decodedBuffers = [];
         eventHandlers = new Map();
         resumeCalls = 0;
@@ -78,6 +79,7 @@ function installAudioContext({ initialState = "suspended" } = {}) {
                     cancelledAt: undefined,
                     setAt: undefined,
                     rampedTo: undefined,
+                    valueCurve: undefined,
                     cancelScheduledValues(when) {
                         this.cancelledAt = when;
                     },
@@ -86,6 +88,9 @@ function installAudioContext({ initialState = "suspended" } = {}) {
                     },
                     linearRampToValueAtTime(value, when) {
                         this.rampedTo = { value, when };
+                    },
+                    setValueCurveAtTime(curve, when, duration) {
+                        this.valueCurve = { curve, when, duration };
                     },
                 },
                 connect(node) {
@@ -96,6 +101,29 @@ function installAudioContext({ initialState = "suspended" } = {}) {
 
             this.gains.push(gainNode);
             return gainNode;
+        }
+
+        createBuffer(numberOfChannels, length, sampleRate) {
+            const channels = [];
+            for (let i = 0; i < numberOfChannels; i++) {
+                channels.push(new Float32Array(length));
+            }
+
+            const buffer = {
+                sampleRate,
+                numberOfChannels,
+                length,
+                duration: length / sampleRate,
+                getChannelData(ch) {
+                    return channels[ch];
+                },
+                copyToChannel(data, ch) {
+                    channels[ch].set(data);
+                },
+            };
+
+            this.createdBuffers.push(buffer);
+            return buffer;
         }
 
         addEventListener(type, handler) {
@@ -117,6 +145,11 @@ function installAudioContext({ initialState = "suspended" } = {}) {
                     this.connectedTo = node;
                     return node;
                 },
+                disconnect(node) {
+                    if (!node || this.connectedTo === node) {
+                        this.connectedTo = undefined;
+                    }
+                },
                 start(when) {
                     this.startCalls.push(when);
                 },
@@ -130,7 +163,32 @@ function installAudioContext({ initialState = "suspended" } = {}) {
         }
 
         async decodeAudioData(arrayBuffer) {
-            const decodedBuffer = { arrayBuffer, duration: 30 };
+            const sampleRate = 48000;
+            const duration = 30 * (arrayBuffer.byteLength / 8);
+            const length = Math.round(sampleRate * duration);
+            const channels = [];
+            for (let ch = 0; ch < 1; ch++) {
+                const data = new Float32Array(length);
+                // Fill with a simple non-zero signal so crossfade changes are observable.
+                for (let i = 0; i < length; i++) {
+                    data[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate);
+                }
+                channels.push(data);
+            }
+
+            const decodedBuffer = {
+                arrayBuffer,
+                sampleRate,
+                numberOfChannels: channels.length,
+                length,
+                duration,
+                getChannelData(ch) {
+                    return channels[ch];
+                },
+                copyToChannel(data, ch) {
+                    channels[ch].set(data);
+                },
+            };
 
             this.decodedBuffers.push(decodedBuffer);
             return decodedBuffer;
@@ -188,6 +246,131 @@ function installDeferredFetch() {
     return requests;
 }
 
+function createFakeAudioContextForCrossfade() {
+    const buffers = [];
+
+    const context = {
+        buffers,
+        createBuffer(numberOfChannels, length, sampleRate) {
+            const channels = [];
+            for (let i = 0; i < numberOfChannels; i++) {
+                channels.push(new Float32Array(length));
+            }
+
+            const buffer = {
+                sampleRate,
+                numberOfChannels,
+                length,
+                duration: length / sampleRate,
+                getChannelData(ch) {
+                    return channels[ch];
+                },
+                copyToChannel(data, ch) {
+                    channels[ch].set(data);
+                },
+            };
+
+            buffers.push(buffer);
+            return buffer;
+        },
+    };
+
+    return context;
+}
+
+test("applyLoopCrossfade removes a large seam at the loop boundary", () => {
+    const sampleRate = 48000;
+    const length = sampleRate; // 1 second
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const source = fakeContext.createBuffer(1, length, sampleRate);
+    const data = source.getChannelData(0);
+
+    // Create a deliberate loud seam: the tail is far from the head, but the
+    // head segment itself is smooth. The crossfade should make the boundary
+    // sample approach the head so the wrap back to sample 0 is inaudible.
+    data.fill(0);
+    const overlap = Math.round((10 * sampleRate) / 1000);
+    for (let i = 0; i < overlap; i++) {
+        data[i] = 0.5;
+    }
+    data[length - 1] = -0.5;
+
+    const originalSeamJump = Math.abs(data[length - 1] - data[0]);
+
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const out = buffer.getChannelData(0);
+    const loopEndIndex = Math.round(loopEnd * sampleRate);
+    const seamJump = Math.abs(out[loopEndIndex - 1] - out[loopStart]);
+
+    assert.equal(loopStart, 0);
+    assert.equal(loopEndIndex, length);
+    assert.ok(seamJump < 1e-2, `seam jump ${seamJump} should be below 1e-2`);
+    assert.ok(seamJump < originalSeamJump / 10, `seam jump ${seamJump} should be much smaller than original ${originalSeamJump}`);
+});
+
+test("applyLoopCrossfade processes every channel in a stereo buffer", () => {
+    const sampleRate = 48000;
+    const length = sampleRate;
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const source = fakeContext.createBuffer(2, length, sampleRate);
+    const left = source.getChannelData(0);
+    const right = source.getChannelData(1);
+
+    const overlap = Math.round((10 * sampleRate) / 1000);
+    left.fill(0);
+    right.fill(0);
+    for (let i = 0; i < overlap; i++) {
+        left[i] = 0.5;
+        right[i] = 0.3;
+    }
+    left[length - 1] = -0.5;
+    right[length - 1] = -0.3;
+
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const outLeft = buffer.getChannelData(0);
+    const outRight = buffer.getChannelData(1);
+    const loopEndIndex = Math.round(loopEnd * sampleRate);
+
+    assert.equal(buffer.numberOfChannels, 2);
+    assert.equal(loopStart, 0);
+    assert.equal(loopEnd, 1);
+    assert.ok(Math.abs(outLeft[loopEndIndex - 1] - outLeft[0]) < 1e-2);
+    assert.ok(Math.abs(outRight[loopEndIndex - 1] - outRight[0]) < 1e-2);
+});
+
+test("applyLoopCrossfade computes loopEnd from the source sample rate", () => {
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const sampleRate = 44100;
+    const length = sampleRate * 2; // 2 seconds
+    const source = fakeContext.createBuffer(1, length, sampleRate);
+    source.getChannelData(0).fill(0.1);
+
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+
+    assert.equal(loopStart, 0);
+    assert.equal(loopEnd, 2);
+    assert.equal(buffer.sampleRate, sampleRate);
+    assert.equal(buffer.length, length);
+});
+
+test("loadBuffer returns a crossfaded loop window and caches it", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/loop.ogg" }, true);
+
+    const firstWindow = await player.loadBuffer("/loop.ogg");
+    const secondWindow = await player.loadBuffer("/loop.ogg");
+
+    assert.equal(firstWindow, secondWindow);
+    assert.equal(firstWindow.loopStart, 0);
+    assert.ok(firstWindow.loopEnd > 0);
+    assert.equal(firstWindow.buffer.duration, contexts[0].decodedBuffers[0].duration);
+    assert.notEqual(firstWindow.buffer, contexts[0].decodedBuffers[0]);
+});
+
 test("playTrack uses a decoded buffer for the audible loop and keeps the media element browser-visible", async () => {
     const contexts = installAudioContext();
     const fetchCalls = installFetch();
@@ -219,7 +402,8 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
     assert.equal(mediaElementSource.connectedTo, silentGainNode);
     assert.equal(silentGainNode.gain.value, 0);
     assert.equal(silentGainNode.connectedTo, context.destination);
-    assert.equal(audibleSource.buffer, context.decodedBuffers[0]);
+    assert.notEqual(audibleSource.buffer, context.decodedBuffers[0]);
+    assert.equal(audibleSource.buffer.duration, context.decodedBuffers[0].duration);
     assert.equal(audibleSource.loop, true);
     assert.equal(audibleSource.loopStart, 0);
     assert.equal(audibleSource.loopEnd, context.decodedBuffers[0].duration);
@@ -260,7 +444,7 @@ test("playTrack reuses decoded buffers when replaying the same track", async () 
     assert.equal(contexts[0].decodedBuffers.length, 1);
     assert.equal(contexts[0].bufferSources.length, 2);
     assert.equal(contexts[0].bufferSources[0].stopCalls, 1);
-    assert.equal(contexts[0].bufferSources[1].buffer, contexts[0].decodedBuffers[0]);
+    assert.equal(contexts[0].bufferSources[1].buffer.duration, contexts[0].decodedBuffers[0].duration);
 });
 
 test("playTrack reuses an in-flight buffer load for duplicate track requests", async () => {
@@ -330,7 +514,7 @@ test("playTrack ignores stale buffer loads when a newer track is requested", asy
     assert.equal(audioElement.src, "/fast.ogg");
     assert.equal(audioElement.loadCalls, 1);
     assert.equal(contexts[0].bufferSources.length, 1);
-    assert.equal(contexts[0].bufferSources[0].buffer.arrayBuffer.byteLength, 16);
+    assert.equal(contexts[0].bufferSources[0].loopEnd, 60);
 });
 
 test("playTrack keeps the current buffer source active while a replacement track loads", async () => {
@@ -355,7 +539,37 @@ test("playTrack keeps the current buffer source active while a replacement track
     assert.equal(await secondPlay, true);
     assert.equal(firstSource.stopCalls, 1);
     assert.equal(contexts[0].bufferSources.length, 2);
-    assert.equal(contexts[0].bufferSources[1].buffer.arrayBuffer.byteLength, 16);
+    assert.equal(contexts[0].bufferSources[1].loopEnd, 60);
+});
+
+test("playTrack crossfades between two different playing tracks with equal-power curves", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/first.ogg" }, true);
+    const firstSource = contexts[0].bufferSources[0];
+
+    await player.playTrack({ url: "/second.ogg" }, true);
+
+    const context = contexts[0];
+    const currentGainNode = context.gains[1];
+    const outgoingGainNode = context.gains[2];
+
+    assert.equal(context.bufferSources.length, 2);
+    assert.equal(firstSource.stopCalls, 1);
+    assert.equal(firstSource.connectedTo, outgoingGainNode);
+
+    assert.ok(outgoingGainNode.gain.valueCurve, "outgoing gain should use a value curve");
+    assert.equal(outgoingGainNode.gain.valueCurve.duration, 0.25);
+    assert.equal(outgoingGainNode.gain.valueCurve.curve[0], 1);
+    assert.equal(outgoingGainNode.gain.valueCurve.curve[outgoingGainNode.gain.valueCurve.curve.length - 1], 0);
+
+    assert.ok(currentGainNode.gain.valueCurve, "current gain should use a value curve");
+    assert.equal(currentGainNode.gain.valueCurve.duration, 0.25);
+    assert.ok(Math.abs(currentGainNode.gain.valueCurve.curve[0]) < 1e-15);
+    assert.equal(currentGainNode.gain.valueCurve.curve[currentGainNode.gain.valueCurve.curve.length - 1], 1);
 });
 
 test("playTrack keeps the current track active if a replacement track fails to load", async () => {

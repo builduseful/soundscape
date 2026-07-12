@@ -87,13 +87,15 @@ test("HTML exposes SVG and PNG favicon fallbacks", async () => {
     assert.match(source, /<link rel="apple-touch-icon" href="resources\/icons\/apple-touch-icon\.png" \/>/);
 });
 
-test("service worker precaches every cataloged soundscape and handles byte ranges", async () => {
+test("service worker precaches only the app shell and caches audio on demand with byte-range support", async () => {
     const source = await readFile(new URL("../sw.js", import.meta.url), "utf8");
 
     for (const track of tracks) {
         assert.match(source, new RegExp(escapeRegExp(`./${track.url}`)));
     }
 
+    assert.match(source, /cache\.addAll\(APP_SHELL_ASSETS\)/);
+    assert.doesNotMatch(source, /cache\.addAll\(AUDIO_ASSETS\)/);
     assert.match(source, /request\.headers\.has\("range"\)/);
     assert.match(source, /response\.ok\s*&&\s*response\.status\s*===\s*200/);
     assert.match(source, /cacheKey/);
@@ -102,6 +104,21 @@ test("service worker precaches every cataloged soundscape and handles byte range
     assert.match(source, /if \(!response\.ok\) return response/);
     assert.match(source, /status:\s*206/);
     assert.match(source, /Content-Range/);
+});
+
+test("service worker keys non-range cache lookups on the original request", async () => {
+    const source = await readFile(new URL("../sw.js", import.meta.url), "utf8");
+    const match = /async function tryCacheThenFetch\(request\) \{([\s\S]*?)\n\}/.exec(source);
+
+    assert.ok(match, "tryCacheThenFetch function should exist");
+
+    const body = match[1];
+
+    // cleanCacheKey() strips headers but preserves query params, so using it here
+    // would not prevent duplicate cache entries for cache-busting URLs.
+    assert.doesNotMatch(body, /cleanCacheKey/);
+    assert.match(body, /cache\.match\(request,\s*\{\s*ignoreSearch:\s*true\s*\}\)/);
+    assert.match(body, /cacheIfOk\(cache,\s*request,\s*response\)/);
 });
 
 function escapeRegExp(value) {

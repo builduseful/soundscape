@@ -1,4 +1,41 @@
 const FADE_DURATION_SECONDS = 0.25;
+const TRACK_CROSSFADE_SECONDS = 0.25;
+const LOOP_CROSSFADE_MS = 10;
+const CROSSFADE_CURVE_STEPS = 64;
+
+export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOOP_CROSSFADE_MS) {
+    const sampleRate = sourceBuffer.sampleRate;
+    const channels = sourceBuffer.numberOfChannels;
+    const originalLength = sourceBuffer.length;
+    const overlapSamples = Math.min(
+        Math.max(1, Math.round((crossfadeMs * sampleRate) / 1000)),
+        Math.floor(originalLength / 2),
+    );
+
+    const output = audioContext.createBuffer(channels, originalLength, sampleRate);
+
+    for (let ch = 0; ch < channels; ch++) {
+        const source = sourceBuffer.getChannelData(ch);
+        const target = output.getChannelData(ch);
+        target.set(source);
+
+        for (let i = 0; i < overlapSamples; i++) {
+            const t = i / overlapSamples;
+            // Equal-power sin/cos curves keep perceived loudness constant for
+            // noise-like ambience; linear fades create a small dip in the overlap.
+            const fadeOut = Math.cos(t * Math.PI / 2);
+            const fadeIn = Math.sin(t * Math.PI / 2);
+            const tailIndex = originalLength - overlapSamples + i;
+            target[tailIndex] = source[tailIndex] * fadeOut + source[i] * fadeIn;
+        }
+    }
+
+    return {
+        buffer: output,
+        loopStart: 0,
+        loopEnd: originalLength / sampleRate,
+    };
+}
 
 export class AudioPlayer {
     constructor(audioElement, { onStateChange } = {}) {
@@ -9,11 +46,14 @@ export class AudioPlayer {
         this.currentTrackUrl = undefined;
         this.mediaElementSourceNode = undefined;
         this.currentTrackGainNode = undefined;
+        this.outgoingGainNode = undefined;
+        this.outgoingSource = null;
         this.volume = 1;
 
         this.bufferCache = new Map();
         this.activeSource = null;
         this.activeBuffer = null;
+        this.activeLoopEnd = 0;
         this.activeSourceStartedAt = 0;
         this.activeSourceQueued = false;
         this.playbackRequestId = 0;
@@ -51,21 +91,18 @@ export class AudioPlayer {
     }
 
     getCurrentPosition() {
-        if (!this.hasContext() || !this.activeBuffer) return 0;
+        if (!this.hasContext() || !this.activeBuffer || !this.activeLoopEnd) return 0;
 
-        const duration = this.activeBuffer.duration;
-        if (!duration) return 0;
-
-        return (this.audioContext.currentTime - this.activeSourceStartedAt) % duration;
+        return (this.audioContext.currentTime - this.activeSourceStartedAt) % this.activeLoopEnd;
     }
 
     getMediaSessionPositionState() {
-        if (!this.activeBuffer) return null;
+        if (!this.activeBuffer || !this.activeLoopEnd) return null;
 
         return {
-            duration: this.activeBuffer.duration,
+            duration: this.activeLoopEnd,
             playbackRate: 1,
-            position: Math.min(this.getCurrentPosition(), this.activeBuffer.duration),
+            position: Math.min(this.getCurrentPosition(), this.activeLoopEnd),
         };
     }
 
@@ -88,10 +125,10 @@ export class AudioPlayer {
         const shouldLoadMediaElement = resetContext || this.currentTrackUrl !== track.url;
         this.playbackRequested = !startPaused;
 
-        let buffer;
+        let loopWindow;
 
         try {
-            buffer = await this.loadBuffer(track.url);
+            loopWindow = await this.loadBuffer(track.url);
         } catch (error) {
             if (requestId !== this.playbackRequestId) {
                 return false;
@@ -113,24 +150,82 @@ export class AudioPlayer {
             return false;
         }
 
+        const { buffer, loopStart, loopEnd } = loopWindow;
         const previousSource = this.activeSource;
         const nextSource = this.audioContext.createBufferSource();
         nextSource.buffer = buffer;
         nextSource.loop = loop;
-        nextSource.loopStart = 0;
-        nextSource.loopEnd = buffer.duration;
+        nextSource.loopStart = loopStart;
+        nextSource.loopEnd = loopEnd;
         nextSource.connect(this.currentTrackGainNode);
-        nextSource.start(this.audioContext.currentTime);
+
+        const now = this.audioContext.currentTime;
+        const shouldCrossfade = previousSource && this.currentTrackUrl !== track.url && this.playbackRequested;
+
+        if (shouldCrossfade) {
+            // End any previous crossfade that is still fading out so the
+            // reused outgoing gain node only carries one source at a time.
+            if (this.outgoingSource) {
+                try {
+                    this.outgoingSource.stop();
+                    this.outgoingSource.disconnect(this.outgoingGainNode);
+                } catch {}
+                this.outgoingSource = null;
+            }
+
+            const currentGain = this.currentTrackGainNode.gain.value;
+            const outgoingCurve = new Float32Array(CROSSFADE_CURVE_STEPS + 1);
+            const incomingCurve = new Float32Array(CROSSFADE_CURVE_STEPS + 1);
+
+            for (let i = 0; i <= CROSSFADE_CURVE_STEPS; i++) {
+                const t = i / CROSSFADE_CURVE_STEPS;
+                // Equal-power sin/cos curves keep the perceived loudness more
+                // constant than a linear fade when two sources overlap.
+                outgoingCurve[i] = Math.cos(t * Math.PI / 2) * currentGain;
+                incomingCurve[i] = Math.sin(t * Math.PI / 2) * this.volume;
+            }
+
+            // Clamp the floating-point endpoint so the fade reaches exactly zero.
+            outgoingCurve[CROSSFADE_CURVE_STEPS] = 0;
+
+            previousSource.disconnect(this.currentTrackGainNode);
+            previousSource.connect(this.outgoingGainNode);
+
+            this.outgoingGainNode.gain.cancelScheduledValues(now);
+            this.outgoingGainNode.gain.setValueAtTime(outgoingCurve[0], now);
+            this.outgoingGainNode.gain.setValueCurveAtTime(outgoingCurve, now, TRACK_CROSSFADE_SECONDS);
+            previousSource.stop(now + TRACK_CROSSFADE_SECONDS);
+
+            this.currentTrackGainNode.gain.cancelScheduledValues(now);
+            this.currentTrackGainNode.gain.setValueAtTime(incomingCurve[0], now);
+            this.currentTrackGainNode.gain.setValueCurveAtTime(incomingCurve, now, TRACK_CROSSFADE_SECONDS);
+
+            const fadingSource = previousSource;
+            this.outgoingSource = fadingSource;
+
+            setTimeout(() => {
+                try {
+                    fadingSource.disconnect(this.outgoingGainNode);
+                } catch {}
+                if (this.outgoingSource === fadingSource) {
+                    this.outgoingSource = null;
+                }
+            }, TRACK_CROSSFADE_SECONDS * 1000 + 100);
+        } else {
+            previousSource?.stop();
+        }
+
+        nextSource.start(now);
 
         this.activeSource = nextSource;
         this.activeBuffer = buffer;
-        this.activeSourceStartedAt = this.audioContext.currentTime;
+        this.activeLoopEnd = loopEnd;
+        this.activeSourceStartedAt = now;
         this.currentTrackUrl = track.url;
         // If the AudioContext is still suspended, the source's start event is queued
         // and won't actually play until resume(). Mark it so the statechange handler
         // can snap the start time to the real playback start.
         this.activeSourceQueued = this.audioContext.state !== "running";
-        previousSource?.stop();
 
         if (shouldLoadMediaElement) {
             this.audioElement.src = track.url;
@@ -152,13 +247,15 @@ export class AudioPlayer {
     async loadBuffer(url) {
         if (this.bufferCache.has(url)) return this.bufferCache.get(url);
 
-        const bufferPromise = this.fetchBuffer(url);
+        const bufferPromise = this.fetchBuffer(url).then(
+            (audioBuffer) => applyLoopCrossfade(audioBuffer, this.audioContext),
+        );
         this.bufferCache.set(url, bufferPromise);
 
         try {
-            const audioBuffer = await bufferPromise;
-            this.bufferCache.set(url, audioBuffer);
-            return audioBuffer;
+            const loopWindow = await bufferPromise;
+            this.bufferCache.set(url, loopWindow);
+            return loopWindow;
         } catch (error) {
             if (this.bufferCache.get(url) === bufferPromise) {
                 this.bufferCache.delete(url);
@@ -195,8 +292,13 @@ export class AudioPlayer {
 
         this.currentTrackGainNode = this.audioContext.createGain();
         this.currentTrackGainNode.gain.value = this.volume;
-
         this.currentTrackGainNode.connect(this.audioContext.destination);
+
+        // Reused for inter-track crossfades so we don't create/destroy a gain
+        // node every time the user skips tracks.
+        this.outgoingGainNode = this.audioContext.createGain();
+        this.outgoingGainNode.gain.value = 0;
+        this.outgoingGainNode.connect(this.audioContext.destination);
     }
 
     handleAudioContextStateChange() {

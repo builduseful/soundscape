@@ -159,6 +159,7 @@ export function installAppTestEnvironment({
 } = {}) {
     const audioContexts = [];
     const mediaSessionHandlers = new Map();
+    let mediaSessionHandlerCalls = 0;
     const mediaSessionPositionStates = [];
     const elements = new Map();
     const title = new FakeElement();
@@ -185,6 +186,7 @@ export function installAppTestEnvironment({
         "nextButton",
         "previousButton",
         "themeSelector",
+        "appVersion",
     ]) {
         elements.set(id, new FakeElement());
     }
@@ -248,6 +250,7 @@ export function installAppTestEnvironment({
                 metadata: undefined,
                 playbackState: "none",
                 setActionHandler(action, handler) {
+                    mediaSessionHandlerCalls += 1;
                     mediaSessionHandlers.set(action, handler);
                 },
                 setPositionState(positionState) {
@@ -329,8 +332,13 @@ export function installAppTestEnvironment({
                         this.calls.push({ name: "linearRampToValueAtTime", value, time });
                         this.value = value;
                     },
+                    setValueCurveAtTime(curve, time, duration) {
+                        this.calls.push({ name: "setValueCurveAtTime", curve, time, duration });
+                        this.value = curve[curve.length - 1];
+                    },
                 },
                 connect(node) {
+                    this.connectedTo = node;
                     return node;
                 },
             };
@@ -339,9 +347,30 @@ export function installAppTestEnvironment({
             return gainNode;
         }
 
+        createBuffer(numberOfChannels, length, sampleRate) {
+            const channels = [];
+            for (let i = 0; i < numberOfChannels; i++) {
+                channels.push(new Float32Array(length));
+            }
+
+            return {
+                sampleRate,
+                numberOfChannels,
+                length,
+                duration: length / sampleRate,
+                getChannelData(ch) {
+                    return channels[ch];
+                },
+                copyToChannel(data, ch) {
+                    channels[ch].set(data);
+                },
+            };
+        }
+
         createBufferSource() {
             const source = {
                 connect() {},
+                disconnect() {},
                 start() {},
                 stop() {},
             };
@@ -355,7 +384,25 @@ export function installAppTestEnvironment({
             if (this.decodeAudioDataShouldFail) {
                 throw new Error("Decode failed");
             }
-            return { arrayBuffer, duration: 30 };
+
+            const sampleRate = 48000;
+            const duration = 30;
+            const length = sampleRate * duration;
+            const channels = [new Float32Array(length)];
+
+            return {
+                arrayBuffer,
+                sampleRate,
+                numberOfChannels: channels.length,
+                length,
+                duration,
+                getChannelData(ch) {
+                    return channels[ch];
+                },
+                copyToChannel(data, ch) {
+                    channels[ch].set(data);
+                },
+            };
         }
 
         async resume() {
@@ -377,6 +424,9 @@ export function installAppTestEnvironment({
         timeouts,
         mediaActions: createMediaActions(mediaSessionHandlers),
         mediaSessionHandlers,
+        get mediaSessionHandlerCalls() {
+            return mediaSessionHandlerCalls;
+        },
         mediaSessionPositionStates,
         navigator: globalThis.navigator,
         storage,

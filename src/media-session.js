@@ -6,7 +6,7 @@ export function initMediaSession(track, actions, audioElement) {
     registerAudioElementHandlers(actions, audioElement);
 }
 
-function registerMediaSessionHandlers(actions) {
+export function registerMediaSessionHandlers(actions) {
     if (!supportsMediaSession()) return;
 
     setActionHandler("play", actions.playAudio);
@@ -35,7 +35,7 @@ export function updateMediaSessionStatus(track) {
     const metadata = {
         title: track.title,
         artist: "Soundscape",
-        album: "Nature",
+        album: "Soundscape",
     };
 
     navigator.mediaSession.metadata = typeof MediaMetadata === "function"

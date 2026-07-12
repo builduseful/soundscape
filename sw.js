@@ -1,4 +1,4 @@
-const CACHE_NAME = "soundscape-v2026-06-11-1";
+const CACHE_NAME = "soundscape-v2026-07-11-1";
 
 const APP_SHELL_ASSETS = [
     "./",
@@ -37,15 +37,10 @@ const AUDIO_ASSETS = [
     "./resources/soundscapes/white-noise-loop.opus",
 ];
 
-const PRECACHE_ASSETS = [
-    ...APP_SHELL_ASSETS,
-    ...AUDIO_ASSETS,
-];
-
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(PRECACHE_ASSETS))
+            .then((cache) => cache.addAll(APP_SHELL_ASSETS))
             .then(() => self.skipWaiting()),
     );
 });
@@ -82,16 +77,24 @@ self.addEventListener("fetch", (event) => {
 
 async function handleNavigation(request) {
     const cache = await caches.open(CACHE_NAME);
+    const indexKey = new URL("./index.html", self.location.origin).href;
 
     try {
         const response = await fetch(request);
-        await cacheIfOk(cache, "./index.html", response);
+        await cacheIfOk(cache, indexKey, response);
         return response;
     } catch {
-        return await cache.match("./index.html") ?? Response.error();
+        return await cache.match(indexKey) ?? Response.error();
     }
 }
 
+
+
+// Cache non-range requests under the original request URL. We intentionally do
+// NOT use cleanCacheKey() here: it strips headers but preserves query params, so
+// cache-busting URLs like script.js?v=... would still create duplicate cache
+// entries under different keys. ignoreSearch: true makes lookup work across
+// query-param variants while keeping storage keyed on the actual request.
 async function tryCacheThenFetch(request) {
     const cache = await caches.open(CACHE_NAME);
     const cachedResponse = await cache.match(request, { ignoreSearch: true });
@@ -122,7 +125,11 @@ async function handleRangeRequest(request) {
 async function fetchWithoutRange(request) {
     const headers = new Headers(request.headers);
     headers.delete("range");
-    return fetch(new Request(request, { headers }));
+    // Strip conditional headers so the network fetch returns the full 200 response
+    // instead of a 304; SW cache entries are 200s, and 304 bodies are empty.
+    headers.delete("if-none-match");
+    headers.delete("if-modified-since");
+    return fetch(new Request(request.url, { headers, cache: "no-store" }));
 }
 
 async function cacheIfOk(cache, key, response) {

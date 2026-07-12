@@ -113,16 +113,21 @@ body {
     gap: 26px;
 }
 
-.app-footer {
-    justify-content: flex-end;
-}
-
 .app-name {
     color: var(--color-text-muted);
     font-size: 1rem;
     font-weight: 600;
     letter-spacing: 0;
     margin: 0;
+}
+
+.app-version {
+    color: var(--color-text-soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    opacity: 0.8;
+    user-select: none;
 }
 
 .player {
@@ -233,12 +238,12 @@ button.play .button-icon {
     height: 52px;
 }
 
-button.play[aria-label="Play"] .play-icon--pause,
-button.play[aria-label="Pause"] .play-icon--play {
+button.play[data-playing="false"] .play-icon--pause,
+button.play[data-playing="true"] .play-icon--play {
     display: none;
 }
 
-button.play[aria-label="Pause"] .play-icon--pause {
+button.play[data-playing="true"] .play-icon--pause {
     display: block;
 }
 

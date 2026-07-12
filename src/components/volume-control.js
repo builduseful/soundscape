@@ -12,6 +12,7 @@ export class VolumeControl extends HTMLElement {
         this._buttonId = `volume-button-${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}`;
         this._sliderId = `volume-slider-${globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)}`;
         this._open = false;
+        this._listenersAttached = false;
         this._documentPointerHandler = this.handleDocumentPointerDown.bind(this);
         this._focusoutHandler = this.handleFocusOut.bind(this);
     }
@@ -29,6 +30,7 @@ export class VolumeControl extends HTMLElement {
     disconnectedCallback() {
         this.removeEventListener("focusout", this._focusoutHandler);
         document.removeEventListener("pointerdown", this._documentPointerHandler, true);
+        this._listenersAttached = false;
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -267,6 +269,9 @@ export class VolumeControl extends HTMLElement {
     }
 
     addEventListeners() {
+        if (this._listenersAttached) return;
+        this._listenersAttached = true;
+
         const button = this.querySelector("button");
         const slider = this.querySelector('input[type="range"]');
 

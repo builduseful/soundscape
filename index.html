@@ -2,7 +2,19 @@
 <html lang="en">
 
 <head>
+    <meta charset="utf-8" />
     <title>Soundscape</title>
+
+    <script>
+        // Apply the saved theme before the first paint to avoid a flash of the
+        // default light theme. "system" is handled by CSS media queries.
+        try {
+            const theme = localStorage.getItem("soundscape.themePreference");
+            if (theme === "dark" || theme === "light") {
+                document.documentElement.dataset.theme = theme;
+            }
+        } catch {}
+    </script>
 
     <meta name="description" content="A calm, installable ambience player for seamless looping background audio." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -30,7 +42,7 @@
                             <path d="M6 6.75h2.5v10.5H6V6.75Zm12.5 0v10.5L9.5 12l9-5.25Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path>
                         </svg>
                     </button>
-                    <button class="play" id="playPauseButton" type="button" aria-label="Play">
+                    <button class="play" id="playPauseButton" type="button" aria-label="Play" data-playing="false">
                         <svg class="button-icon play-icon play-icon--play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                             <path d="M6.75 5.5v13l11-6.5-11-6.5Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path>
                         </svg>
@@ -52,6 +64,7 @@
             </h1>
         </main>
         <footer class="app-footer">
+            <span class="app-version" id="appVersion" aria-label="Version"></span>
             <volume-control id="volumeControl" value="1"></volume-control>
         </footer>
         <audio id="audioElement" preload="auto"></audio>
