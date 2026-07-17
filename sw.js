@@ -1,4 +1,4 @@
-const CACHE_NAME = "soundscape-v2026-07-11-1";
+const CACHE_NAME = "soundscape-v2026-07-17-1";
 
 const APP_SHELL_ASSETS = [
     "./",
@@ -37,10 +37,14 @@ const AUDIO_ASSETS = [
     "./resources/soundscapes/white-noise-loop.opus",
 ];
 
+// Only the app shell is precached at install time (≈108 KB). Audio files are
+// cached on-demand when the user plays a track — the sanitization in
+// cacheIfOk guarantees offline-safe entries without an upfront download of
+// the full catalog.
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(APP_SHELL_ASSETS))
+            .then((cache) => precacheAll(cache, APP_SHELL_ASSETS))
             .then(() => self.skipWaiting()),
     );
 });
@@ -132,10 +136,47 @@ async function fetchWithoutRange(request) {
     return fetch(new Request(request.url, { headers, cache: "no-store" }));
 }
 
+// Precaching goes through fetch + cacheIfOk instead of cache.addAll on
+// purpose: addAll can store an already-decoded body together with the
+// original Content-Encoding header (e.g. brotli), and serving such an entry
+// from the cache makes the browser try to decode plain bytes again, which
+// kills offline navigations with net::ERR_FAILED.
+async function precacheAll(cache, urls) {
+    await Promise.all(urls.map(async (url) => {
+        const response = await fetch(new Request(url, { cache: "no-cache" }));
+
+        if (!response.ok) {
+            throw new Error(`Could not precache ${url}: ${response.status} ${response.statusText}`);
+        }
+
+        await cacheIfOk(cache, url, response);
+    }));
+}
+
 async function cacheIfOk(cache, key, response) {
-    if (response.ok && response.status === 200) {
-        await cache.put(key, response.clone());
-    }
+    if (!response.ok || response.status !== 200) return;
+
+    // Store a sanitized copy. The body reaching the service worker has already
+    // been content-decoded, so a stored Content-Encoding header poisons the
+    // entry (the browser would try to decode plain bytes again when it is
+    // served back). Vary: Accept-Encoding makes cache lookups depend on the
+    // requester's encoding headers even though the stored body is identical,
+    // and Content-Length must match the stored body. Hop-by-hop headers do not
+    // belong in a cache at all.
+    const buffer = await response.clone().arrayBuffer();
+    const headers = new Headers(response.headers);
+
+    headers.delete("content-encoding");
+    headers.delete("vary");
+    headers.delete("connection");
+    headers.delete("keep-alive");
+    headers.set("content-length", String(buffer.byteLength));
+
+    await cache.put(key, new Response(buffer, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+    }));
 }
 
 function cleanCacheKey(request) {

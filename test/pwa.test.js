@@ -87,17 +87,25 @@ test("HTML exposes SVG and PNG favicon fallbacks", async () => {
     assert.match(source, /<link rel="apple-touch-icon" href="resources\/icons\/apple-touch-icon\.png" \/>/);
 });
 
-test("service worker precaches only the app shell and caches audio on demand with byte-range support", async () => {
+test("service worker precaches the app shell and caches audio on demand with sanitized entries and byte-range support", async () => {
     const source = await readFile(new URL("../sw.js", import.meta.url), "utf8");
 
     for (const track of tracks) {
         assert.match(source, new RegExp(escapeRegExp(`./${track.url}`)));
     }
 
-    assert.match(source, /cache\.addAll\(APP_SHELL_ASSETS\)/);
-    assert.doesNotMatch(source, /cache\.addAll\(AUDIO_ASSETS\)/);
+    // Audio files are defined in AUDIO_ASSETS but only the app shell is
+    // precached at install; audio is cached on first play. cache.addAll can
+    // store decoded bodies with stale Content-Encoding headers, so precaching
+    // must go through the sanitizing cacheIfOk path instead.
+    assert.match(source, /AUDIO_ASSETS/);
+    assert.match(source, /APP_SHELL_ASSETS/);
+    assert.doesNotMatch(source, /cache\.addAll\(/);
+    assert.match(source, /precacheAll\(cache, APP_SHELL_ASSETS\)/);
     assert.match(source, /request\.headers\.has\("range"\)/);
-    assert.match(source, /response\.ok\s*&&\s*response\.status\s*===\s*200/);
+    assert.match(source, /!response\.ok\s*\|\|\s*response\.status\s*!==\s*200/);
+    assert.match(source, /headers\.delete\("content-encoding"\)/);
+    assert.match(source, /headers\.delete\("vary"\)/);
     assert.match(source, /cacheKey/);
     assert.match(source, /favicon-16\.png/);
     assert.match(source, /favicon-32\.png/);

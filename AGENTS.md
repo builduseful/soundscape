@@ -56,11 +56,15 @@ soundscape/
 ## Development
 
 - Start the local dev server with `npm start` (see `package.json` for the exact command).
-- **Agents only:** The shell tool has a timeout, so `npm start` will be killed before the server is ready. To start the server in a detached background process with request logs captured, use:
+- **Agents only:** The shell tool has a timeout, so `npm start` will be killed before the server is ready. Start the server as a fully detached background process via WMI (with request logs captured):
   ```powershell
-  Start-Process -FilePath "pwsh" -ArgumentList "-Command", "npx serve@14.2.6 . --listen 4321 --no-port-switching" -WindowStyle Hidden -RedirectStandardOutput ".temp/server.log" -RedirectStandardError ".temp/server.err" -PassThru
+  Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+      CommandLine = 'cmd /c "npx serve@14.2.6 . --listen 4321 --no-port-switching > .temp\server.log 2>&1"'
+      CurrentDirectory = 'A:\Repos\soundscape'
+  }
   ```
-  The command returns the wrapper process ID immediately; the actual `serve` process may take a second or two to bind to port 4321. Then navigate the browser — the browser will retry until the server is ready.
+  Do NOT use `Start-Process` for this: its child processes inherit the shell tool's output pipes, so the tool keeps waiting for the pipes to close and the command appears to hang until it is interrupted. `Win32_Process.Create` inherits no handles and returns immediately with the new PID.
+  The command returns immediately; the actual `serve` process may take a second or two to bind to port 4321. Then navigate the browser — the browser will retry until the server is ready.
   - To stop the server:
     ```powershell
     Get-NetTCPConnection -LocalPort 4321 -ErrorAction SilentlyContinue |
