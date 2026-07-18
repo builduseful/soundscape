@@ -11,9 +11,9 @@ WORKDIR /app
 
 COPY . .
 
-EXPOSE 4321
+EXPOSE 80
 
 # Default: serve static files with Caddy's file-server.
 # Override the command for tests:
 #   <container-engine> container run --rm soundscape npm test
-CMD ["caddy", "file-server", "--listen", ":4321", "--root", "/app"]
+CMD ["caddy", "file-server", "--listen", ":80", "--root", "/app"]

@@ -21,12 +21,12 @@ An OCI-compatible container engine (Docker, Podman, wslc, or similar). See `.con
 ```sh
 <container-engine> build --tag soundscape .
 <container-engine> container run --detach \
-    --publish 4321:4321 \
+    --publish 4321:80 \
     --volume ${PWD}:/app \
     soundscape
 ```
 
-Then open `http://localhost:4321`. The `--volume` bind mount maps your working directory into the container so source edits appear without rebuilding.
+Then open `http://soundscape.localhost:4321`. The `--volume` bind mount maps your working directory into the container so source edits appear without rebuilding.
 
 The project uses Caddy as a static file server inside the container — everything is self-contained, no Node.js or other tools needed on the host.
 

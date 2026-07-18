@@ -30,7 +30,8 @@ soundscape/
 │   ├── icons/                   # PWA/favicon icons (png + svg)
 │   └── soundscapes/             # Looping ambience audio files (.opus)
 ├── scripts/
-│   └── export-icons.sh         # Icon generation helper
+│   ├── export-icons.sh         # Icon generation helper
+│   └── send-media-key.ps1     # OS-level media key injection for testing
 ├── test/                        # Unit tests (dependency-free)
 ├── test-helpers/
 │   └── app-test-harness.js     # Shared test fixtures/utilities
@@ -59,17 +60,19 @@ soundscape/
 ## Development and Testing
 
 - The app works with any OCI-compatible container engine. **Always read `.config.md` first** for this project's specific engine, then substitute `<container-engine>` in the commands below accordingly.
+
 - **Agents only:** The shell tool has a timeout, so `npm test` and builds may be killed before completing. Start the server via `run --detach` (returns immediately). The `--volume` bind mount maps your working directory into the container so edits appear without rebuilding:
   ```sh
   <container-engine> build --tag soundscape .
+  <container-engine> container rm soundscape-server 2>$null  # Remove stale container if it exists
   <container-engine> container run --detach \
-      --publish 4321:4321 \
+      --publish 4321:80 \
       --volume ${PWD}:/app \
       --name soundscape-server \
       soundscape
   ```
-  Then navigate the browser — it will retry until the server is ready.
-  - To stop the server:
+  - After starting, **verify the server is serving** before launching the browser. Use curl or a quick page check. The browser may silently show a cached/stale page otherwise, especially with the service worker active.
+  - To stop and remove the server:
     ```sh
     <container-engine> container stop soundscape-server
     <container-engine> container rm soundscape-server
@@ -83,9 +86,29 @@ soundscape/
   ```sh
   <container-engine> container run --rm --volume ${PWD}:/app soundscape npm test  # live source: picks up your current file state
   ```
-- For browser-driven testing, **always use visible (headed) mode** — never headless. Use `playwright-cli open http://localhost:4321 --headed --persistent` to drive a visible browser the user can watch and listen to, then `playwright-cli close` when done (see the playwright-cli skill for full command reference). This uses Playwright's bundled Chromium (no yellow automation warning banner) and a persistent profile that remembers the window size.
-  - **Window sizing:** `playwright-cli resize 900 700` — sets viewport size.
-  - Unregister the service worker and `--ignoreCache` reload when verifying new code.
+- For browser-driven testing, **always use visible (headed) mode** — never headless. Follow this exact sequence when opening the browser:
+
+  1. **Open** the browser and navigate:
+     ```sh
+     playwright-cli open http://soundscape.localhost:4321 --headed --persistent
+     ```
+     Or with a fresh profile for clean-state testing:
+     ```sh
+     playwright-cli open http://soundscape.localhost:4321 --headed --persistent --profile=".temp/fresh-profile"
+     ```
+  2. **Resize** the window to a consistent viewport:
+     ```sh
+     playwright-cli resize 900 700
+     ```
+  3. Run your interactions, then **close** when done:
+     ```sh
+     playwright-cli close
+     ```
+
+  Additional notes:
+  - **Unregister SW + `--ignoreCache`** reload when verifying new code.
+  - **Snapshot refs change between sessions** — always take a fresh `snapshot` before interacting, since element refs (e.g. `e27`, `e28`) are generated per-session and don't carry over after closing/reopening the browser.
+  - **Fresh profile** (step 1 alt) avoids interference from previously saved localStorage preferences (track, volume, theme).
 
 ## Browser Interaction
 
@@ -93,6 +116,25 @@ soundscape/
 - playwright-cli also handles network requests, console messages, and tracing which captures action logs, DOM snapshots, network details, and periodic screenshots.
 - Fall back to `chrome-devtools_*` tools when you need something playwright-cli can't provide (e.g. heap snapshots, performance traces at the engine level).
 - Both can be used together in a session — playwright-cli for interaction, chrome-devtools for deeper debugging on the same page.
+
+## Testing Methodology
+
+- **Check console first** — run `playwright-cli console` after every action to catch warnings/errors before they scroll away.
+- **Verify network** — run `playwright-cli requests` to confirm expected resources loaded (audio .opus files return 200, SW serves from cache when offline).
+- **Check UI state** — use `snapshot` for visual structure, `eval` for JS-driven state (e.g. Media Session metadata/playbackState, localStorage values).
+- **Track changes have a 420ms title animation** — when testing track navigation, verify state via `navigator.mediaSession.metadata.title` (immediate) rather than the `<h1>` textContent (which settles after the animation completes). Or wait for the `animationend` event.
+- **Key press semantics** — `playwright-cli press "ArrowRight"` generates a `keydown` event with `event.key === "ArrowRight"`. Space for play/pause uses `event.key === " "`. The `handleDocumentKeydown` handler suppresses repeat events (`event.repeat`), so press keys without holding.
+- **Lighthouse audits** — when using `chrome-devtools_lighthouse_audit`, first ensure DevTools is pointed at the target page (not `about:blank`) via `chrome-devtools_navigate_page`.
+- **Media Session is authoritative** — when checking playback state, `navigator.mediaSession.playbackState` is the most reliable source (it reflects the app's actual state), while the play button's `aria-label` and `data-playing` attribute mirror the same value.
+- **Hardware media key testing** — synthetic keyboard events (Playwright `press`, CDP `Input.dispatchKeyEvent`) are NOT routed through the Media Session API by Chromium. To test real hardware media keys (MediaPlayPause, MediaTrackNext, MediaTrackPrevious, MediaStop), send OS-level input events. On Windows:
+  ```powershell
+  # The script is available at scripts/send-media-key.ps1
+  PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key Next
+  PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key Previous
+  PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key PlayPause
+  PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key Stop
+  ```
+  The browser window must be focused (not minimized) for OS-level key events to reach it. Use `Start-Sleep -Milliseconds 800` between successive key presses to allow async track loading to complete; rapid-fire presses (<500ms apart) can cause unexpected track ordering due to concurrent async handlers.
 
 ## Versioning
 
