@@ -8,13 +8,15 @@ Soundscape is a browser-based Progressive Web App (PWA) that plays seamless loop
 
 ```
 soundscape/
-├── index.html              # App entry point, loads script.js and styles
-├── style.css               # App-wide styling (component internals live in @scope blocks)
-├── script.js               # App bootstrap: wires audio, UI, state, and components
-├── sw.js                   # Service worker for offline/PWA support
-├── manifest.webmanifest    # PWA manifest
-├── CNAME                   # Custom domain for deployment
-├── package.json            # Scripts and metadata (npm start, npm test)
+├── Dockerfile               # Builds the container image (Caddy + Node)
+├── .dockerignore            # Excludes unnecessary files from the build
+├── index.html               # App entry point, loads script.js and styles
+├── style.css                # App-wide styling (component internals live in @scope blocks)
+├── script.js                # App bootstrap: wires audio, UI, state, and components
+├── sw.js                    # Service worker for offline/PWA support
+├── manifest.webmanifest     # PWA manifest
+├── CNAME                    # Custom domain for deployment
+├── package.json             # Scripts and metadata (npm test)
 ├── src/
 │   ├── audio-player.js          # Web Audio + HTMLAudioElement playback engine
 │   ├── media-session.js         # Media Session API integration (metadata, actions)
@@ -32,6 +34,7 @@ soundscape/
 ├── test/                        # Unit tests (dependency-free)
 ├── test-helpers/
 │   └── app-test-harness.js     # Shared test fixtures/utilities
+├── .config.md                  # Per-developer configuration (gitignored)
 └── .opencode/                  # Opencode agent/skill config (not app code)
 ```
 
@@ -53,36 +56,43 @@ soundscape/
 - Treat Media Session and Audio Session APIs as progressive enhancements. When available, keep metadata, playback state, actions, and decoded-buffer position state in sync; when unavailable, playback should still work.
 - Re-register Media Session action handlers after every track change. Some browsers drop the Media Session association when the long-lived `<audio>` element's `src` changes, so refreshing the handlers (and metadata) inside `playCurrentTrack` keeps keyboard/earphone controls working across tracks.
 
-## Development
+## Development and Testing
 
-- Start the local dev server with `npm start` (see `package.json` for the exact command).
-- **Agents only:** The shell tool has a timeout, so `npm start` will be killed before the server is ready. Start the server as a fully detached background process via WMI (with request logs captured):
-  ```powershell
-  Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-      CommandLine = 'cmd /c "npx serve@14.2.6 . --listen 4321 --no-port-switching > .temp\server.log 2>&1"'
-      CurrentDirectory = 'A:\Repos\soundscape'
-  }
+- The app works with any OCI-compatible container engine. **Always read `.config.md` first** for this project's specific engine, then substitute `<container-engine>` in the commands below accordingly.
+- **Agents only:** The shell tool has a timeout, so `npm test` and builds may be killed before completing. Start the server via `run --detach` (returns immediately). The `--volume` bind mount maps your working directory into the container so edits appear without rebuilding:
+  ```sh
+  <container-engine> build --tag soundscape .
+  <container-engine> container run --detach \
+      --publish 4321:4321 \
+      --volume ${PWD}:/app \
+      --name soundscape-server \
+      soundscape
   ```
-  Do NOT use `Start-Process` for this: its child processes inherit the shell tool's output pipes, so the tool keeps waiting for the pipes to close and the command appears to hang until it is interrupted. `Win32_Process.Create` inherits no handles and returns immediately with the new PID.
-  The command returns immediately; the actual `serve` process may take a second or two to bind to port 4321. Then navigate the browser — the browser will retry until the server is ready.
+  Then navigate the browser — it will retry until the server is ready.
   - To stop the server:
-    ```powershell
-    Get-NetTCPConnection -LocalPort 4321 -ErrorAction SilentlyContinue |
-        Where-Object { $_.State -eq 'Listen' } |
-        Select-Object -ExpandProperty OwningProcess -Unique |
-        ForEach-Object { Stop-Process -Id ([int]$_) -Force -ErrorAction SilentlyContinue }
+    ```sh
+    <container-engine> container stop soundscape-server
+    <container-engine> container rm soundscape-server
     ```
-    If the command returns no output, the process may have already dropped its listening socket but still be running. Verify with `Get-Process -Name "node"` or `Get-NetTCPConnection -LocalPort 4321` and force-kill the remaining node process if needed.
   - The app uses a service worker, so the browser may display a cached version of the page after the server is stopped. To confirm the server is actually running, use the browser's Network panel or perform a hard reload (`Ctrl+Shift+R`).
   - On a first visit the page reloads once after the service worker claims the client; this guarantees that cached navigations and audio requests are handled by the SW. Avoid hard reloads when testing offline behavior because they bypass the service worker.
   - Favicon and some manifest icon requests bypass the service worker by design in Chrome, so expect occasional `304` revalidation log entries for those icons even when the app shell is cached.
 - Do not open `index.html` directly via `file://`; the app requires HTTP for module loading and service worker support.
 - Put agent-specific temporary files in `.temp/` (already gitignored); do not write temporary files outside the repo.
+- Run unit tests:
+  ```sh
+  <container-engine> container run --rm --volume ${PWD}:/app soundscape npm test  # live source: picks up your current file state
+  ```
+- For browser-driven testing, **always use visible (headed) mode** — never headless. Use `playwright-cli open http://localhost:4321 --headed --persistent` to drive a visible browser the user can watch and listen to, then `playwright-cli close` when done (see the playwright-cli skill for full command reference). This uses Playwright's bundled Chromium (no yellow automation warning banner) and a persistent profile that remembers the window size.
+  - **Window sizing:** `playwright-cli resize 900 700` — sets viewport size.
+  - Unregister the service worker and `--ignoreCache` reload when verifying new code.
 
-## Testing
+## Browser Interaction
 
-- Run `npm test` for the dependency-free unit tests (see `package.json` for the exact command).
-- For browser-driven testing, use `playwright-cli open http://localhost:4321 --browser=chrome --headed` to drive a visible Chrome the user can watch and listen to, then `playwright-cli close` when done (see the playwright-cli skill for full command reference). Unregister the service worker and `--ignoreCache` reload when verifying new code.
+- Prefer `playwright-cli` for all browser interaction (clicking, filling forms, snapshots, screenshots, console inspection). Its YAML snapshots are clearer, it handles hidden elements (e.g. `pointer-events: none`) correctly, and it closes the browser cleanly with no "last tab" limitation.
+- playwright-cli also handles network requests, console messages, and tracing which captures action logs, DOM snapshots, network details, and periodic screenshots.
+- Fall back to `chrome-devtools_*` tools when you need something playwright-cli can't provide (e.g. heap snapshots, performance traces at the engine level).
+- Both can be used together in a session — playwright-cli for interaction, chrome-devtools for deeper debugging on the same page.
 
 ## Versioning
 

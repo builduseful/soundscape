@@ -12,16 +12,29 @@ It supports:
 - Media Session integration for browser and OS media controls
 - sample-accurate looping through Web Audio
 
+## Prerequisites
+
+An OCI-compatible container engine (Docker, Podman, wslc, or similar). See `.config.md` for this project's specific engine; substitute `<container-engine>` below accordingly.
+
 ## Running
 
 ```sh
-npm start
+<container-engine> build --tag soundscape .
+<container-engine> container run --detach \
+    --publish 4321:4321 \
+    --volume ${PWD}:/app \
+    soundscape
 ```
 
-Then open `http://localhost:8080`. The app requires a static file server because it uses ES modules and a service worker.
+Then open `http://localhost:4321`. The `--volume` bind mount maps your working directory into the container so source edits appear without rebuilding.
+
+The project uses Caddy as a static file server inside the container — everything is self-contained, no Node.js or other tools needed on the host.
 
 ## Testing
 
 ```sh
-npm test
+<container-engine> build --tag soundscape .
+<container-engine> container run --rm \
+    --volume ${PWD}:/app \
+    soundscape npm test
 ```

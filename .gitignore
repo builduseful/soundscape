@@ -7,3 +7,6 @@ resources/gitignore/
 
 .playwright/
 .playwright-cli/
+
+# Per-developer configuration
+.config.md

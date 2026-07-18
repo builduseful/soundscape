@@ -1,0 +1,18 @@
+# Version control
+.git/
+.gitignore
+
+# Agent and tooling config — not needed at runtime
+.agents/
+.opencode/
+.playwright/
+.playwright-cli/
+.temp/
+.vs/
+
+# Documentation — runtime doesn't need it
+*.md
+docs/
+
+# Icon export script — requires Inkscape on the host
+scripts/export-icons.sh

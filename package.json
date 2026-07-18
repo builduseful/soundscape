@@ -1,8 +1,12 @@
 {
+  "name": "soundscape",
   "version": "1.1.2",
+  "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
-    "start": "npx serve@14.2.6 . --listen 4321 --no-port-switching",
     "test": "node --test"
   }
 }
