@@ -30,6 +30,12 @@ Then open `http://soundscape.localhost:4321`. The `--volume` bind mount maps you
 
 The project uses Caddy as a static file server inside the container — everything is self-contained, no Node.js or other tools needed on the host.
 
+The default image also bundles Node.js so it can run `npm test`. For a slim runtime-only image (~50 MB, Caddy without Node), build the `serve` target:
+
+```sh
+<container-engine> build --tag soundscape --target serve .
+```
+
 ## Testing
 
 ```sh

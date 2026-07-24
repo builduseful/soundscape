@@ -21,3 +21,9 @@ export const tracks = [
     { title: "Pink Noise", url: "resources/soundscapes/pink-noise-loop.opus", mime: OGG_OPUS_MIME },
     { title: "White Noise", url: "resources/soundscapes/white-noise-loop.opus", mime: OGG_OPUS_MIME },
 ];
+
+// URL-safe identifier derived from the title ("Rain & Thunder" → "rain-thunder").
+// Used by the ?track= query param and the manifest app shortcuts.
+export function trackSlug(track) {
+    return track.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}

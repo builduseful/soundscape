@@ -8,7 +8,7 @@ Soundscape is a browser-based Progressive Web App (PWA) that plays seamless loop
 
 ```
 soundscape/
-├── Dockerfile               # Builds the container image (Caddy + Node)
+├── Dockerfile               # Multi-target image: default = Caddy + Node (serve + npm test); `--target serve` = slim Caddy-only runtime
 ├── .dockerignore            # Excludes unnecessary files from the build
 ├── index.html               # App entry point, loads script.js and styles
 ├── style.css                # App-wide styling (component internals live in @scope blocks)
@@ -20,7 +20,7 @@ soundscape/
 ├── src/
 │   ├── audio-player.js          # Web Audio + HTMLAudioElement playback engine
 │   ├── media-session.js         # Media Session API integration (metadata, actions)
-│   ├── pwa.js                   # PWA lifecycle (registration, install prompts)
+│   ├── pwa.js                   # PWA lifecycle (registration, install prompts, launch queue)
 │   ├── theme-utils.js           # Light/dark/system theme helpers
 │   ├── tracks.js                # Track catalog and metadata
 │   └── components/
@@ -59,7 +59,7 @@ soundscape/
 
 ## Development and Testing
 
-- The app works with any OCI-compatible container engine. **Always read `.config.md` first** for this project's specific engine, then substitute `<container-engine>` in the commands below accordingly.
+- The app works with any OCI-compatible container engine. **Always read `.config.md` first** for this project's specific engine, then substitute `<container-engine>` in the commands below accordingly. If `.config.md` is not configured or does not specify an engine, fall back to `docker`.
 
 - **Agents only:** The shell tool has a timeout, so `npm test` and builds may be killed before completing. Start the server via `run --detach` (returns immediately). The `--volume` bind mount maps your working directory into the container so edits appear without rebuilding:
   ```sh

@@ -28,3 +28,18 @@ export function registerServiceWorker({
 
     return true;
 }
+
+// Progressive enhancement for the Launch Queue API. With the manifest's
+// launch_handler client_mode set to "focus-existing", launches of an
+// already-running instance (e.g. app shortcut clicks) are delivered to the
+// consumer instead of opening a second window.
+export function registerLaunchQueueConsumer(consumer, {
+    launchQueue = globalThis.launchQueue,
+} = {}) {
+    if (typeof consumer !== "function" || typeof launchQueue?.setConsumer !== "function") {
+        return false;
+    }
+
+    launchQueue.setConsumer(consumer);
+    return true;
+}

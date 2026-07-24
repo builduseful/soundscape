@@ -5,6 +5,7 @@ const originalElement = globalThis.Element;
 const originalFetch = globalThis.fetch;
 const originalHTMLElement = globalThis.HTMLElement;
 const originalLocalStorage = globalThis.localStorage;
+const originalLaunchQueue = globalThis.launchQueue;
 const originalMatchMedia = globalThis.matchMedia;
 const originalMediaMetadata = globalThis.MediaMetadata;
 const originalNavigator = globalThis.navigator;
@@ -154,6 +155,7 @@ class FakeAudioElement extends FakeElement {
 
 export function installAppTestEnvironment({
     fetch = defaultFetch,
+    launchQueue,
     matchMediaMatches = false,
     storageEntries = {},
 } = {}) {
@@ -239,6 +241,7 @@ export function installAppTestEnvironment({
             storage.set(key, String(value));
         },
     };
+    globalThis.launchQueue = launchQueue;
     globalThis.matchMedia = () => ({ matches: matchMediaMatches });
     globalThis.MediaMetadata = function FakeMediaMetadata(metadata) {
         Object.assign(this, metadata);
@@ -463,6 +466,7 @@ export function restoreAppTestEnvironment() {
     globalThis.fetch = originalFetch;
     globalThis.HTMLElement = originalHTMLElement;
     globalThis.localStorage = originalLocalStorage;
+    globalThis.launchQueue = originalLaunchQueue;
     globalThis.matchMedia = originalMatchMedia;
     globalThis.MediaMetadata = originalMediaMetadata;
     globalThis.clearInterval = originalClearInterval;

@@ -9,10 +9,14 @@
 .playwright-cli/
 .temp/
 .vs/
+opencode.json
 
 # Documentation — runtime doesn't need it
 *.md
 docs/
 
-# Icon export script — requires Inkscape on the host
-scripts/export-icons.sh
+# Host-side helper scripts (media-key injection, icon export)
+scripts/
+
+# GitHub Pages deployment config — irrelevant inside the container
+CNAME

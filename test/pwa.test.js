@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { afterEach, test } from "node:test";
 
-import { registerServiceWorker } from "../src/pwa.js";
-import { tracks } from "../src/tracks.js";
+import { registerLaunchQueueConsumer, registerServiceWorker } from "../src/pwa.js";
+import { tracks, trackSlug } from "../src/tracks.js";
 
 const originalConsoleWarn = console.warn;
 
@@ -60,6 +60,32 @@ test("registerServiceWorker reports registration failures without crashing the a
     assert.match(warnings[0][0], /offline support could not be installed/);
 });
 
+test("registerLaunchQueueConsumer installs the consumer when the Launch Queue API is available", () => {
+    const consumers = [];
+    const consumer = () => {};
+
+    assert.equal(registerLaunchQueueConsumer(consumer, {
+        launchQueue: {
+            setConsumer(value) {
+                consumers.push(value);
+            },
+        },
+    }), true);
+    assert.deepEqual(consumers, [consumer]);
+});
+
+test("registerLaunchQueueConsumer degrades gracefully without the Launch Queue API", () => {
+    assert.equal(registerLaunchQueueConsumer(() => {}, { launchQueue: undefined }), false);
+    assert.equal(registerLaunchQueueConsumer(() => {}, { launchQueue: {} }), false);
+    assert.equal(registerLaunchQueueConsumer(null, {
+        launchQueue: {
+            setConsumer() {
+                assert.fail("setConsumer should not be called for an invalid consumer");
+            },
+        },
+    }), false);
+});
+
 test("manifest exposes an installable standalone app with any and maskable icons", async () => {
     const source = await readFile(new URL("../manifest.webmanifest", import.meta.url), "utf8");
     const manifest = JSON.parse(source);
@@ -76,6 +102,22 @@ test("manifest exposes an installable standalone app with any and maskable icons
     assert.ok(manifest.icons.some((icon) => icon.src === "resources/icons/maskable-icon-512.png" && icon.purpose === "maskable"));
     assert.ok(manifest.icons.some((icon) => icon.purpose === "any"));
     assert.ok(manifest.icons.some((icon) => icon.purpose === "maskable"));
+});
+
+test("manifest app shortcuts point at real tracks via ?track= slugs", async () => {
+    const source = await readFile(new URL("../manifest.webmanifest", import.meta.url), "utf8");
+    const manifest = JSON.parse(source);
+    const slugs = tracks.map((track) => trackSlug(track));
+
+    assert.ok(Array.isArray(manifest.shortcuts));
+    assert.notEqual(manifest.shortcuts.length, 0);
+
+    for (const shortcut of manifest.shortcuts) {
+        const slug = new URLSearchParams(new URL(shortcut.url, "https://example.test").search).get("track");
+
+        assert.ok(slug, `Shortcut "${shortcut.name}" should carry a ?track= param`);
+        assert.ok(slugs.includes(slug), `Shortcut slug "${slug}" should match a track`);
+    }
 });
 
 test("HTML exposes SVG and PNG favicon fallbacks", async () => {

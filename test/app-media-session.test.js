@@ -5,7 +5,7 @@ import {
     restoreAppTestEnvironment,
     startAppTestEnvironment,
 } from "../test-helpers/app-test-harness.js";
-import { tracks } from "../src/tracks.js";
+import { tracks, trackSlug } from "../src/tracks.js";
 
 const originalConsoleWarn = console.warn;
 
@@ -512,6 +512,57 @@ test("play/pause button aria-label stays in sync with playback state", async () 
 
     await mediaActions.pause();
     assert.equal(playPauseButton.getAttribute("aria-label"), "Play");
+});
+
+test("app shortcut launches switch tracks in a running instance", async () => {
+    let launchConsumer;
+    const { audioElement, mediaActions, navigator, storage } = await startAppTestEnvironment({
+        launchQueue: {
+            setConsumer(consumer) {
+                launchConsumer = consumer;
+            },
+        },
+    });
+
+    await mediaActions.play();
+    assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
+    assert.equal(audioElement.playCalls, 1);
+
+    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${trackSlug(tracks[2])}` });
+    await waitFor(() => navigator.mediaSession.metadata.title === tracks[2].title);
+
+    assert.equal(audioElement.src, tracks[2].url);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(audioElement.playCalls, 2);
+    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[2].url);
+
+    await mediaActions.pause();
+});
+
+test("app shortcut launches ignore unknown slugs and the current track", async () => {
+    let launchConsumer;
+    const { audioElement, mediaActions, navigator } = await startAppTestEnvironment({
+        launchQueue: {
+            setConsumer(consumer) {
+                launchConsumer = consumer;
+            },
+        },
+    });
+
+    await mediaActions.play();
+    assert.equal(audioElement.playCalls, 1);
+
+    launchConsumer({ targetURL: "https://soundscape.localhost/?track=does-not-exist" });
+    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${trackSlug(tracks[0])}` });
+    launchConsumer({});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(audioElement.src, tracks[0].url);
+    assert.equal(audioElement.playCalls, 1);
+
+    await mediaActions.pause();
 });
 
 test("media stop key pauses the app", async () => {

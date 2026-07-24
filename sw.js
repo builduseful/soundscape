@@ -1,4 +1,7 @@
-const CACHE_NAME = "soundscape-v2026-07-17-1";
+// Bump this on every deploy so activation purges the previous cache and the
+// app shell below is re-precached. APP_SHELL_ASSETS must list every module and
+// asset needed for a cold offline start (anything imported by script.js).
+const CACHE_NAME = "soundscape-v2026-07-24-1";
 
 const APP_SHELL_ASSETS = [
     "./",
@@ -11,6 +14,7 @@ const APP_SHELL_ASSETS = [
     "./src/pwa.js",
     "./src/theme-utils.js",
     "./src/tracks.js",
+    "./src/version.js",
     "./src/components/theme-selector.js",
     "./src/components/volume-control.js",
     "./resources/icons/apple-touch-icon.png",

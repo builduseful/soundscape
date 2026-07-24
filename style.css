@@ -1,84 +1,42 @@
+/* Each token is declared once as light-dark(<light>, <dark>). The used value
+   follows the element's computed color-scheme: system preference by default,
+   or the explicit light/dark override set by data-theme below. Requires
+   browsers with light-dark() support (Baseline 2024). */
 :root {
-    color-scheme: light;
-    --color-page: #f6f7f9;
-    --color-surface: #ffffff;
-    --color-surface-muted: #eef1f4;
-    --color-surface-subtle: #f4f6f8;
-    --color-text: #171a1f;
-    --color-text-muted: #626a76;
-    --color-text-soft: #8a93a0;
-    --color-border: #d9dee6;
-    --color-border-subtle: #e6e9ee;
-    --color-primary: #171a1f;
-    --color-primary-hover: #30343b;
-    --color-primary-text: #ffffff;
-    --color-secondary: #eceff3;
-    --color-secondary-hover: #dfe4ea;
-    --color-secondary-text: #2d333b;
-    --color-danger: #c73535;
-    --color-danger-hover: #ad2e2e;
-    --color-danger-soft: #fff0f0;
-    --color-danger-text: #b22d2d;
-    --color-success: #2f9d63;
-    --color-info: #2f78c4;
-    --color-focus: #4f83ff;
-    --shadow-surface: 0 1px 2px rgba(15, 23, 42, 0.06);
+    color-scheme: light dark;
+    --color-page: light-dark(#f6f7f9, #111111);
+    --color-surface: light-dark(#ffffff, #1b1b1b);
+    --color-surface-muted: light-dark(#eef1f4, #242424);
+    --color-surface-subtle: light-dark(#f4f6f8, #202020);
+    --color-text: light-dark(#171a1f, #f1f1f1);
+    --color-text-muted: light-dark(#626a76, #b8b8b8);
+    --color-text-soft: light-dark(#8a93a0, #8f8f8f);
+    --color-border: light-dark(#d9dee6, #343434);
+    --color-border-subtle: light-dark(#e6e9ee, #2a2a2a);
+    --color-primary: light-dark(#171a1f, #f1f1f1);
+    --color-primary-hover: light-dark(#30343b, #ffffff);
+    --color-primary-text: light-dark(#ffffff, #111111);
+    --color-secondary: light-dark(#eceff3, #242424);
+    --color-secondary-hover: light-dark(#dfe4ea, #303030);
+    --color-secondary-text: light-dark(#2d333b, #eeeeee);
+    --color-danger: light-dark(#c73535, #e05a5a);
+    --color-danger-hover: light-dark(#ad2e2e, #f06a6a);
+    --color-danger-soft: light-dark(#fff0f0, #342020);
+    --color-danger-text: light-dark(#b22d2d, #ff9999);
+    --color-success: light-dark(#2f9d63, #49b77b);
+    --color-info: light-dark(#2f78c4, #5a9fe5);
+    --color-focus: light-dark(#4f83ff, #7da2ff);
+    --shadow-surface: light-dark(0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(0, 0, 0, 0.28));
 }
 
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        color-scheme: dark;
-        --color-page: #111111;
-        --color-surface: #1b1b1b;
-        --color-surface-muted: #242424;
-        --color-surface-subtle: #202020;
-        --color-text: #f1f1f1;
-        --color-text-muted: #b8b8b8;
-        --color-text-soft: #8f8f8f;
-        --color-border: #343434;
-        --color-border-subtle: #2a2a2a;
-        --color-primary: #f1f1f1;
-        --color-primary-hover: #ffffff;
-        --color-primary-text: #111111;
-        --color-secondary: #242424;
-        --color-secondary-hover: #303030;
-        --color-secondary-text: #eeeeee;
-        --color-danger: #e05a5a;
-        --color-danger-hover: #f06a6a;
-        --color-danger-soft: #342020;
-        --color-danger-text: #ff9999;
-        --color-success: #49b77b;
-        --color-info: #5a9fe5;
-        --color-focus: #7da2ff;
-        --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.28);
-    }
+/* An explicit theme pick narrows color-scheme to a single value, which makes
+   every light-dark() token resolve to that scheme — no duplicated palette. */
+:root[data-theme="light"] {
+    color-scheme: light;
 }
 
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --color-page: #111111;
-    --color-surface: #1b1b1b;
-    --color-surface-muted: #242424;
-    --color-surface-subtle: #202020;
-    --color-text: #f1f1f1;
-    --color-text-muted: #b8b8b8;
-    --color-text-soft: #8f8f8f;
-    --color-border: #343434;
-    --color-border-subtle: #2a2a2a;
-    --color-primary: #f1f1f1;
-    --color-primary-hover: #ffffff;
-    --color-primary-text: #111111;
-    --color-secondary: #242424;
-    --color-secondary-hover: #303030;
-    --color-secondary-text: #eeeeee;
-    --color-danger: #e05a5a;
-    --color-danger-hover: #f06a6a;
-    --color-danger-soft: #342020;
-    --color-danger-text: #ff9999;
-    --color-success: #49b77b;
-    --color-info: #5a9fe5;
-    --color-focus: #7da2ff;
-    --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
 * {

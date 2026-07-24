@@ -9,6 +9,26 @@
     "background_color": "#111111",
     "theme_color": "#111111",
     "categories": ["music", "health", "lifestyle"],
+    "launch_handler": {
+        "client_mode": "focus-existing"
+    },
+    "shortcuts": [
+        {
+            "name": "Garden Rain",
+            "url": "./?track=garden-rain",
+            "description": "Open Soundscape on the Garden Rain soundscape"
+        },
+        {
+            "name": "Fireplace",
+            "url": "./?track=fireplace",
+            "description": "Open Soundscape on the Fireplace soundscape"
+        },
+        {
+            "name": "Rain & Thunder",
+            "url": "./?track=rain-thunder",
+            "description": "Open Soundscape on the Rain & Thunder soundscape"
+        }
+    ],
     "icons": [
         {
             "src": "resources/icons/icon-192.png",

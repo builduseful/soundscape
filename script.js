@@ -1,6 +1,6 @@
-// To run the project you can use https://www.npmjs.com/package/http-server
-// Open the cmd at the project root, and run:
-// > http-server
+// See README.md for how to run the app (container-based static server).
+// The app requires HTTP for module loading and the service worker — do not
+// open index.html via file://.
 
 // Browser/OS integration is anchored by one long-lived HTMLAudioElement.
 // The audible loop intentionally comes from a decoded Web Audio buffer because
@@ -17,14 +17,14 @@ import {
 } from "./src/media-session.js";
 import { ThemeSelector } from "./src/components/theme-selector.js";
 import { VolumeControl } from "./src/components/volume-control.js";
-import { registerServiceWorker } from "./src/pwa.js";
+import { registerLaunchQueueConsumer, registerServiceWorker } from "./src/pwa.js";
 import {
     applyThemePreference,
     loadThemePreference,
     normalizeThemePreference,
     saveThemePreference,
 } from "./src/theme-utils.js";
-import { tracks } from "./src/tracks.js";
+import { tracks, trackSlug } from "./src/tracks.js";
 import { VERSION } from "./src/version.js";
 
 const PLAY_LABEL = "Play";
@@ -51,7 +51,7 @@ const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
 
-let currentTrackIndex = getSavedTrackIndex();
+let currentTrackIndex = getInitialTrackIndex();
 let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
 
@@ -90,6 +90,7 @@ restoreSavedVolume();
 updateTrackTitle();
 startMediaSession();
 registerServiceWorker();
+initLaunchQueue();
 appVersion.textContent = `v${VERSION}`;
 
 async function playPauseClick() {
@@ -158,6 +159,14 @@ async function playPreviousTrack() {
     return changeTrack(-1, "previous");
 }
 
+async function selectTrack(requestedIndex) {
+    if (requestedIndex === currentTrackIndex) return false;
+
+    const offset = requestedIndex - currentTrackIndex;
+
+    return changeTrack(offset, offset > 0 ? "next" : "previous");
+}
+
 async function changeTrack(offset, direction) {
     const trackChangeId = ++currentTrackChangeId;
     const previousTrackIndex = currentTrackIndex;
@@ -194,6 +203,39 @@ async function changeTrack(offset, direction) {
 
 function getCurrentTrack() {
     return tracks[currentTrackIndex];
+}
+
+// A ?track=<slug> URL (e.g. from a manifest app shortcut) wins over the saved
+// track so shared/pinned links open on the requested soundscape.
+function getInitialTrackIndex() {
+    const requestedIndex = getTrackIndexFromUrl(globalThis.location?.href);
+
+    return requestedIndex === -1 ? getSavedTrackIndex() : requestedIndex;
+}
+
+function getTrackIndexFromUrl(url) {
+    if (typeof url !== "string" || url.length === 0) return -1;
+
+    // Base URL is a throwaway — .invalid is reserved and never resolves (RFC 2606)
+    const requestedSlug = new URL(url, "http://example.invalid").searchParams.get("track");
+
+    if (!requestedSlug) return -1;
+
+    return tracks.findIndex((track) => trackSlug(track) === requestedSlug);
+}
+
+// With launch_handler "focus-existing", clicking an app shortcut while the app
+// is running focuses the existing window instead of navigating. The launch's
+// ?track=<slug> arrives here so the shortcut still switches tracks, without a
+// reload or a second window.
+function initLaunchQueue() {
+    registerLaunchQueueConsumer((launchParams) => {
+        const requestedIndex = getTrackIndexFromUrl(launchParams?.targetURL);
+
+        if (requestedIndex !== -1) {
+            void selectTrack(requestedIndex);
+        }
+    });
 }
 
 function getSavedTrackIndex() {
