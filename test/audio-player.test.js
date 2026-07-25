@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { applyLoopCrossfade, AudioPlayer } from "../src/audio-player.js";
+import { applyLoopCrossfade, AudioPlayer } from "../src/js/audio-player.js";
 
 const originalAudioContext = globalThis.AudioContext;
 const originalFetch = globalThis.fetch;

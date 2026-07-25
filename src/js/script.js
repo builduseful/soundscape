@@ -6,7 +6,7 @@
 // The audible loop intentionally comes from a decoded Web Audio buffer because
 // perfect loop points are a hard product requirement for these short files.
 
-import { AudioPlayer } from "./src/audio-player.js";
+import { AudioPlayer } from "./audio-player.js";
 import {
     configurePlaybackAudioSession,
     initMediaSession,
@@ -14,17 +14,17 @@ import {
     updateMediaSessionPlaybackState,
     updateMediaSessionPositionState,
     updateMediaSessionStatus,
-} from "./src/media-session.js";
-import { ThemeSelector } from "./src/components/theme-selector.js";
-import { VolumeControl } from "./src/components/volume-control.js";
-import { registerLaunchQueueConsumer, registerServiceWorker } from "./src/pwa.js";
+} from "./media-session.js";
+import { ThemeSelector } from "./components/theme-selector.js";
+import { VolumeControl } from "./components/volume-control.js";
+import { registerLaunchQueueConsumer, registerServiceWorker } from "./pwa.js";
 import {
     applyThemePreference,
     loadThemePreference,
     normalizeThemePreference,
     saveThemePreference,
-} from "./src/theme-utils.js";
-import { tracks, trackSlug } from "./src/tracks.js";
+} from "./theme-utils.js";
+import { tracks, trackSlug } from "./tracks.js";
 const VERSION = "1.3.0";
 
 const PLAY_LABEL = "Play";

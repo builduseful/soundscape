@@ -4,8 +4,8 @@ import { afterEach, test } from "node:test";
 import {
     restoreAppTestEnvironment,
     startAppTestEnvironment,
-} from "../test-helpers/app-test-harness.js";
-import { tracks, trackSlug } from "../src/tracks.js";
+} from "./helpers/app-test-harness.js";
+import { tracks, trackSlug } from "../src/js/tracks.js";
 
 const originalConsoleWarn = console.warn;
 

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { afterEach, test } from "node:test";
 
-import { registerLaunchQueueConsumer, registerServiceWorker } from "../src/pwa.js";
-import { tracks, trackSlug } from "../src/tracks.js";
+import { registerLaunchQueueConsumer, registerServiceWorker } from "../src/js/pwa.js";
+import { tracks, trackSlug } from "../src/js/tracks.js";
 
 const originalConsoleWarn = console.warn;
 
@@ -87,7 +87,7 @@ test("registerLaunchQueueConsumer degrades gracefully without the Launch Queue A
 });
 
 test("manifest exposes an installable standalone app with any and maskable icons", async () => {
-    const source = await readFile(new URL("../manifest.webmanifest", import.meta.url), "utf8");
+    const source = await readFile(new URL("../src/manifest.webmanifest", import.meta.url), "utf8");
     const manifest = JSON.parse(source);
 
     assert.equal(manifest.name, "Soundscape");
@@ -105,7 +105,7 @@ test("manifest exposes an installable standalone app with any and maskable icons
 });
 
 test("manifest app shortcuts point at real tracks via ?track= slugs", async () => {
-    const source = await readFile(new URL("../manifest.webmanifest", import.meta.url), "utf8");
+    const source = await readFile(new URL("../src/manifest.webmanifest", import.meta.url), "utf8");
     const manifest = JSON.parse(source);
     const slugs = tracks.map((track) => trackSlug(track));
 
@@ -121,7 +121,7 @@ test("manifest app shortcuts point at real tracks via ?track= slugs", async () =
 });
 
 test("HTML exposes SVG and PNG favicon fallbacks", async () => {
-    const source = await readFile(new URL("../index.html", import.meta.url), "utf8");
+    const source = await readFile(new URL("../src/index.html", import.meta.url), "utf8");
 
     assert.match(source, /<link rel="icon" href="resources\/icons\/icon\.svg" type="image\/svg\+xml" \/>/);
     assert.match(source, /<link rel="icon" href="resources\/icons\/favicon-32\.png" sizes="32x32" type="image\/png" \/>/);
@@ -130,7 +130,7 @@ test("HTML exposes SVG and PNG favicon fallbacks", async () => {
 });
 
 test("service worker precaches the app shell and caches audio on demand with sanitized entries and byte-range support", async () => {
-    const source = await readFile(new URL("../sw.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
 
     // The SW does not know about the audio catalog — audio is cached on
     // demand by the same single cache the next time the user plays a track.
@@ -168,7 +168,7 @@ test("service worker precaches the app shell and caches audio on demand with san
 });
 
 test("service worker keys non-range cache lookups on the original request", async () => {
-    const source = await readFile(new URL("../sw.js", import.meta.url), "utf8");
+    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
     const match = /async function tryCacheThenFetch\(request\) \{([\s\S]*?)\n\}/.exec(source);
 
     assert.ok(match, "tryCacheThenFetch function should exist");

@@ -7,7 +7,7 @@ const VERSION_RE = /const\s+VERSION\s*=\s*"([^"]+)"/;
 describe("version sync", () => {
     it("sw.js VERSION matches package.json", async () => {
         const [sw, pkg] = await Promise.all([
-            readFile(new URL("../sw.js", import.meta.url), "utf8"),
+            readFile(new URL("../src/sw.js", import.meta.url), "utf8"),
             readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
         ]);
 
@@ -18,7 +18,7 @@ describe("version sync", () => {
 
     it("script.js VERSION matches package.json", async () => {
         const [script, pkg] = await Promise.all([
-            readFile(new URL("../script.js", import.meta.url), "utf8"),
+            readFile(new URL("../src/js/script.js", import.meta.url), "utf8"),
             readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
         ]);
 

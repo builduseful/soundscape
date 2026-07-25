@@ -8,7 +8,7 @@ import {
     normalizeThemePreference,
     saveThemePreference,
     THEME_STORAGE_KEY,
-} from "../src/theme-utils.js";
+} from "../src/js/theme-utils.js";
 
 const originalConsoleWarn = console.warn;
 const originalLocalStorage = globalThis.localStorage;

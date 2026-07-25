@@ -8,40 +8,46 @@ Soundscape is a browser-based Progressive Web App (PWA) that plays seamless loop
 
 ```
 soundscape/
-├── Dockerfile               # Multi-target image: default = Caddy + Node (serve + npm test); `--target serve` = slim Caddy-only runtime
-├── .dockerignore            # Excludes unnecessary files from the build
-├── index.html               # App entry point, loads script.js and styles
-├── style.css                # App-wide styling (component internals live in @scope blocks)
-├── script.js                # App bootstrap: wires audio, UI, state, and components
-├── sw.js                    # Service worker for offline/PWA support
-├── manifest.webmanifest     # PWA manifest
-├── CNAME                    # Custom domain for deployment
-├── package.json             # Scripts and metadata (npm test)
-├── src/
-│   ├── audio-player.js          # Web Audio + HTMLAudioElement playback engine
-│   ├── media-session.js         # Media Session API integration (metadata, actions)
-│   ├── pwa.js                   # PWA lifecycle (registration, install prompts, launch queue)
-│   ├── theme-utils.js           # Light/dark/system theme helpers
-│   ├── tracks.js                # Track catalog and metadata
-│   └── components/
-│       ├── theme-selector.js    # Custom element for theme mode selection
-│       └── volume-control.js    # Custom element for volume slider
-├── resources/
-│   ├── icons/                   # PWA/favicon icons (png + svg)
-│   └── soundscapes/             # Looping ambience audio files (.opus)
+├── src/                              # Deploy folder (served at site root)
+│   ├── index.html                    # App entry point, loads script.js and styles
+│   ├── style.css                     # App-wide styling (component internals live in @scope blocks)
+│   ├── sw.js                         # Service worker for offline/PWA support
+│   ├── manifest.webmanifest          # PWA manifest
+│   ├── CNAME                         # Custom domain for deployment
+│   ├── js/
+│   │   ├── script.js                 # App bootstrap: wires audio, UI, state, and components
+│   │   ├── audio-player.js           # Web Audio + HTMLAudioElement playback engine
+│   │   ├── media-session.js          # Media Session API integration (metadata, actions)
+│   │   ├── pwa.js                    # PWA lifecycle (registration, install prompts, launch queue)
+│   │   ├── theme-utils.js            # Light/dark/system theme helpers
+│   │   ├── tracks.js                 # Track catalog and metadata
+│   │   └── components/
+│   │       ├── theme-selector.js     # Custom element for theme mode selection
+│   │       └── volume-control.js     # Custom element for volume slider
+│   └── resources/
+│       ├── icons/                    # PWA/favicon icons (png + svg)
+│       └── soundscapes/              # Looping ambience audio files (.opus)
+├── test/                             # Unit tests (dependency-free)
+│   └── helpers/
+│       └── app-test-harness.js       # Shared test fixtures/utilities
 ├── scripts/
-│   ├── export-icons.sh         # Icon generation helper
-│   └── send-media-key.ps1     # OS-level media key injection for testing
-├── test/                        # Unit tests (dependency-free)
-├── test-helpers/
-│   └── app-test-harness.js     # Shared test fixtures/utilities
-├── .config.md                  # Per-developer configuration (gitignored)
-└── .opencode/                  # Opencode agent/skill config (not app code)
+│   ├── export-icons.sh               # Icon generation helper
+│   └── send-media-key.ps1           # OS-level media key injection for testing
+├── .github/
+│   └── workflows/
+│       └── deploy.yml                # GitHub Pages deployment (uploads src/)
+├── Dockerfile                        # Multi-target image: default = Caddy + Node (serve + npm test); `--target serve` = slim Caddy-only runtime
+├── .dockerignore                     # Excludes unnecessary files from the build
+├── package.json                      # Scripts and metadata (npm test)
+├── .config.md                        # Per-developer configuration (gitignored)
+├── AGENTS.md
+├── README.md
+└── opencode.json
 ```
 
 ## Custom Elements
 
-- App-owned custom elements live in `src/components`.
+- App-owned custom elements live in `src/js/components`.
 - Use light DOM with an inline `@scope` style block by default. This keeps component markup easy to inspect, test, and integrate while preventing component selectors from leaking outward.
 - Keep selectors inside `@scope` short and component-local. Reserve `style.css` for app-wide styling, not component internals.
 - Do not use Shadow DOM for normal app components. If a change seems to need Shadow DOM, raise the reason first; the app is internal and should stay easy to inspect and style.

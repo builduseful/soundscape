@@ -23,7 +23,7 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:80/ || exit 1
 
-CMD ["caddy", "file-server", "--listen", ":80", "--root", "/srv"]
+CMD ["caddy", "file-server", "--listen", ":80", "--root", "/srv/src"]
 
 # ── dev (default target): Caddy + Node, also used for `npm test` ────────────
 # This is the final stage on purpose: `container build --tag soundscape .`
@@ -54,4 +54,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 # Default: serve static files with Caddy's file-server.
 # Override the command for tests:
 #   <container-engine> container run --rm soundscape npm test
-CMD ["caddy", "file-server", "--listen", ":80", "--root", "/app"]
+CMD ["caddy", "file-server", "--listen", ":80", "--root", "/app/src"]

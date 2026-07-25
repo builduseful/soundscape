@@ -12,15 +12,15 @@ const APP_SHELL_ASSETS = [
     "./",
     "./index.html",
     "./style.css",
-    "./script.js",
     "./manifest.webmanifest",
-    "./src/audio-player.js",
-    "./src/media-session.js",
-    "./src/pwa.js",
-    "./src/theme-utils.js",
-    "./src/tracks.js",
-    "./src/components/theme-selector.js",
-    "./src/components/volume-control.js",
+    "./js/script.js",
+    "./js/audio-player.js",
+    "./js/media-session.js",
+    "./js/pwa.js",
+    "./js/theme-utils.js",
+    "./js/tracks.js",
+    "./js/components/theme-selector.js",
+    "./js/components/volume-control.js",
     "./resources/icons/apple-touch-icon.png",
     "./resources/icons/favicon-16.png",
     "./resources/icons/favicon-32.png",
@@ -198,6 +198,10 @@ async function createPartialResponse(request, response) {
     const body = buffer.slice(start, end + 1);
     const headers = new Headers(response.headers);
 
+    headers.delete("content-encoding");
+    headers.delete("vary");
+    headers.delete("connection");
+    headers.delete("keep-alive");
     headers.set("Accept-Ranges", "bytes");
     headers.set("Content-Length", String(body.byteLength));
     headers.set("Content-Range", `bytes ${start}-${end}/${size}`);

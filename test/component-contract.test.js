@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-const COMPONENTS_DIR = new URL("../src/components/", import.meta.url);
+const COMPONENTS_DIR = new URL("../src/js/components/", import.meta.url);
 
 test("app-owned custom elements keep styles in light DOM @scope blocks", async () => {
     const componentFiles = (await readdir(COMPONENTS_DIR))

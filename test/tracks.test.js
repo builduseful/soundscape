@@ -3,9 +3,9 @@ import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
-import { tracks } from "../src/tracks.js";
+import { tracks } from "../src/js/tracks.js";
 
-const SOUNDSCAPES_DIR = new URL("../resources/soundscapes/", import.meta.url);
+const SOUNDSCAPES_DIR = new URL("../src/resources/soundscapes/", import.meta.url);
 const OGG_OPUS_MIME = "audio/ogg; codecs=opus";
 
 test("track catalog points at existing unique Opus resources", async () => {
@@ -22,7 +22,7 @@ test("track catalog points at existing unique Opus resources", async () => {
 
         titles.add(track.title);
         urls.add(track.url);
-        await access(new URL(`../${track.url}`, import.meta.url));
+        await access(new URL(`../src/${track.url}`, import.meta.url));
     }
 });
 

@@ -453,7 +453,7 @@ export async function startAppTestEnvironment(options) {
 }
 
 export async function importApp() {
-    const scriptUrl = new URL("../script.js", import.meta.url);
+    const scriptUrl = new URL("../../src/js/script.js", import.meta.url);
     scriptUrl.search = `?test=${Date.now()}-${Math.random()}`;
     await import(scriptUrl.href);
 }

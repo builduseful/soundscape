@@ -7,7 +7,7 @@ import {
     updateMediaSessionPlaybackState,
     updateMediaSessionPositionState,
     updateMediaSessionStatus,
-} from "../src/media-session.js";
+} from "../src/js/media-session.js";
 
 const originalMediaMetadata = globalThis.MediaMetadata;
 const originalNavigator = globalThis.navigator;
