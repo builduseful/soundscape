@@ -1,3 +1,5 @@
+<!-- Adapted from https://github.com/microsoft/playwright-cli; see playwright-cli.LICENSE-APACHE. -->
+
 # Browser Session Management
 
 Run multiple isolated browser sessions concurrently with state persistence.

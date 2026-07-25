@@ -1,3 +1,5 @@
+<!-- Adapted from https://github.com/microsoft/playwright-cli; see playwright-cli.LICENSE-APACHE. -->
+
 # Storage Management
 
 Manage cookies, localStorage, sessionStorage, and browser storage state.

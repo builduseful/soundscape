@@ -1,0 +1,11 @@
+{
+  "browser": {
+    "launchOptions": {
+      "headless": false,
+      "args": ["--window-size=900,700", "--window-position=120,90"]
+    },
+    "contextOptions": {
+      "viewport": null
+    }
+  }
+}

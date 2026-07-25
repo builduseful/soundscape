@@ -1,6 +1,8 @@
+<!-- Adapted from https://github.com/microsoft/playwright-cli; see playwright-cli.LICENSE-APACHE. -->
+
 ---
 name: playwright-cli
-description: Automate browser interactions, test web pages and work with Playwright tests.
+description: Drive a real browser from the terminal via the Playwright CLI. Use for browser testing, web automation, and reproducing UI bugs.
 allowed-tools: Bash(playwright-cli:*) Bash(npx:*) Bash(npm:*)
 ---
 
@@ -93,6 +95,8 @@ playwright-cli mousewheel 0 100
 playwright-cli screenshot
 playwright-cli screenshot e5
 playwright-cli screenshot --filename=page.png
+playwright-cli screenshot --full-page    # entire scrollable page
+playwright-cli screenshot --hires        # high-DPI capture
 playwright-cli pdf --filename=page.pdf
 ```
 
@@ -201,6 +205,34 @@ For structured output wrapping every reply as JSON, pass --json
 playwright-cli list --json
 ```
 
+## Batching commands
+
+The daemon holds the browser open between commands, so the cost of a flow is
+dominated by the number of Bash calls, not the work itself. To keep
+round-trips low:
+
+- **Chain steps in one Bash call.** `cmd1 ; cmd2 ; cmd3` (continue on errors)
+  or `cmd1 && cmd2 && cmd3` (fail-fast, preferred for tests) collapses a
+  multi-step flow into a single tool call. The browser stays open between
+  steps.
+- **Suppress output for setup steps.** `--raw` returns just the result value
+  and `>/dev/null` silences the status / snapshot block. Use both freely for
+  navigate / resize / `state-load` steps; only read a snapshot when you need
+  the structure.
+- **Use `run-code --filename=` for branching / async flows.** A single script
+  runs loops, conditionals, and waits in one round trip — much cheaper than
+  the equivalent chained CLI calls. See
+  [references/running-code.md](references/running-code.md).
+
+## Config files
+
+Launch / context options with no CLI equivalent go in a JSON file passed via
+`--config=<path>`. The skill ships a template at
+`<skill-dir>/example.config.json`; copy it to `config.json` in the skill root
+and customise. On first run, if `config.json` is missing, copy the example
+across and ask the user to confirm the config before proceeding; once it
+exists, just use it. (Gitignore `config.json` to keep it local.)
+
 ## Open parameters
 ```bash
 # Use specific browser when creating session
@@ -208,6 +240,10 @@ playwright-cli open --browser=chrome
 playwright-cli open --browser=firefox
 playwright-cli open --browser=webkit
 playwright-cli open --browser=msedge
+
+# Mobile emulation (lighter → smaller snapshots, useful for layout testing)
+playwright-cli open --mobile
+playwright-cli open --device="iPhone 15"
 
 # Use persistent profile (by default profile is in-memory)
 playwright-cli open --persistent
@@ -249,7 +285,11 @@ playwright-cli --% goto "https://example.com/?a=1&b=2"
 
 ## Snapshots
 
-After each command, playwright-cli provides a snapshot of the current browser state.
+After each command, playwright-cli writes a compact accessibility-tree snapshot
+to a file (e.g. `.playwright-cli/page-<timestamp>.yml`) and prints a pointer
+in the output. The DOM is **not** dumped into context — read the file only
+when you actually need the structure. Use `--raw` / `>/dev/null` on setup
+steps so the pointer doesn't pile up.
 
 ```bash
 > playwright-cli goto https://example.com
@@ -282,17 +322,10 @@ playwright-cli snapshot --boxes
 
 ## Targeting elements
 
-By default, use refs from the snapshot to interact with page elements.
-
-```bash
-# get snapshot with refs
-playwright-cli snapshot
-
-# interact using a ref
-playwright-cli click e15
-```
-
-You can also use css selectors or Playwright locators.
+Prefer CSS selectors or Playwright locators — they let you click / fill in one
+step without a snapshot read, and they're stable across browser restarts. Refs
+from a snapshot are generated fresh each session and don't carry over after the
+browser reopens, so reach for refs only when the target is dynamic or unknown.
 
 ```bash
 # css selector
@@ -303,7 +336,53 @@ playwright-cli click "getByRole('button', { name: 'Submit' })"
 
 # test id
 playwright-cli click "getByTestId('submit-button')"
+
+# ref (use when the target is dynamic or unknown)
+playwright-cli snapshot
+playwright-cli click e15
 ```
+
+## Timing & auto-wait
+
+Auto-wait behaviour differs by layer — this is the most common source of false
+negatives:
+
+- **Inside `run-code`, Playwright auto-waits.** `page.locator(...).click()` /
+  `fill()`, `locator.waitFor()`, and `expect(locator)…` wait for the element to
+  be present and actionable (default 30s; raise with
+  `waitFor({ timeout: ms })` or `page.setDefaultTimeout(ms)`). Use this for
+  anything that appears after async work (search results, route transitions,
+  post-navigation renders, debounced UI updates).
+- **Bare CLI `click` / `fill` / `check` / `select` do NOT wait.** They resolve
+  the target against the current page and error immediately
+  (`does not match any elements`) if it isn't there yet. Chaining a bare
+  `playwright-cli click "#result"` right after a trigger that renders the
+  result 2s later will fail.
+- **Reads never wait** (`snapshot`, `eval`, `console`, `requests`): they
+  reflect the DOM right now. Run them too early and you capture loading /
+  stale state.
+
+For async results, prefer `run-code` with an explicit `waitFor()` and
+act / branch in one call, or poll the snapshot until the element appears. See
+[references/running-code.md](references/running-code.md) for wait patterns.
+
+## Debugging workflow
+
+After any action, verify what actually happened before drawing conclusions —
+the UI may look fine while the underlying state is wrong:
+
+- **Check console first** — `playwright-cli console` surfaces warnings /
+  errors that scroll past visually but break behaviour. Run it after each
+  non-trivial action.
+- **Verify network** — `playwright-cli requests` confirms expected resources
+  loaded (200s, correct MIME types) and flags failed / blocked requests. Use
+  `playwright-cli request <i>` to inspect one in detail.
+- **Check UI state** — `playwright-cli snapshot` for visible structure,
+  `playwright-cli eval "…"` for JS-driven state (custom events, framework
+  state, Media Session metadata, localStorage values).
+
+These are cheap, fail fast, and catch the silent-failure cases that look like
+"nothing happened".
 
 ## Browser Sessions
 

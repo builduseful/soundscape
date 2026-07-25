@@ -90,25 +90,22 @@ soundscape/
 
   1. **Open** the browser and navigate:
      ```sh
-     playwright-cli open http://soundscape.localhost:4321 --headed --persistent
+     playwright-cli open http://soundscape.localhost:4321 --persistent --config=".opencode/skills/playwright-cli/config.json"
      ```
      Or with a fresh profile for clean-state testing:
      ```sh
-     playwright-cli open http://soundscape.localhost:4321 --headed --persistent --profile=".temp/fresh-profile"
+     playwright-cli open http://soundscape.localhost:4321 --persistent --profile=".temp/fresh-profile" --config=".opencode/skills/playwright-cli/config.json"
      ```
-  2. **Resize** the window to a consistent viewport:
-     ```sh
-     playwright-cli resize 900 700
-     ```
-  3. Run your interactions, then **close** when done:
+     The skill's config sets headed mode, a 900×700 OS window, and `viewport: null` so the page renders at the window size — no separate `resize` step is needed.
+  2. Run your interactions, then **close** when done:
      ```sh
      playwright-cli close
      ```
 
   Additional notes:
   - **Unregister SW + `--ignoreCache`** reload when verifying new code.
-  - **Snapshot refs change between sessions** — always take a fresh `snapshot` before interacting, since element refs (e.g. `e27`, `e28`) are generated per-session and don't carry over after closing/reopening the browser.
   - **Fresh profile** (step 1 alt) avoids interference from previously saved localStorage preferences (track, volume, theme).
+  - For generic playwright-cli patterns, commands, and the full reference, see the [playwright-cli skill](.opencode/skills/playwright-cli/SKILL.md).
 
 ## Browser Interaction
 

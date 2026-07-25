@@ -1,3 +1,5 @@
+<!-- Adapted from https://github.com/microsoft/playwright-cli; see playwright-cli.LICENSE-APACHE. -->
+
 # Spec-driven testing (plan → generate → heal)
 
 End-to-end workflow for authoring and maintaining Playwright tests using `playwright-cli`. The three sections below can be used independently:

@@ -10,3 +10,7 @@ resources/gitignore/
 
 # Per-developer configuration
 .config.md
+
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json

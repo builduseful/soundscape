@@ -1,3 +1,5 @@
+<!-- Adapted from https://github.com/microsoft/playwright-cli; see playwright-cli.LICENSE-APACHE. -->
+
 # Running Custom Playwright Code
 
 Use `run-code` to execute arbitrary Playwright code for advanced scenarios not covered by CLI commands.
@@ -18,8 +20,18 @@ playwright-cli run-code --filename=./my-script.js
 ```
 
 
-The code must be a single function expression, it is wrapped in `(...)` and evaluated.
-import/export/require syntax is not supported.
+The code must be a single bare function expression — `async (page) => { … }`.
+The CLI wraps it in `(...)` and evaluates it, so:
+
+- **No trailing semicolon** (it is a syntax error).
+- `import` / `export` / `require` are not supported.
+
+Inside `run-code`, Playwright auto-waits: `page.locator(...).click()` /
+`fill()`, `locator.waitFor()`, and `expect(...)` wait for the element to be
+present and actionable (default 30s; raise with
+`waitFor({ timeout: ms })` or `page.setDefaultTimeout(ms)`). This is the
+robust path for async work — see the **Timing & auto-wait** section in
+`SKILL.md` for the contrast with bare CLI commands.
 
 ## Geolocation
 
