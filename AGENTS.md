@@ -77,16 +77,16 @@ soundscape/
       --name soundscape-server \
       soundscape
   ```
-  - After starting, **verify the server is serving** before launching the browser. The browser may silently show a cached/stale page otherwise, especially with the service worker active. Use `curl -sI --max-time 3 http://soundscape.localhost:4321` (the `--max-time` prevents the shell tool's timeout from blocking on a hung request).
-  - **If `soundscape-server` is already running** (e.g. left over from a prior session), re-running the block above restarts it; or skip the start commands and check state directly with `<container-engine> container ls --filter "name=soundscape-server"`. Confirm with `curl -sI --max-time 3 http://soundscape.localhost:4321` — the bind mount means live source edits are already reflected without rebuilding.
+  - After starting, **verify the server is serving** before launching the browser — the SW cache can make a stale page appear live. Use `curl -sI --max-time 3 http://soundscape.localhost:4321` (the `--max-time` prevents the shell tool's timeout from blocking on a hung request).
+  - **If the server is already running**, you can skip the start commands — the bind mount means source edits are live without rebuilding. Just verify with `curl`.
   - To stop and remove the server:
     ```sh
     <container-engine> container stop soundscape-server
     <container-engine> container rm soundscape-server
     ```
-  - The app uses a service worker, so the browser may display a cached version of the page after the server is stopped. To confirm the server is actually running, use the browser's Network panel or perform a hard reload (`Ctrl+Shift+R`).
-  - On a first visit the page reloads once after the service worker claims the client; this guarantees that cached navigations and audio requests are handled by the SW. Avoid hard reloads when testing offline behavior because they bypass the service worker.
-  - Favicon and some manifest icon requests bypass the service worker by design in Chrome, so expect occasional `304` revalidation log entries for those icons even when the app shell is cached.
+  - After stopping the server the page still loads from the SW cache — this is correct offline behavior, not a stale server.
+  - On a first visit the page reloads once after the service worker claims the client. This `controllerchange` auto-reload only fires on the **first-ever claim** (null → SW), not on version-bump updates — after a version bump the user must reload manually to see the new version label.
+  - Avoid hard reloads when testing offline behavior because they bypass the service worker.
 - **Service worker caching.** One cache, `soundscape-v{VERSION}`. Bump `VERSION` to wipe — the only invalidation lever. The precache uses `cache: "no-cache"` so it revalidates via ETag on every install, which is why the design works identically on any host. `VERSION` lives in three places (`sw.js`, `script.js`, `package.json`); bump all three on every release — `test/pwa.test.js` and `test/version-sync.test.js` enforce it. Do not:
   - Make `sw.js` a module worker that imports `VERSION`. The byte-change must land in `sw.js` itself, not an import, for the browser's SW update to fire.
   - Split into shell/audio caches, hash asset lists, or add HTTP-level `Cache-Control` config. The SW is the only cache that matters.
@@ -112,27 +112,24 @@ soundscape/
      playwright-cli close
      ```
 
-  Additional notes:
-  - **Unregister SW + `--ignoreCache`** reload when verifying new code.
-  - **Fresh profile** (step 1 alt) avoids interference from previously saved localStorage preferences (track, volume, theme).
+  - **Fresh profile** (step 1 alt) avoids interference from previously saved localStorage preferences (track, volume, theme) and cached SW assets.
+  - **Multiple tabs share the same cache** — each `playwright-cli open` with the same `--profile` creates a new tab sharing cookies, localStorage, and the SW cache.
   - For generic playwright-cli patterns, commands, and the full reference, see the [playwright-cli skill](.opencode/skills/playwright-cli/SKILL.md).
 
 ## Browser Interaction
 
 - Prefer `playwright-cli` for all browser interaction (clicking, filling forms, snapshots, screenshots, console inspection). Its YAML snapshots are clearer, it handles hidden elements (e.g. `pointer-events: none`) correctly, and it closes the browser cleanly with no "last tab" limitation.
-- playwright-cli also handles network requests, console messages, and tracing which captures action logs, DOM snapshots, network details, and periodic screenshots.
-- Fall back to `chrome-devtools_*` tools when you need something playwright-cli can't provide (e.g. heap snapshots, performance traces at the engine level).
-- Both can be used together in a session — playwright-cli for interaction, chrome-devtools for deeper debugging on the same page.
+- playwright-cli also handles network requests, console messages, and tracing which captures action logs, DOM snapshots, network details, and periodic screenshots. Combined with `page.evaluate()` and the Performance API (`performance.getEntriesByType('resource')`), it can fully verify cache-hit vs cache-miss behavior without DevTools.
+- Fall back to `chrome-devtools_*` tools only when explicitly asked — playwright-cli handles nearly everything.
 
 ## Testing Methodology
 
 - **Check console first** — run `playwright-cli console` after every action to catch warnings/errors before they scroll away.
-- **Verify network** — run `playwright-cli requests` to confirm expected resources loaded (audio .opus files return 200, SW serves from cache when offline).
-- **Check UI state** — use `snapshot` for visual structure, `eval` for JS-driven state (e.g. Media Session metadata/playbackState, localStorage values).
+- **Verify network** — run `playwright-cli requests --static` to see every URL, method, and status code. Use `eval` with `performance.getEntriesByType('resource')` to check `transferSize`: **0** means served from the SW cache, **>0** means fetched from the network. For audio specifically, a **206 only** (without a preceding 200) on a replayed track confirms a cache hit — the SW served the full file and sliced the byte range without a network re-fetch. Use `eval` with `performance.getEntriesByType('navigation')[0].transferSize` to confirm the navigation itself came from cache.
+- **Check UI state** — use `snapshot` for visual structure, `eval` for JS-driven state (e.g. Media Session metadata/playbackState, localStorage values). `navigator.mediaSession.playbackState` is the most reliable playback source; DOM attributes (`aria-label`, `data-playing`) mirror the same value.
+- **Snapshot refs change after navigation** — refs (e.g. `e27`) are ephemeral and may point at different elements after navigation. Always take a fresh snapshot after navigating to get valid refs.
 - **Track changes have a 420ms title animation** — when testing track navigation, verify state via `navigator.mediaSession.metadata.title` (immediate) rather than the `<h1>` textContent (which settles after the animation completes). Or wait for the `animationend` event.
 - **Key press semantics** — `playwright-cli press "ArrowRight"` generates a `keydown` event with `event.key === "ArrowRight"`. Space for play/pause uses `event.key === " "`. The `handleDocumentKeydown` handler suppresses repeat events (`event.repeat`), so press keys without holding.
-- **Lighthouse audits** — when using `chrome-devtools_lighthouse_audit`, first ensure DevTools is pointed at the target page (not `about:blank`) via `chrome-devtools_navigate_page`.
-- **Media Session is authoritative** — when checking playback state, `navigator.mediaSession.playbackState` is the most reliable source (it reflects the app's actual state), while the play button's `aria-label` and `data-playing` attribute mirror the same value.
 - **Hardware media key testing** — synthetic keyboard events (Playwright `press`, CDP `Input.dispatchKeyEvent`) are NOT routed through the Media Session API by Chromium. To test real hardware media keys (MediaPlayPause, MediaTrackNext, MediaTrackPrevious, MediaStop), send OS-level input events. On Windows:
   ```powershell
   # The script is available at scripts/send-media-key.ps1
