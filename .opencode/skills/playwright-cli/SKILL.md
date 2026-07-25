@@ -200,7 +200,8 @@ TOKEN=$(playwright-cli --raw cookie-get session_id)
 playwright-cli --raw localstorage-get theme
 ```
 
-For structured output wrapping every reply as JSON, pass --json
+For structured output wrapping every reply as JSON, pass `--json` instead:
+
 ```bash
 playwright-cli list --json
 ```
@@ -224,14 +225,23 @@ round-trips low:
   the equivalent chained CLI calls. See
   [references/running-code.md](references/running-code.md).
 
+## When to fall back to `chrome-devtools_*`
+
+`playwright-cli` covers almost all scripted browser work. Reach for the
+`chrome-devtools_*` tools only when you need something it can't provide:
+
+- Heap snapshots (memory leak analysis).
+- Performance traces at the engine level (Core Web Vitals: LCP, INP, CLS).
+- Lighthouse audits.
+
+Both can be used in the same session — `playwright-cli` for interaction,
+`chrome-devtools_*` for deeper debugging on the same page.
+
 ## Config files
 
 Launch / context options with no CLI equivalent go in a JSON file passed via
-`--config=<path>`. The skill ships a template at
-`<skill-dir>/example.config.json`; copy it to `config.json` in the skill root
-and customise. On first run, if `config.json` is missing, copy the example
-across and ask the user to confirm the config before proceeding; once it
-exists, just use it. (Gitignore `config.json` to keep it local.)
+`--config=<path>`. If `config.json` is missing, copy from
+`example.config.json` (the local copy is gitignored).
 
 ## Open parameters
 ```bash
@@ -342,6 +352,8 @@ playwright-cli snapshot
 playwright-cli click e15
 ```
 
+`snapshot` writes an accessibility-tree YAML to a file (zero context tokens until you read it). `screenshot` costs roughly `w*h/750` tokens — about 1.6k for a 1440×900 capture, ~7× more than reading the snapshot. Default to snapshot/refs; only screenshot when you need to *see* rendering (visual bug, canvas, non-accessible UI).
+
 ## Timing & auto-wait
 
 Auto-wait behaviour differs by layer — this is the most common source of false
@@ -365,6 +377,12 @@ negatives:
 For async results, prefer `run-code` with an explicit `waitFor()` and
 act / branch in one call, or poll the snapshot until the element appears. See
 [references/running-code.md](references/running-code.md) for wait patterns.
+
+Other robust waits inside `run-code`:
+
+- `page.waitForResponse(predicate)` — wait for a specific network response (e.g. after a click that triggers XHR/fetch).
+- `page.waitForLoadState('networkidle')` — wait until the network is idle.
+- `expect(locator).toBeVisible()` — auto-waits and asserts; best for "the result appeared" checks.
 
 ## Debugging workflow
 
@@ -415,6 +433,13 @@ When local version is available, use `npx playwright-cli` in all commands. Other
 ```bash
 npm install -g @playwright/cli@latest
 ```
+
+### Version-mismatch banner — ignore it
+
+`playwright-cli --version` may print a box saying the bundled skill
+*"does not match the tool version"* and to run `playwright-cli install --skills`.
+**Do not run that command** — it would overwrite this customised skill.
+The banner is expected and harmless; it does not appear in normal command output.
 
 ## Example: Form submission
 

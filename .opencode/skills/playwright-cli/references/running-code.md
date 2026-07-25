@@ -117,6 +117,21 @@ playwright-cli run-code "async page => {
   await page.waitForFunction(() => window.appReady === true);
 }"
 
+# Wait for a specific network response (e.g. click that triggers XHR/fetch)
+playwright-cli run-code "async page => {
+  const responsePromise = page.waitForResponse(
+    resp => resp.url().includes('/api/results') && resp.status() === 200
+  );
+  await page.getByRole('button', { name: 'Search' }).click();
+  const response = await responsePromise;
+  return response.status();
+}"
+
+# Auto-wait + assert: best for post-async "the result appeared" checks
+playwright-cli run-code "async page => {
+  await expect(page.getByText('Result for laptop')).toBeVisible();
+}"
+
 # Wait with timeout
 playwright-cli run-code "async page => {
   await page.locator('.result').waitFor({ timeout: 10000 });

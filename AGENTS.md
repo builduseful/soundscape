@@ -64,7 +64,7 @@ soundscape/
 - **Agents only:** The shell tool has a timeout, so `npm test` and builds may be killed before completing. Start the server via `run --detach` (returns immediately). The `--volume` bind mount maps your working directory into the container so edits appear without rebuilding:
   ```sh
   <container-engine> build --tag soundscape .
-  <container-engine> container rm soundscape-server 2>$null  # Remove stale container if it exists
+  <container-engine> container rm --force soundscape-server 2>$null  # Idempotent: tears down any prior container, running or stopped
   <container-engine> container run --detach \
       --publish 4321:80 \
       --volume ${PWD}:/app \
@@ -72,6 +72,7 @@ soundscape/
       soundscape
   ```
   - After starting, **verify the server is serving** before launching the browser. Use curl or a quick page check. The browser may silently show a cached/stale page otherwise, especially with the service worker active.
+  - **If `soundscape-server` is already running** (e.g. left over from a prior session), re-running the block above restarts it; or skip the start commands and check state directly with `<container-engine> container ls --filter "name=soundscape-server"`. Confirm with `curl -I http://soundscape.localhost:4321` — the bind mount means live source edits are already reflected without rebuilding.
   - To stop and remove the server:
     ```sh
     <container-engine> container stop soundscape-server
@@ -131,7 +132,7 @@ soundscape/
   PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key PlayPause
   PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key Stop
   ```
-  The browser window must be focused (not minimized) for OS-level key events to reach it. Use `Start-Sleep -Milliseconds 800` between successive key presses to allow async track loading to complete; rapid-fire presses (<500ms apart) can cause unexpected track ordering due to concurrent async handlers.
+  The browser window must be focused (not minimized) for OS-level key events to reach it. **Click Play in Soundscape once before the first key press** so it owns the active media session; subsequent hardware keys will then route to it regardless of other media-playing Chrome windows. Use `Start-Sleep -Milliseconds 800` between successive key presses to allow async track loading to complete; rapid-fire presses (<500ms apart) can cause unexpected track ordering due to concurrent async handlers.
 
 ## Versioning
 

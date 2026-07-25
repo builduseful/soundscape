@@ -4,6 +4,15 @@
 
 Intercept, mock, modify, and block network requests.
 
+## Network State
+
+Toggle the browser's online/offline state (useful for testing offline behaviour without mocking every request):
+
+```bash
+playwright-cli network-state-set offline
+playwright-cli network-state-set online
+```
+
 ## CLI Route Commands
 
 ```bash
