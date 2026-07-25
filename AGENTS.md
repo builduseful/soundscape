@@ -71,8 +71,8 @@ soundscape/
       --name soundscape-server \
       soundscape
   ```
-  - After starting, **verify the server is serving** before launching the browser. Use curl or a quick page check. The browser may silently show a cached/stale page otherwise, especially with the service worker active.
-  - **If `soundscape-server` is already running** (e.g. left over from a prior session), re-running the block above restarts it; or skip the start commands and check state directly with `<container-engine> container ls --filter "name=soundscape-server"`. Confirm with `curl -I http://soundscape.localhost:4321` — the bind mount means live source edits are already reflected without rebuilding.
+  - After starting, **verify the server is serving** before launching the browser. The browser may silently show a cached/stale page otherwise, especially with the service worker active. Use `curl -sI --max-time 3 http://soundscape.localhost:4321` (the `--max-time` prevents the shell tool's timeout from blocking on a hung request).
+  - **If `soundscape-server` is already running** (e.g. left over from a prior session), re-running the block above restarts it; or skip the start commands and check state directly with `<container-engine> container ls --filter "name=soundscape-server"`. Confirm with `curl -sI --max-time 3 http://soundscape.localhost:4321` — the bind mount means live source edits are already reflected without rebuilding.
   - To stop and remove the server:
     ```sh
     <container-engine> container stop soundscape-server
@@ -81,7 +81,10 @@ soundscape/
   - The app uses a service worker, so the browser may display a cached version of the page after the server is stopped. To confirm the server is actually running, use the browser's Network panel or perform a hard reload (`Ctrl+Shift+R`).
   - On a first visit the page reloads once after the service worker claims the client; this guarantees that cached navigations and audio requests are handled by the SW. Avoid hard reloads when testing offline behavior because they bypass the service worker.
   - Favicon and some manifest icon requests bypass the service worker by design in Chrome, so expect occasional `304` revalidation log entries for those icons even when the app shell is cached.
-- Do not open `index.html` directly via `file://`; the app requires HTTP for module loading and service worker support.
+- **Service worker caching.** One cache, `soundscape-v{VERSION}`. Bump `VERSION` to wipe — the only invalidation lever. The precache uses `cache: "no-cache"` so it revalidates via ETag on every install, which is why the design works identically on any host. `VERSION` lives in three places (`sw.js`, `script.js`, `package.json`); bump all three on every release — `test/pwa.test.js` and `test/version-sync.test.js` enforce it. Do not:
+  - Make `sw.js` a module worker that imports `VERSION`. The byte-change must land in `sw.js` itself, not an import, for the browser's SW update to fire.
+  - Split into shell/audio caches, hash asset lists, or add HTTP-level `Cache-Control` config. The SW is the only cache that matters.
+- Do not open `index.html` directly via `file://`; the app requires HTTP for service worker support.
 - Put agent-specific temporary files in `.temp/` (already gitignored); do not write temporary files outside the repo.
 - Run unit tests:
   ```sh
@@ -136,7 +139,7 @@ soundscape/
 
 ## Versioning
 
-- The app version lives in `package.json` and `src/version.js`. Keep them in sync.
+- The app version lives in `package.json`, `sw.js`, and `script.js`. Keep them in sync.
 - Follow semantic versioning: bump **patch** for bug fixes, **minor** for new features, and **major** for breaking changes.
 - Update the version whenever you make a user-facing change so the deployed PWA and footer label stay accurate.
 

@@ -20,3 +20,6 @@ scripts/
 
 # GitHub Pages deployment config — irrelevant inside the container
 CNAME
+
+# Build file — not needed at runtime
+Dockerfile

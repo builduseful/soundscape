@@ -132,23 +132,34 @@ test("HTML exposes SVG and PNG favicon fallbacks", async () => {
 test("service worker precaches the app shell and caches audio on demand with sanitized entries and byte-range support", async () => {
     const source = await readFile(new URL("../sw.js", import.meta.url), "utf8");
 
-    for (const track of tracks) {
-        assert.match(source, new RegExp(escapeRegExp(`./${track.url}`)));
-    }
+    // The SW does not know about the audio catalog — audio is cached on
+    // demand by the same single cache the next time the user plays a track.
+    // The audio list lives in src/tracks.js for the app, not for the SW.
+    assert.doesNotMatch(source, /\bAUDIO_ASSETS\b/);
+    assert.doesNotMatch(source, /\btracks\b\s*=\s*tracks\.map\(/);
+    assert.doesNotMatch(source, /\bhashAssets\b/);
 
-    // Audio files are defined in AUDIO_ASSETS but only the app shell is
-    // precached at install; audio is cached on first play. cache.addAll can
-    // store decoded bodies with stale Content-Encoding headers, so precaching
-    // must go through the sanitizing cacheIfOk path instead.
-    assert.match(source, /AUDIO_ASSETS/);
+    // VERSION is hardcoded (not imported) so a version bump changes sw.js
+    // bytes and the browser detects a new SW. An import would break that.
+    assert.doesNotMatch(
+        source,
+        /import\s*\{\s*VERSION\s*\}\s*from\s*["']\.\/src\/version\.js["']/,
+    );
+
+    // Single cache, VERSION-keyed, with the app shell precached.
+    assert.match(source, /CACHE_NAME\s*=\s*["'`]soundscape-v\$\{VERSION\}/);
     assert.match(source, /APP_SHELL_ASSETS/);
     assert.doesNotMatch(source, /cache\.addAll\(/);
     assert.match(source, /precacheAll\(cache, APP_SHELL_ASSETS\)/);
+    // cache: "no-cache" forces If-None-Match revalidation on every install,
+    // which is what makes the design host-agnostic (GitHub Pages' 10-minute
+    // max-age is irrelevant). If this weakens to "default", the guarantee
+    // breaks.
+    assert.match(source, /fetch\(new Request\(url,\s*\{\s*cache:\s*["']no-cache["']\s*\}\)\)/);
     assert.match(source, /request\.headers\.has\("range"\)/);
     assert.match(source, /!response\.ok\s*\|\|\s*response\.status\s*!==\s*200/);
     assert.match(source, /headers\.delete\("content-encoding"\)/);
     assert.match(source, /headers\.delete\("vary"\)/);
-    assert.match(source, /cacheKey/);
     assert.match(source, /favicon-16\.png/);
     assert.match(source, /favicon-32\.png/);
     assert.match(source, /if \(!response\.ok\) return response/);
@@ -164,8 +175,10 @@ test("service worker keys non-range cache lookups on the original request", asyn
 
     const body = match[1];
 
-    // cleanCacheKey() strips headers but preserves query params, so using it here
-    // would not prevent duplicate cache entries for cache-busting URLs.
+    // Look up with the request as-is and `ignoreSearch: true` so cache-busting
+    // URLs like `script.js?v=...` don't create duplicate cache entries. No
+    // custom key helper — per the Fetch spec, Cache.match keys are URLs only,
+    // so the original request is the right key.
     assert.doesNotMatch(body, /cleanCacheKey/);
     assert.match(body, /cache\.match\(request,\s*\{\s*ignoreSearch:\s*true\s*\}\)/);
     assert.match(body, /cacheIfOk\(cache,\s*request,\s*response\)/);

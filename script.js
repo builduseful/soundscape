@@ -25,7 +25,7 @@ import {
     saveThemePreference,
 } from "./src/theme-utils.js";
 import { tracks, trackSlug } from "./src/tracks.js";
-import { VERSION } from "./src/version.js";
+const VERSION = "1.3.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";

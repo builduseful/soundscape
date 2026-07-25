@@ -1,8 +1,13 @@
-// Bump this on every deploy so activation purges the previous cache and the
-// app shell below is re-precached. APP_SHELL_ASSETS must list every module and
-// asset needed for a cold offline start (anything imported by script.js).
-const CACHE_NAME = "soundscape-v2026-07-24-1";
+// Mirror script.js and package.json (the version-sync tests enforce).
+// Bumping it invalidates the cache: sw.js bytes change, the browser sees a
+// new SW, the activate handler wipes the old cache. Hardcoded here, not
+// imported, so the byte-change lands in sw.js itself — which is what the
+// browser's SW update is gated on.
+const VERSION = "1.3.0";
 
+const CACHE_NAME = `soundscape-v${VERSION}`;
+
+// Files precached at install. Audio is cached on demand.
 const APP_SHELL_ASSETS = [
     "./",
     "./index.html",
@@ -14,7 +19,6 @@ const APP_SHELL_ASSETS = [
     "./src/pwa.js",
     "./src/theme-utils.js",
     "./src/tracks.js",
-    "./src/version.js",
     "./src/components/theme-selector.js",
     "./src/components/volume-control.js",
     "./resources/icons/apple-touch-icon.png",
@@ -27,24 +31,6 @@ const APP_SHELL_ASSETS = [
     "./resources/icons/maskable-icon.svg",
 ];
 
-const AUDIO_ASSETS = [
-    "./resources/soundscapes/rain_loopable.opus",
-    "./resources/soundscapes/rain_garden_loopable.opus",
-    "./resources/soundscapes/rain-from-room-loop-smallest.opus",
-    "./resources/soundscapes/rain_thunder_storm_loopable.opus",
-    "./resources/soundscapes/rain-and-thunder-loop.opus",
-    "./resources/soundscapes/fireplace_crackle_loopable.opus",
-    "./resources/soundscapes/fireplace_low_rumble_loopable.opus",
-    "./resources/soundscapes/open-road-loop.opus",
-    "./resources/soundscapes/brown-noise-loop.opus",
-    "./resources/soundscapes/pink-noise-loop.opus",
-    "./resources/soundscapes/white-noise-loop.opus",
-];
-
-// Only the app shell is precached at install time (≈108 KB). Audio files are
-// cached on-demand when the user plays a track — the sanitization in
-// cacheIfOk guarantees offline-safe entries without an upfront download of
-// the full catalog.
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -54,6 +40,9 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
+    // Drop any stale soundscape-* cache from a prior deploy (handles legacy
+    // names like the old date-stamped cache and the shell/audio split too,
+    // since they all start with the same prefix).
     event.waitUntil(
         caches.keys()
             .then((cacheNames) => Promise.all(cacheNames
@@ -83,9 +72,16 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(tryCacheThenFetch(request));
 });
 
+// Cache-first navigation: serve the precached shell when available, fall
+// back to the network. Any shell update that should reach returning users
+// must change CACHE_NAME — bump VERSION.
 async function handleNavigation(request) {
     const cache = await caches.open(CACHE_NAME);
     const indexKey = new URL("./index.html", self.location.origin).href;
+
+    const cached = await cache.match(indexKey, { ignoreSearch: true });
+
+    if (cached) return cached;
 
     try {
         const response = await fetch(request);
@@ -96,13 +92,8 @@ async function handleNavigation(request) {
     }
 }
 
-
-
-// Cache non-range requests under the original request URL. We intentionally do
-// NOT use cleanCacheKey() here: it strips headers but preserves query params, so
-// cache-busting URLs like script.js?v=... would still create duplicate cache
-// entries under different keys. ignoreSearch: true makes lookup work across
-// query-param variants while keeping storage keyed on the actual request.
+// Cache-first for everything else. ignoreSearch keeps `script.js?v=...`
+// from creating duplicate cache entries.
 async function tryCacheThenFetch(request) {
     const cache = await caches.open(CACHE_NAME);
     const cachedResponse = await cache.match(request, { ignoreSearch: true });
@@ -116,35 +107,25 @@ async function tryCacheThenFetch(request) {
 
 async function handleRangeRequest(request) {
     const cache = await caches.open(CACHE_NAME);
-    const cacheKey = cleanCacheKey(request);
 
-    let response = await cache.match(cacheKey, { ignoreSearch: true });
+    let response = await cache.match(request, { ignoreSearch: true });
 
-    // A partial (206) response can't be used to serve arbitrary byte ranges,
-    // so fetch the full resource when the cache is missing or contains a fragment.
+    // A 206 cached response can't be used to serve arbitrary byte ranges; fetch
+    // the full resource instead.
     if (!response || response.status === 206) {
         response = await fetchWithoutRange(request);
-        await cacheIfOk(cache, cacheKey, response);
+        await cacheIfOk(cache, request, response);
     }
 
     return createPartialResponse(request, response);
 }
 
-async function fetchWithoutRange(request) {
-    const headers = new Headers(request.headers);
-    headers.delete("range");
-    // Strip conditional headers so the network fetch returns the full 200 response
-    // instead of a 304; SW cache entries are 200s, and 304 bodies are empty.
-    headers.delete("if-none-match");
-    headers.delete("if-modified-since");
-    return fetch(new Request(request.url, { headers, cache: "no-store" }));
-}
-
-// Precaching goes through fetch + cacheIfOk instead of cache.addAll on
-// purpose: addAll can store an already-decoded body together with the
-// original Content-Encoding header (e.g. brotli), and serving such an entry
-// from the cache makes the browser try to decode plain bytes again, which
-// kills offline navigations with net::ERR_FAILED.
+// Precaching uses fetch + cacheIfOk (not cache.addAll) to avoid storing a
+// decoded body with the original Content-Encoding header, which would break
+// offline navigations with net::ERR_FAILED. `cache: "no-cache"` forces an
+// If-None-Match revalidation on every install, so the precache gets the
+// freshest version of each asset regardless of the HTTP server's
+// Cache-Control — that's what makes the design host-agnostic.
 async function precacheAll(cache, urls) {
     await Promise.all(urls.map(async (url) => {
         const response = await fetch(new Request(url, { cache: "no-cache" }));
@@ -157,16 +138,14 @@ async function precacheAll(cache, urls) {
     }));
 }
 
+// The body reaching the SW has already been content-decoded, so a stored
+// Content-Encoding header would poison the entry (the browser would try to
+// decode plain bytes again). Vary: Accept-Encoding must also go, and
+// Content-Length must match the stored body. Hop-by-hop headers don't
+// belong in a cache at all.
 async function cacheIfOk(cache, key, response) {
     if (!response.ok || response.status !== 200) return;
 
-    // Store a sanitized copy. The body reaching the service worker has already
-    // been content-decoded, so a stored Content-Encoding header poisons the
-    // entry (the browser would try to decode plain bytes again when it is
-    // served back). Vary: Accept-Encoding makes cache lookups depend on the
-    // requester's encoding headers even though the stored body is identical,
-    // and Content-Length must match the stored body. Hop-by-hop headers do not
-    // belong in a cache at all.
     const buffer = await response.clone().arrayBuffer();
     const headers = new Headers(response.headers);
 
@@ -183,15 +162,15 @@ async function cacheIfOk(cache, key, response) {
     }));
 }
 
-function cleanCacheKey(request) {
-    return new Request(request.url, {
-        cache: request.cache,
-        credentials: request.credentials,
-        mode: request.mode,
-        redirect: request.redirect,
-        referrer: request.referrer,
-        referrerPolicy: request.referrerPolicy,
-    });
+// Strip the Range header and the conditional headers (If-None-Match,
+// If-Modified-Since) so the network fetch returns a full 200 instead of a
+// 304 (whose body is empty) or a 206.
+async function fetchWithoutRange(request) {
+    const headers = new Headers(request.headers);
+    headers.delete("range");
+    headers.delete("if-none-match");
+    headers.delete("if-modified-since");
+    return fetch(new Request(request.url, { headers, cache: "no-store" }));
 }
 
 async function createPartialResponse(request, response) {
