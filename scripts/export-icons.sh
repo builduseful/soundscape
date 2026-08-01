@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-icon_dir="${1:-resources/icons}"
+icon_dir="${1:-src/resources/icons}"
 
 if ! command -v inkscape >/dev/null 2>&1; then
     echo "Inkscape is required. Install it in WSL, for example: sudo apt install inkscape" >&2

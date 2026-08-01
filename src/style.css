@@ -43,17 +43,20 @@
     box-sizing: border-box;
 }
 
+/* min-height (not height) on the small viewport: 100vh is the *large* viewport,
+   so on mobile with the URL bar showing it exceeds the visible area, and
+   overflow: hidden then puts the footer permanently out of reach. Vertical
+   scrolling stays available as a fallback for very short windows. */
 body {
     margin: 0;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
     min-height: 100svh;
     background-color: var(--color-page);
     color: var(--color-text);
     font-family: system-ui, sans-serif;
     font-size: 18px;
     line-height: 1.4;
-    overflow: hidden;
+    overflow-x: hidden;
 }
 
 .container {
@@ -118,6 +121,23 @@ body {
 
 .track-title-text--incoming {
     opacity: 0;
+}
+
+/* Muted rather than alarming: this only appears when the user asked for sound
+   and got silence, so they are already looking for the explanation. A calm
+   player should explain, not shout. */
+.playback-error {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin: 0;
+    max-width: 32ch;
+    text-align: center;
+    text-wrap: balance;
+}
+
+.playback-error[hidden] {
+    display: none;
 }
 
 .controls {

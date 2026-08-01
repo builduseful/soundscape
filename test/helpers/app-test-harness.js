@@ -153,6 +153,12 @@ class FakeAudioElement extends FakeElement {
     }
 }
 
+// The fake decodeAudioData below returns 30 s at 48 kHz. applyLoopCrossfade
+// then trims the loop by its 10 ms overlap, so the period the app reports as
+// Media Session duration is shorter than the decoded file.
+export const FAKE_TRACK_SECONDS = 30;
+export const FAKE_TRACK_LOOP_SECONDS = (48000 * FAKE_TRACK_SECONDS - 480) / 48000;
+
 export function installAppTestEnvironment({
     fetch = defaultFetch,
     launchQueue,
@@ -189,9 +195,14 @@ export function installAppTestEnvironment({
         "previousButton",
         "themeSelector",
         "appVersion",
+        "playbackError",
     ]) {
         elements.set(id, new FakeElement());
     }
+
+    // Mirrors the `hidden` attribute on the real element so tests can assert
+    // whether a playback failure is actually surfaced to the user.
+    elements.get("playbackError").hidden = true;
 
     elements.set("title", title);
     elements.set("audioElement", audioElement);

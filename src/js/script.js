@@ -25,7 +25,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -50,8 +50,10 @@ const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
+const playbackError = document.getElementById("playbackError");
 
-let currentTrackIndex = getInitialTrackIndex();
+const requestedTrackIndex = getTrackIndexFromUrl(globalThis.location?.href);
+let currentTrackIndex = requestedTrackIndex === -1 ? getSavedTrackIndex() : requestedTrackIndex;
 let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
 
@@ -88,6 +90,7 @@ document.addEventListener("keyup", handleDocumentKeyup);
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
 updateTrackTitle();
+applyRequestedTrack();
 startMediaSession();
 registerServiceWorker();
 initLaunchQueue();
@@ -160,7 +163,13 @@ async function playPreviousTrack() {
 }
 
 async function selectTrack(requestedIndex) {
-    if (requestedIndex === currentTrackIndex) return false;
+    // A shortcut for the soundscape we're already on should still start it —
+    // the user clicked "Fireplace" expecting fireplace, not a no-op.
+    if (requestedIndex === currentTrackIndex) {
+        if (!audioPlayer.isPlaying()) await playAudio();
+
+        return false;
+    }
 
     const offset = requestedIndex - currentTrackIndex;
 
@@ -187,7 +196,7 @@ async function changeTrack(offset, direction) {
         if (audioPlayer.getTrackUrl() === attemptedTrack.url) {
             updateMediaSessionStatus(attemptedTrack);
             syncPlaybackState(audioPlayer.isPlaying());
-            console.warn("Could not start soundscape track.", error);
+            reportPlaybackFailure("Could not start soundscape track.", error);
             return false;
         }
 
@@ -196,7 +205,7 @@ async function changeTrack(offset, direction) {
         updateTrackTitle();
         updateMediaSessionStatus(getCurrentTrack());
         syncPlaybackState(audioPlayer.isPlaying());
-        console.warn("Could not change soundscape track.", error);
+        reportPlaybackFailure("Could not change soundscape track.", error);
         return false;
     }
 }
@@ -206,11 +215,30 @@ function getCurrentTrack() {
 }
 
 // A ?track=<slug> URL (e.g. from a manifest app shortcut) wins over the saved
-// track so shared/pinned links open on the requested soundscape.
-function getInitialTrackIndex() {
-    const requestedIndex = getTrackIndexFromUrl(globalThis.location?.href);
+// track so shared/pinned links open on the requested soundscape. Once applied,
+// the param is persisted and removed: persisted because on a first visit the
+// service worker claims the page and reloads it once, which would otherwise
+// discard the choice; removed because leaving it in the address bar would make
+// every later reload of that URL override the user's saved soundscape.
+function applyRequestedTrack() {
+    if (requestedTrackIndex !== -1) {
+        saveCurrentTrack();
+    }
 
-    return requestedIndex === -1 ? getSavedTrackIndex() : requestedIndex;
+    stripTrackParamFromUrl();
+}
+
+function stripTrackParamFromUrl() {
+    const href = globalThis.location?.href;
+
+    if (typeof href !== "string" || typeof globalThis.history?.replaceState !== "function") return;
+
+    const url = new URL(href);
+
+    if (!url.searchParams.has("track")) return;
+
+    url.searchParams.delete("track");
+    globalThis.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function getTrackIndexFromUrl(url) {
@@ -267,14 +295,19 @@ function updateTrackTitle({ animate = false, direction = "next" } = {}) {
     }
 
     incomingTitle.textContent = trackTitle;
-    document.title = trackTitle;
+    setDocumentTitle(trackTitle);
     restartTitleChangeAnimation(direction);
 }
 
 function setTrackTitle(trackTitle) {
     currentTitle.textContent = trackTitle;
     incomingTitle.textContent = "";
-    document.title = trackTitle;
+    setDocumentTitle(trackTitle);
+}
+
+// Keep the app name in the tab so bookmarks and window lists stay identifiable.
+function setDocumentTitle(trackTitle) {
+    document.title = `${trackTitle} · Soundscape`;
 }
 
 function resetTitleAnimation() {
@@ -303,6 +336,29 @@ function restoreSavedVolume() {
 
     volumeControl.value = String(volume);
     audioPlayer.updateVolume(volume);
+}
+
+// Only a failure that left the listener in silence is worth showing. A failed
+// track change while audio is playing is absorbed completely — the previous
+// soundscape keeps going and pressing next again just works — so surfacing it
+// would put a warning over music that never stopped. Those stay console-only,
+// which is where a developer wants them anyway.
+function reportPlaybackFailure(logMessage, error) {
+    console.warn(logMessage, error);
+
+    if (audioPlayer.isPlaying()) return;
+
+    playbackError.textContent = globalThis.navigator?.onLine === false
+        ? "You're offline and this soundscape hasn't been downloaded yet."
+        : "This soundscape could not be played. Try again, or pick another.";
+    playbackError.hidden = false;
+}
+
+function clearPlaybackError() {
+    if (playbackError.hidden) return;
+
+    playbackError.hidden = true;
+    playbackError.textContent = "";
 }
 
 function loadPreference(key) {
@@ -336,12 +392,18 @@ function updateThemePreference(value, shouldSave = true) {
 async function playCurrentTrack(direction = "next") {
     // Load the current soundscape
     const track = getCurrentTrack();
-    const wasPlaying = audioPlayer.isPlaying();
+    // Decide from playback intent, not the media element's transient paused
+    // state: during a track swap the element is briefly paused (src set +
+    // load()), so isPlaying() can read false and wrongly start the new track
+    // paused, stopping playback mid-navigation.
+    const wasPlaying = audioPlayer.isPlaybackRequested();
 
     saveCurrentTrack();
     updateTrackTitle({ animate: true, direction });
     const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
     if (!didStartTrack) return false;
+
+    clearPlaybackError();
 
     // Set metadata and re-register action handlers after the new source has
     // started. Some browsers reset the Media Session association when the
@@ -365,9 +427,10 @@ async function playAudio() {
             if (!didStartTrack) return;
         }
 
+        clearPlaybackError();
         syncPlaybackState(audioPlayer.isPlaying());
     } catch (error) {
-        console.warn("Could not start playback.", error);
+        reportPlaybackFailure("Could not start playback.", error);
         syncPlaybackState(audioPlayer.isPlaying());
     }
 }

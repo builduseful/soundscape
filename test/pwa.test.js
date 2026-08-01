@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { afterEach, test } from "node:test";
 
 import { registerLaunchQueueConsumer, registerServiceWorker } from "../src/js/pwa.js";
@@ -187,3 +187,70 @@ test("service worker keys non-range cache lookups on the original request", asyn
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+function readAssetList(source, constantName) {
+    const match = new RegExp(`const ${constantName} = \\[([\\s\\S]*?)\\];`).exec(source);
+
+    assert.ok(match, `${constantName} should exist in sw.js`);
+
+    return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
+}
+
+// The precache list is hand-maintained, and a missed entry silently breaks
+// offline support for that asset. Nothing else in the suite would notice.
+test("every deployable asset is precached by the service worker", async () => {
+    const swSource = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
+    const listed = new Set([
+        ...readAssetList(swSource, "APP_SHELL_ASSETS"),
+        ...readAssetList(swSource, "OPTIONAL_ASSETS"),
+    ]);
+
+    const srcDir = new URL("../src/", import.meta.url);
+    const deployable = (await readdir(srcDir, { recursive: true }))
+        .map((entry) => `./${entry.replace(/\\/g, "/")}`)
+        // sw.js registers itself; audio is cached on demand by design; CNAME is
+        // a deployment artefact the browser never requests.
+        .filter((path) => !/^\.\/(sw\.js|CNAME)$/.test(path))
+        .filter((path) => !path.startsWith("./resources/soundscapes/"))
+        .filter((path) => /\.[a-z0-9]+$/i.test(path));
+
+    assert.notEqual(deployable.length, 0, "expected to find deployable assets under src/");
+
+    const missing = deployable.filter((path) => !listed.has(path));
+
+    assert.deepEqual(missing, [], `these src/ assets are not precached: ${missing.join(", ")}`);
+});
+
+test("the app shell is required at install and icons are best effort", async () => {
+    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
+
+    // A missing icon must not fail install and cost every bit of offline
+    // support, but a missing module must, because the shell can't boot without it.
+    assert.match(source, /precacheAll\(cache, APP_SHELL_ASSETS\)/);
+    assert.match(source, /precacheOptional\(cache, OPTIONAL_ASSETS\)/);
+
+    for (const asset of readAssetList(source, "APP_SHELL_ASSETS")) {
+        assert.ok(!asset.includes("/icons/"), `${asset} should be optional, not required`);
+    }
+
+    for (const asset of readAssetList(source, "OPTIONAL_ASSETS")) {
+        assert.ok(asset.includes("/icons/"), `${asset} should be required, not optional`);
+    }
+});
+
+test("the service worker answers with a response when offline and uncached", async () => {
+    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
+
+    // Letting the fetch rejection escape surfaces an opaque net::ERR_FAILED,
+    // which the app cannot distinguish from being broken.
+    assert.match(source, /function offlineResponse\(\)/);
+    assert.match(source, /status:\s*504/);
+
+    const tryCacheBody = /async function tryCacheThenFetch\(request\) \{([\s\S]*?)\n\}/.exec(source);
+    assert.ok(tryCacheBody, "tryCacheThenFetch should exist");
+    assert.match(tryCacheBody[1], /catch\s*\{[\s\S]*offlineResponse\(\)/);
+
+    const rangeBody = /async function handleRangeRequest\(request\) \{([\s\S]*?)\n\}/.exec(source);
+    assert.ok(rangeBody, "handleRangeRequest should exist");
+    assert.match(rangeBody[1], /catch\s*\{[\s\S]*offlineResponse\(\)/);
+});

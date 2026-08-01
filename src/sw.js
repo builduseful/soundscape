@@ -3,11 +3,13 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
-// Files precached at install. Audio is cached on demand.
+// Precached at install; audio is cached on demand. Everything here is needed to
+// boot offline, so a failure fails the install — a half-cached shell is worse
+// than no offline support at all.
 const APP_SHELL_ASSETS = [
     "./",
     "./index.html",
@@ -21,6 +23,11 @@ const APP_SHELL_ASSETS = [
     "./js/tracks.js",
     "./js/components/theme-selector.js",
     "./js/components/volume-control.js",
+];
+
+// Cached best-effort: a missing icon should cost you an icon, not the entire
+// offline experience, so these never fail the install.
+const OPTIONAL_ASSETS = [
     "./resources/icons/apple-touch-icon.png",
     "./resources/icons/favicon-16.png",
     "./resources/icons/favicon-32.png",
@@ -34,7 +41,10 @@ const APP_SHELL_ASSETS = [
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => precacheAll(cache, APP_SHELL_ASSETS))
+            .then(async (cache) => {
+                await precacheAll(cache, APP_SHELL_ASSETS);
+                await precacheOptional(cache, OPTIONAL_ASSETS);
+            })
             .then(() => self.skipWaiting()),
     );
 });
@@ -100,9 +110,13 @@ async function tryCacheThenFetch(request) {
 
     if (cachedResponse) return cachedResponse;
 
-    const response = await fetch(request);
-    await cacheIfOk(cache, request, response);
-    return response;
+    try {
+        const response = await fetch(request);
+        await cacheIfOk(cache, request, response);
+        return response;
+    } catch {
+        return offlineResponse();
+    }
 }
 
 async function handleRangeRequest(request) {
@@ -113,11 +127,24 @@ async function handleRangeRequest(request) {
     // A 206 cached response can't be used to serve arbitrary byte ranges; fetch
     // the full resource instead.
     if (!response || response.status === 206) {
-        response = await fetchWithoutRange(request);
+        try {
+            response = await fetchWithoutRange(request);
+        } catch {
+            return offlineResponse();
+        }
+
         await cacheIfOk(cache, request, response);
     }
 
     return createPartialResponse(request, response);
+}
+
+// Audio is cached on demand, so a track the user has never played is simply not
+// there when the network is gone. Resolving with a real response lets the app's
+// error handling run and tell the user, instead of surfacing an opaque
+// net::ERR_FAILED that looks like the app is broken.
+function offlineResponse() {
+    return new Response("", { status: 504, statusText: "Offline" });
 }
 
 // Precaching uses fetch + cacheIfOk (not cache.addAll) to avoid storing a
@@ -135,6 +162,21 @@ async function precacheAll(cache, urls) {
         }
 
         await cacheIfOk(cache, url, response);
+    }));
+}
+
+// Same revalidating fetch, but one bad asset only loses that asset.
+async function precacheOptional(cache, urls) {
+    await Promise.all(urls.map(async (url) => {
+        try {
+            const response = await fetch(new Request(url, { cache: "no-cache" }));
+
+            if (response.ok) {
+                await cacheIfOk(cache, url, response);
+            }
+        } catch {
+            // Best effort by design.
+        }
     }));
 }
 

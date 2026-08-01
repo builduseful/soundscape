@@ -3,6 +3,17 @@ const TRACK_CROSSFADE_SECONDS = 0.25;
 const LOOP_CROSSFADE_MS = 10;
 const CROSSFADE_CURVE_STEPS = 64;
 
+// Builds a seamless loop by mixing the file's tail into its head and shortening
+// the loop period by the overlap.
+//
+// The loop plays [0, loopEnd). The sample before the wrap is source[loopEnd - 1]
+// and the sample after it is target[0] === source[loopEnd] — genuinely adjacent
+// in the source, so the join is continuous by construction. The overlap window
+// then fades that tail material out while the real head fades in.
+//
+// Trimming the period is the part that makes this work: blending into the tail
+// while keeping the full length instead leaves the wrap jumping backwards by the
+// overlap, which is a discontinuity plus a duplicated head.
 export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOOP_CROSSFADE_MS) {
     const sampleRate = sourceBuffer.sampleRate;
     const channels = sourceBuffer.numberOfChannels;
@@ -11,6 +22,7 @@ export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOO
         Math.max(1, Math.round((crossfadeMs * sampleRate) / 1000)),
         Math.floor(originalLength / 2),
     );
+    const loopLength = originalLength - overlapSamples;
 
     const output = audioContext.createBuffer(channels, originalLength, sampleRate);
 
@@ -25,15 +37,14 @@ export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOO
             // noise-like ambience; linear fades create a small dip in the overlap.
             const fadeOut = Math.cos(t * Math.PI / 2);
             const fadeIn = Math.sin(t * Math.PI / 2);
-            const tailIndex = originalLength - overlapSamples + i;
-            target[tailIndex] = source[tailIndex] * fadeOut + source[i] * fadeIn;
+            target[i] = source[loopLength + i] * fadeOut + source[i] * fadeIn;
         }
     }
 
     return {
         buffer: output,
         loopStart: 0,
-        loopEnd: originalLength / sampleRate,
+        loopEnd: loopLength / sampleRate,
     };
 }
 
@@ -373,13 +384,13 @@ export class AudioPlayer {
     }
 
     assertTrackSupported(track) {
-        if (!track.mime) return;
+        if (!track.mime || this.supportsTrack(track)) return;
 
-        const isSupported = this.supportsTrack(track);
-
-        if (!isSupported) {
-            throw new Error(`Unsupported audio type: ${track.mime}`);
-        }
+        // canPlayType() describes HTMLMediaElement support, but the audible path
+        // is decodeAudioData(), which accepts codecs some browsers decline to
+        // report on the media element. A conservative "" must not mute the whole
+        // app before a single byte is fetched, so warn and let the decode decide.
+        console.warn(`The media element reports no support for ${track.mime}. Attempting to decode anyway.`);
     }
 
     supportsTrack(track) {

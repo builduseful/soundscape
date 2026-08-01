@@ -6,9 +6,26 @@ import { applyLoopCrossfade, AudioPlayer } from "../src/js/audio-player.js";
 const originalAudioContext = globalThis.AudioContext;
 const originalFetch = globalThis.fetch;
 
+// The fake decodeAudioData below yields `30 * (byteLength / 8)` seconds at
+// 48 kHz. applyLoopCrossfade then trims the loop by the 10 ms overlap, so the
+// looping period is shorter than the decoded duration — mirror that here rather
+// than hardcoding, so the expectation tracks the implementation.
+function loopEndForDuration(durationSeconds, sampleRate = 48000, crossfadeMs = 10) {
+    const length = Math.round(sampleRate * durationSeconds);
+    const overlap = Math.min(
+        Math.max(1, Math.round((crossfadeMs * sampleRate) / 1000)),
+        Math.floor(length / 2),
+    );
+
+    return (length - overlap) / sampleRate;
+}
+
+const originalConsoleWarn = console.warn;
+
 afterEach(() => {
     globalThis.AudioContext = originalAudioContext;
     globalThis.fetch = originalFetch;
+    console.warn = originalConsoleWarn;
 });
 
 function createAudioElement() {
@@ -278,34 +295,107 @@ function createFakeAudioContextForCrossfade() {
     return context;
 }
 
-test("applyLoopCrossfade removes a large seam at the loop boundary", () => {
+// Deterministic lowpass ("pink-ish") noise, which is what these ambience files
+// actually are: neighbouring samples are close, distant ones are unrelated.
+// That gap is what makes a loop seam audible and what a correct crossfade has to
+// close. An earlier version of this suite filled the head with a flat plateau,
+// so the seam measured zero even when the join was genuinely discontinuous.
+function fillWithNoise(data, seed) {
+    let state = seed;
+    let smoothed = 0;
+
+    for (let i = 0; i < data.length; i++) {
+        state = (state * 1664525 + 1013904223) % 4294967296;
+        smoothed = 0.98 * smoothed + 0.02 * ((state / 4294967296) * 2 - 1);
+        data[i] = smoothed * 5;
+    }
+}
+
+function overlapSamplesFor(length, sampleRate, crossfadeMs = 10) {
+    return Math.min(
+        Math.max(1, Math.round((crossfadeMs * sampleRate) / 1000)),
+        Math.floor(length / 2),
+    );
+}
+
+test("applyLoopCrossfade shortens the loop period by the overlap", () => {
     const sampleRate = 48000;
-    const length = sampleRate; // 1 second
+    const length = sampleRate;
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const source = fakeContext.createBuffer(1, length, sampleRate);
+    fillWithNoise(source.getChannelData(0), 7);
+
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const overlap = overlapSamplesFor(length, sampleRate);
+
+    assert.equal(loopStart, 0);
+    // The trim is what makes the join continuous. Keeping the full length here
+    // would leave the wrap jumping backwards by the overlap.
+    assert.equal(Math.round(loopEnd * sampleRate), length - overlap);
+    assert.equal(buffer.sampleRate, sampleRate);
+});
+
+test("applyLoopCrossfade joins the loop on genuinely adjacent source samples", () => {
+    const sampleRate = 48000;
+    const length = sampleRate;
     const fakeContext = createFakeAudioContextForCrossfade();
     const source = fakeContext.createBuffer(1, length, sampleRate);
     const data = source.getChannelData(0);
+    fillWithNoise(data, 11);
 
-    // Create a deliberate loud seam: the tail is far from the head, but the
-    // head segment itself is smooth. The crossfade should make the boundary
-    // sample approach the head so the wrap back to sample 0 is inaudible.
-    data.fill(0);
-    const overlap = Math.round((10 * sampleRate) / 1000);
-    for (let i = 0; i < overlap; i++) {
-        data[i] = 0.5;
-    }
-    data[length - 1] = -0.5;
-
-    const originalSeamJump = Math.abs(data[length - 1] - data[0]);
+    const original = Float32Array.from(data);
+    const overlap = overlapSamplesFor(length, sampleRate);
+    const loopLength = length - overlap;
 
     const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
     const out = buffer.getChannelData(0);
     const loopEndIndex = Math.round(loopEnd * sampleRate);
-    const seamJump = Math.abs(out[loopEndIndex - 1] - out[loopStart]);
 
-    assert.equal(loopStart, 0);
-    assert.equal(loopEndIndex, length);
-    assert.ok(seamJump < 1e-2, `seam jump ${seamJump} should be below 1e-2`);
-    assert.ok(seamJump < originalSeamJump / 10, `seam jump ${seamJump} should be much smaller than original ${originalSeamJump}`);
+    // At the wrap, the last sample played is source[loopLength - 1] and the
+    // first is source[loopLength] — adjacent in the original recording, so the
+    // join carries no step the source didn't already have.
+    assert.ok(Math.abs(out[loopStart] - original[loopLength]) < 1e-6);
+    assert.equal(out[loopEndIndex - 1], original[loopLength - 1]);
+
+    const seam = Math.abs(out[loopEndIndex - 1] - out[loopStart]);
+    const naturalStep = Math.abs(original[loopLength] - original[loopLength - 1]);
+    assert.ok(seam - naturalStep < 1e-6, `seam ${seam} should be a natural sample step (${naturalStep})`);
+
+    // ...and it must beat looping the file untreated.
+    const untreatedSeam = Math.abs(original[length - 1] - original[0]);
+    assert.ok(seam < untreatedSeam, `seam ${seam} should improve on the untreated seam ${untreatedSeam}`);
+});
+
+test("applyLoopCrossfade blends the overlap with equal-power curves", () => {
+    const sampleRate = 48000;
+    const length = sampleRate;
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const source = fakeContext.createBuffer(1, length, sampleRate);
+    fillWithNoise(source.getChannelData(0), 23);
+
+    const original = Float32Array.from(source.getChannelData(0));
+    const overlap = overlapSamplesFor(length, sampleRate);
+    const loopLength = length - overlap;
+
+    const { buffer } = applyLoopCrossfade(source, fakeContext, 10);
+    const out = buffer.getChannelData(0);
+
+    // Equal-power (sin/cos) rather than linear: these files are noise-like, and
+    // a linear fade dips in perceived loudness across the overlap.
+    for (const i of [0, Math.floor(overlap / 2), overlap - 1]) {
+        const t = i / overlap;
+        const expected = original[loopLength + i] * Math.cos((t * Math.PI) / 2)
+            + original[i] * Math.sin((t * Math.PI) / 2);
+
+        assert.ok(
+            Math.abs(out[i] - expected) < 1e-6,
+            `sample ${i} should be an equal-power blend (got ${out[i]}, expected ${expected})`,
+        );
+    }
+
+    // Everything past the overlap is untouched source.
+    assert.equal(out[overlap], original[overlap]);
+    assert.equal(out[loopLength - 1], original[loopLength - 1]);
 });
 
 test("applyLoopCrossfade processes every channel in a stereo buffer", () => {
@@ -313,29 +403,24 @@ test("applyLoopCrossfade processes every channel in a stereo buffer", () => {
     const length = sampleRate;
     const fakeContext = createFakeAudioContextForCrossfade();
     const source = fakeContext.createBuffer(2, length, sampleRate);
-    const left = source.getChannelData(0);
-    const right = source.getChannelData(1);
+    fillWithNoise(source.getChannelData(0), 3);
+    fillWithNoise(source.getChannelData(1), 99);
 
-    const overlap = Math.round((10 * sampleRate) / 1000);
-    left.fill(0);
-    right.fill(0);
-    for (let i = 0; i < overlap; i++) {
-        left[i] = 0.5;
-        right[i] = 0.3;
-    }
-    left[length - 1] = -0.5;
-    right[length - 1] = -0.3;
+    const originalLeft = Float32Array.from(source.getChannelData(0));
+    const originalRight = Float32Array.from(source.getChannelData(1));
+    const overlap = overlapSamplesFor(length, sampleRate);
+    const loopLength = length - overlap;
 
     const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
-    const outLeft = buffer.getChannelData(0);
-    const outRight = buffer.getChannelData(1);
     const loopEndIndex = Math.round(loopEnd * sampleRate);
 
     assert.equal(buffer.numberOfChannels, 2);
     assert.equal(loopStart, 0);
-    assert.equal(loopEnd, 1);
-    assert.ok(Math.abs(outLeft[loopEndIndex - 1] - outLeft[0]) < 1e-2);
-    assert.ok(Math.abs(outRight[loopEndIndex - 1] - outRight[0]) < 1e-2);
+    assert.equal(loopEndIndex, loopLength);
+    // Both channels must be trimmed and blended identically, or the loop wrap
+    // would smear the stereo image.
+    assert.ok(Math.abs(buffer.getChannelData(0)[0] - originalLeft[loopLength]) < 1e-6);
+    assert.ok(Math.abs(buffer.getChannelData(1)[0] - originalRight[loopLength]) < 1e-6);
 });
 
 test("applyLoopCrossfade computes loopEnd from the source sample rate", () => {
@@ -346,9 +431,10 @@ test("applyLoopCrossfade computes loopEnd from the source sample rate", () => {
     source.getChannelData(0).fill(0.1);
 
     const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const overlap = overlapSamplesFor(length, sampleRate);
 
     assert.equal(loopStart, 0);
-    assert.equal(loopEnd, 2);
+    assert.equal(loopEnd, (length - overlap) / sampleRate);
     assert.equal(buffer.sampleRate, sampleRate);
     assert.equal(buffer.length, length);
 });
@@ -406,7 +492,7 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
     assert.equal(audibleSource.buffer.duration, context.decodedBuffers[0].duration);
     assert.equal(audibleSource.loop, true);
     assert.equal(audibleSource.loopStart, 0);
-    assert.equal(audibleSource.loopEnd, context.decodedBuffers[0].duration);
+    assert.equal(audibleSource.loopEnd, loopEndForDuration(context.decodedBuffers[0].duration));
     assert.deepEqual(audibleSource.startCalls, [context.currentTime]);
     assert.equal(audibleSource.connectedTo, audibleGainNode);
     assert.equal(audibleGainNode.connectedTo, context.destination);
@@ -514,7 +600,7 @@ test("playTrack ignores stale buffer loads when a newer track is requested", asy
     assert.equal(audioElement.src, "/fast.ogg");
     assert.equal(audioElement.loadCalls, 1);
     assert.equal(contexts[0].bufferSources.length, 1);
-    assert.equal(contexts[0].bufferSources[0].loopEnd, 60);
+    assert.equal(contexts[0].bufferSources[0].loopEnd, loopEndForDuration(60));
 });
 
 test("playTrack keeps the current buffer source active while a replacement track loads", async () => {
@@ -539,7 +625,7 @@ test("playTrack keeps the current buffer source active while a replacement track
     assert.equal(await secondPlay, true);
     assert.equal(firstSource.stopCalls, 1);
     assert.equal(contexts[0].bufferSources.length, 2);
-    assert.equal(contexts[0].bufferSources[1].loopEnd, 60);
+    assert.equal(contexts[0].bufferSources[1].loopEnd, loopEndForDuration(60));
 });
 
 test("playTrack crossfades between two different playing tracks with equal-power curves", async () => {
@@ -672,8 +758,10 @@ test("getMediaSessionPositionState reports decoded buffer loop position", async 
     await player.playTrack({ url: "/quiet.opus" }, true);
     contexts[0].currentTime += 7;
 
+    // Duration is the looping period, which the crossfade trims below the
+    // decoded 30 s.
     assert.deepEqual(player.getMediaSessionPositionState(), {
-        duration: 30,
+        duration: loopEndForDuration(30),
         playbackRate: 1,
         position: 7,
     });
@@ -681,7 +769,7 @@ test("getMediaSessionPositionState reports decoded buffer loop position", async 
     await player.pause();
 
     assert.deepEqual(player.getMediaSessionPositionState(), {
-        duration: 30,
+        duration: loopEndForDuration(30),
         playbackRate: 1,
         position: 7,
     });
@@ -696,7 +784,9 @@ test("getMediaSessionPositionState wraps long-running loop position", async () =
     await player.playTrack({ url: "/quiet.opus" }, true);
     contexts[0].currentTime += 37;
 
-    assert.equal(player.getCurrentPosition(), 7);
+    // 37 s into a loop whose period is just under 30 s wraps into the second pass.
+    assert.equal(player.getCurrentPosition(), 37 % loopEndForDuration(30));
+    assert.ok(player.getCurrentPosition() > 7, "position should wrap past the trimmed loop end");
 });
 
 test("AudioContext state changes notify the app shell", async () => {
@@ -762,21 +852,25 @@ test("playTrack accepts supported MIME types before loading the track", async ()
     assert.equal(audioElement.src, "/rain.opus");
 });
 
-test("playTrack rejects unsupported track MIME types before creating the audio graph", async () => {
+test("playTrack still attempts a track the media element reports as unsupported", async () => {
     const contexts = installAudioContext();
     const fetchCalls = installFetch();
     const audioElement = createAudioElement();
     audioElement.canPlayType = () => "";
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.map(String).join(" "));
     const player = new AudioPlayer(audioElement);
 
-    await assert.rejects(
-        () => player.playTrack({ url: "/rain.opus", mime: "audio/ogg; codecs=opus" }, true),
-        /Unsupported audio type: audio\/ogg; codecs=opus/,
-    );
+    // canPlayType() describes the media element, but the audible path is
+    // decodeAudioData(). A conservative "" must not mute the app before a byte
+    // is fetched — warn and let the decode be the real verdict.
+    await player.playTrack({ url: "/rain.opus", mime: "audio/ogg; codecs=opus" }, true);
 
-    assert.equal(contexts.length, 0);
-    assert.equal(audioElement.loadCalls, 0);
-    assert.deepEqual(fetchCalls, []);
+    assert.equal(contexts.length, 1);
+    assert.equal(audioElement.src, "/rain.opus");
+    assert.deepEqual(fetchCalls, ["/rain.opus"]);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /reports no support for audio\/ogg; codecs=opus/);
 });
 
 test("play and pause keep a loaded track's audio context and media element in sync", async () => {

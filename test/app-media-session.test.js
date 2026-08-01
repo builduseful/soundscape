@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
 import {
+    FAKE_TRACK_LOOP_SECONDS,
     restoreAppTestEnvironment,
     startAppTestEnvironment,
 } from "./helpers/app-test-harness.js";
@@ -116,7 +117,7 @@ test("restores saved track, volume, and theme before the first play", async () =
     const { current } = getTitleParts(elements);
 
     assert.equal(current.textContent, tracks[1].title);
-    assert.equal(document.title, tracks[1].title);
+    assert.equal(document.title, `${tracks[1].title} · Soundscape`);
     assert.equal(document.documentElement.dataset.theme, "dark");
     assert.equal(elements.get("themeSelector").getAttribute("value"), "dark");
     assert.equal(elements.get("volumeControl").value, "0.42");
@@ -144,7 +145,7 @@ test("invalid saved preferences fall back to safe defaults", async () => {
 
     assert.equal(current.textContent, tracks[0].title);
     assert.equal(incoming.textContent, "");
-    assert.equal(document.title, tracks[0].title);
+    assert.equal(document.title, `${tracks[0].title} · Soundscape`);
     assert.equal(document.documentElement.dataset.theme, undefined);
     assert.equal(elements.get("themeSelector").getAttribute("value"), "system");
     assert.equal(elements.get("volumeControl").value, "1");
@@ -250,7 +251,7 @@ test("track title changes animate and settle after animationend", async () => {
 
     assert.equal(current.textContent, tracks[0].title);
     assert.equal(incoming.textContent, tracks[1].title);
-    assert.equal(document.title, tracks[1].title);
+    assert.equal(document.title, `${tracks[1].title} · Soundscape`);
     assert.equal(title.classList.contains("is-changing"), true);
     assert.equal(title.classList.contains("is-changing-next"), true);
     assert.equal(navigator.mediaSession.playbackState, "paused");
@@ -303,7 +304,7 @@ test("media session position timer follows Web Audio time and stops on pause", a
     await mediaActions.play();
     assert.equal(intervals.size, 1);
     assert.deepEqual(getLastItem(mediaSessionPositionStates), {
-        duration: 30,
+        duration: FAKE_TRACK_LOOP_SECONDS,
         playbackRate: 1,
         position: 0,
     });
@@ -312,7 +313,7 @@ test("media session position timer follows Web Audio time and stops on pause", a
     await triggerInterval(getLastItem([...intervals.keys()]));
 
     assert.deepEqual(getLastItem(mediaSessionPositionStates), {
-        duration: 30,
+        duration: FAKE_TRACK_LOOP_SECONDS,
         playbackRate: 1,
         position: 5,
     });
@@ -320,7 +321,7 @@ test("media session position timer follows Web Audio time and stops on pause", a
     await mediaActions.pause();
     assert.equal(intervals.size, 0);
     assert.deepEqual(getLastItem(mediaSessionPositionStates), {
-        duration: 30,
+        duration: FAKE_TRACK_LOOP_SECONDS,
         playbackRate: 1,
         position: 5,
     });
@@ -407,7 +408,47 @@ test("app handles track load failures gracefully", async () => {
     assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[0].url);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0][0], /Could not change soundscape track/);
+
+    // The failure was absorbed: the previous soundscape never stopped. Putting a
+    // warning on screen over uninterrupted audio would be noise, so this stays a
+    // console-only, developer-facing event.
+    assert.equal(elements.get("playbackError").hidden, true);
 });
+
+test("a failure that leaves the listener in silence is surfaced", async () => {
+    const { audioContexts, elements, mediaActions, navigator } = await startAppTestEnvironment();
+    const warnings = captureConsoleWarn();
+    const playbackError = elements.get("playbackError");
+
+    audioContexts.length = 0;
+    // Nothing is playing yet, so a failed play leaves the user with silence and
+    // no other signal that anything happened.
+    const context = await startFailingPlay(mediaActions, audioContexts);
+
+    assert.notEqual(navigator.mediaSession.playbackState, "playing");
+    assert.equal(playbackError.hidden, false);
+    assert.match(playbackError.textContent, /could not be played|offline/i);
+    assert.equal(warnings.length, 1);
+
+    // Recovering clears it again.
+    context.decodeAudioDataShouldFail = false;
+    await mediaActions.play();
+
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(playbackError.hidden, true);
+    assert.equal(playbackError.textContent, "");
+});
+
+async function startFailingPlay(mediaActions, audioContexts) {
+    await mediaActions.play();
+    const context = audioContexts[0];
+
+    context.decodeAudioDataShouldFail = true;
+    await mediaActions.pause();
+    await mediaActions.next();
+
+    return context;
+}
 
 test("media play failures after a track switch keep the switched track selected", async () => {
     const { audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment({
