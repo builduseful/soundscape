@@ -180,11 +180,11 @@ async function precacheOptional(cache, urls) {
     }));
 }
 
-// The body reaching the SW has already been content-decoded, so a stored
-// Content-Encoding header would poison the entry (the browser would try to
-// decode plain bytes again). Vary: Accept-Encoding must also go, and
-// Content-Length must match the stored body. Hop-by-hop headers don't
-// belong in a cache at all.
+// The fetched response body has already been decoded by the browser's fetch
+// layer, so a stored Content-Encoding header would poison the entry (the
+// browser would try to decode plain bytes again). Vary: Accept-Encoding must
+// also go, and Content-Length must match the stored body. Hop-by-hop headers
+// don't belong in a cache at all.
 async function cacheIfOk(cache, key, response) {
     if (!response.ok || response.status !== 200) return;
 

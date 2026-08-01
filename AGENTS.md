@@ -79,7 +79,7 @@ soundscape/
   ```
   - After starting, **verify the server is serving** before launching the browser — the SW cache can make a stale page appear live. Use `curl -sI --max-time 3 http://soundscape.localhost:4321` (the `--max-time` prevents the shell tool's timeout from blocking on a hung request).
   - **If the server is already running**, you can skip the start commands — the bind mount means source edits are live without rebuilding. Just verify with `curl`.
-  - To stop and remove the server:
+  - When testing is complete, stop and remove the server unless it is intentionally being left running for further testing:
     ```sh
     <container-engine> container stop soundscape-server
     <container-engine> container rm soundscape-server

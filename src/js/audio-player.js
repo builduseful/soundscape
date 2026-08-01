@@ -233,9 +233,9 @@ export class AudioPlayer {
         this.activeLoopEnd = loopEnd;
         this.activeSourceStartedAt = now;
         this.currentTrackUrl = track.url;
-        // If the AudioContext is still suspended, the source's start event is queued
-        // and won't actually play until resume(). Mark it so the statechange handler
-        // can snap the start time to the real playback start.
+        // If the AudioContext is still suspended, the source start is scheduled but
+        // cannot run until resume(). Mark it so the statechange handler can snap the
+        // start time to the real playback start.
         this.activeSourceQueued = this.audioContext.state !== "running";
 
         if (shouldLoadMediaElement) {
