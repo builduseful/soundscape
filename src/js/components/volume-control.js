@@ -169,30 +169,48 @@ export class VolumeControl extends HTMLElement {
                         pointer-events: auto;
                     }
 
+                    /* box-shadow lives here, outside the clip-path below —
+                       clip-path restricts painting to exactly its own
+                       region, so a shadow clipped alongside the reveal
+                       animation would render invisible once fully open
+                       (inset(0) matches the border box exactly, leaving no
+                       room for a shadow that paints outside it). */
                     .popover {
                         display: grid;
                         place-items: center;
                         width: 50px;
                         height: 188px;
-                        padding: 18px 0 58px;
-                        border: 1px solid var(--color-border-subtle);
                         border-radius: 999px;
-                        background: var(--color-surface);
-                        box-shadow: var(--shadow-surface);
-                        clip-path: inset(140px 0 0 round 999px);
+                        box-shadow: var(--shadow-elevated);
                         opacity: 0;
                         transform-origin: 50% 100%;
                         user-select: none;
-                        transition:
-                            clip-path 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
-                            opacity 0.16s ease;
+                        transition: opacity 0.16s ease;
                     }
 
                     :scope:hover .popover,
                     :scope:focus-within .popover,
                     :scope[open] .popover {
-                        clip-path: inset(0 0 0 round 999px);
                         opacity: 1;
+                    }
+
+                    .popover-surface {
+                        display: grid;
+                        place-items: center;
+                        width: 100%;
+                        height: 100%;
+                        padding: 18px 0 58px;
+                        border: 1px solid var(--color-border-subtle);
+                        border-radius: 999px;
+                        background: var(--color-surface);
+                        clip-path: inset(140px 0 0 round 999px);
+                        transition: clip-path 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    }
+
+                    :scope:hover .popover-surface,
+                    :scope:focus-within .popover-surface,
+                    :scope[open] .popover-surface {
+                        clip-path: inset(0 0 0 round 999px);
                     }
 
                     input[type="range"] {
@@ -228,7 +246,8 @@ export class VolumeControl extends HTMLElement {
                     @media (prefers-reduced-motion: reduce) {
                         button,
                         .mute-slash,
-                        .popover {
+                        .popover,
+                        .popover-surface {
                             transition: none;
                         }
                     }
@@ -252,16 +271,18 @@ export class VolumeControl extends HTMLElement {
                 </button>
                 <div class="popover-anchor">
                     <div class="popover">
-                        <label class="sr-only" for="${this._sliderId}">Volume</label>
-                        <input
-                            id="${this._sliderId}"
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value="1"
-                            aria-label="Volume"
-                        >
+                        <div class="popover-surface">
+                            <label class="sr-only" for="${this._sliderId}">Volume</label>
+                            <input
+                                id="${this._sliderId}"
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value="1"
+                                aria-label="Volume"
+                            >
+                        </div>
                     </div>
                 </div>
             </div>

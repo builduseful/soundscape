@@ -15,6 +15,7 @@ import {
     updateMediaSessionPositionState,
     updateMediaSessionStatus,
 } from "./media-session.js";
+import { AppMenu } from "./components/app-menu.js";
 import { ThemeSelector } from "./components/theme-selector.js";
 import { VolumeControl } from "./components/volume-control.js";
 import { registerLaunchQueueConsumer, registerServiceWorker } from "./pwa.js";
@@ -25,7 +26,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.8.1";
+const VERSION = "1.8.2";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -46,6 +47,7 @@ const LOADING_LABEL = "Loading soundscape";
 // the track it refers to. A test pins it against the animation duration.
 const LOADING_INDICATOR_DELAY_MS = 450;
 
+customElements.define("app-menu", AppMenu);
 customElements.define("theme-selector", ThemeSelector);
 customElements.define("volume-control", VolumeControl);
 
@@ -107,7 +109,7 @@ applyRequestedTrack();
 startMediaSession();
 registerServiceWorker();
 initLaunchQueue();
-appVersion.textContent = `v${VERSION}`;
+appVersion.textContent = VERSION;
 
 async function playPauseClick() {
     if (audioPlayer.isPlaying()) {

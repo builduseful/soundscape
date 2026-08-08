@@ -32,8 +32,14 @@
 <body>
     <div class="container">
         <header class="app-header">
-            <p class="app-name">Soundscape</p>
-            <theme-selector id="themeSelector" value="system"></theme-selector>
+            <div class="app-brand">
+                <p class="app-name">Soundscape</p>
+                <a class="app-byline" href="https://builduseful.com" target="_blank" rel="noopener">by Build Useful.</a>
+            </div>
+            <app-menu id="appMenu">
+                <theme-selector id="themeSelector" value="system"></theme-selector>
+                <a class="app-version" id="appVersion" href="https://github.com/builduseful/soundscape" target="_blank" rel="noopener"></a>
+            </app-menu>
         </header>
         <main class="player">
             <div class="controls" aria-label="Playback controls">
@@ -75,7 +81,6 @@
             <p id="playbackError" class="playback-error" role="status" hidden></p>
         </main>
         <footer class="app-footer">
-            <span class="app-version" id="appVersion" aria-label="Version"></span>
             <volume-control id="volumeControl" value="1"></volume-control>
         </footer>
         <audio id="audioElement" preload="auto"></audio>
