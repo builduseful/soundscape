@@ -97,11 +97,30 @@ test("manifest exposes an installable standalone app with any and maskable icons
     assert.equal(manifest.orientation, undefined);
     assert.equal(manifest.background_color, "#111111");
     assert.equal(manifest.theme_color, "#111111");
+    assert.equal(manifest.lang, "en");
+    assert.equal(manifest.dir, "ltr");
     assert.ok(manifest.icons.some((icon) => icon.type === "image/png" && icon.sizes === "192x192"));
     assert.ok(manifest.icons.some((icon) => icon.type === "image/png" && icon.sizes === "512x512"));
     assert.ok(manifest.icons.some((icon) => icon.src === "resources/icons/maskable-icon-512.png" && icon.purpose === "maskable"));
     assert.ok(manifest.icons.some((icon) => icon.purpose === "any"));
     assert.ok(manifest.icons.some((icon) => icon.purpose === "maskable"));
+});
+
+// Chrome/Android only shows the rich install dialog (vs. a bare one-line
+// prompt) when the manifest carries at least one screenshot per form_factor.
+test("manifest carries narrow and wide install screenshots", async () => {
+    const source = await readFile(new URL("../src/manifest.webmanifest", import.meta.url), "utf8");
+    const manifest = JSON.parse(source);
+
+    assert.ok(Array.isArray(manifest.screenshots));
+    assert.ok(manifest.screenshots.some((shot) => shot.form_factor === "narrow"));
+    assert.ok(manifest.screenshots.some((shot) => shot.form_factor === "wide"));
+
+    for (const shot of manifest.screenshots) {
+        assert.ok(shot.src, "screenshot should have a src");
+        assert.ok(shot.sizes, "screenshot should declare sizes");
+        assert.equal(shot.type, "image/png");
+    }
 });
 
 test("manifest app shortcuts point at real tracks via ?track= slugs", async () => {
@@ -117,6 +136,7 @@ test("manifest app shortcuts point at real tracks via ?track= slugs", async () =
 
         assert.ok(slug, `Shortcut "${shortcut.name}" should carry a ?track= param`);
         assert.ok(slugs.includes(slug), `Shortcut slug "${slug}" should match a track`);
+        assert.ok(Array.isArray(shortcut.icons) && shortcut.icons.length > 0, `Shortcut "${shortcut.name}" should have an icon`);
     }
 });
 
@@ -209,9 +229,12 @@ test("every deployable asset is precached by the service worker", async () => {
     const deployable = (await readdir(srcDir, { recursive: true }))
         .map((entry) => `./${entry.replace(/\\/g, "/")}`)
         // sw.js registers itself; audio is cached on demand by design; CNAME is
-        // a deployment artefact the browser never requests.
+        // a deployment artefact the browser never requests. Screenshots are
+        // only ever fetched by the OS install UI before the app is installed,
+        // so offline precaching buys nothing.
         .filter((path) => !/^\.\/(sw\.js|CNAME)$/.test(path))
         .filter((path) => !path.startsWith("./resources/soundscapes/"))
+        .filter((path) => !path.startsWith("./resources/screenshots/"))
         .filter((path) => /\.[a-z0-9]+$/i.test(path));
 
     assert.notEqual(deployable.length, 0, "expected to find deployable assets under src/");

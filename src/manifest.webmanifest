@@ -3,6 +3,8 @@
     "name": "Soundscape",
     "short_name": "Soundscape",
     "description": "A calm ambience player for seamless looping background audio.",
+    "lang": "en",
+    "dir": "ltr",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
@@ -15,18 +17,46 @@
     "shortcuts": [
         {
             "name": "Garden Rain",
+            "short_name": "Garden Rain",
             "url": "./?track=garden-rain",
-            "description": "Open Soundscape on the Garden Rain soundscape"
+            "description": "Open Soundscape on the Garden Rain soundscape",
+            "icons": [
+                { "src": "resources/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }
+            ]
         },
         {
             "name": "Fireplace",
+            "short_name": "Fireplace",
             "url": "./?track=fireplace",
-            "description": "Open Soundscape on the Fireplace soundscape"
+            "description": "Open Soundscape on the Fireplace soundscape",
+            "icons": [
+                { "src": "resources/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }
+            ]
         },
         {
             "name": "Rain & Thunder",
+            "short_name": "Rain & Thunder",
             "url": "./?track=rain-thunder",
-            "description": "Open Soundscape on the Rain & Thunder soundscape"
+            "description": "Open Soundscape on the Rain & Thunder soundscape",
+            "icons": [
+                { "src": "resources/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }
+            ]
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "resources/screenshots/mobile-narrow.png",
+            "sizes": "750x1334",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Soundscape's player, showing playback controls and the current track"
+        },
+        {
+            "src": "resources/screenshots/desktop-wide.png",
+            "sizes": "1280x800",
+            "type": "image/png",
+            "form_factor": "wide",
+            "label": "Soundscape's player, showing playback controls and the current track"
         }
     ],
     "icons": [

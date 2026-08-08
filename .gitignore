@@ -3,6 +3,8 @@
 # Ignore temp files
 .temp/
 
+node_modules/
+
 .playwright/
 .playwright-cli/
 

@@ -26,19 +26,22 @@ soundscape/
 │   │       └── volume-control.js     # Custom element for volume slider
 │   └── resources/
 │       ├── icons/                    # PWA/favicon icons (png + svg)
+│       ├── screenshots/              # manifest.webmanifest install screenshots (git-tracked PNGs)
 │       └── soundscapes/              # Looping ambience audio files (.opus)
 ├── test/                             # Unit tests (dependency-free)
 │   └── helpers/
 │       └── app-test-harness.js       # Shared test fixtures/utilities
 ├── scripts/
-│   ├── export-icons.sh               # Icon generation helper
+│   ├── export-icons.mjs              # Icon PNG export from SVG sources
+│   ├── capture-screenshots.mjs       # Manifest install-screenshot capture
 │   └── send-media-key.ps1           # OS-level media key injection for testing
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml                # GitHub Pages deployment (uploads src/)
 ├── Dockerfile                        # Multi-target image: default = Caddy + Node (serve + npm test); `--target serve` = slim Caddy-only runtime
 ├── .dockerignore                     # Excludes unnecessary files from the build
-├── package.json                      # Scripts and metadata (npm test)
+├── package.json                      # Scripts and metadata
+├── package-lock.json                 # Locks the scripts/ devDependencies (playwright); npm test itself has none
 ├── .config.md                        # Per-developer configuration (gitignored)
 ├── AGENTS.md
 ├── README.md
@@ -144,6 +147,11 @@ soundscape/
   PowerShell -ExecutionPolicy Bypass -File "scripts\send-media-key.ps1" -Key Stop
   ```
   The browser window must be focused (not minimized) for OS-level key events to reach it. **Click Play in Soundscape once before the first key press** so it owns the active media session; subsequent hardware keys will then route to it regardless of other media-playing Chrome windows. Use `Start-Sleep -Milliseconds 800` between successive key presses to allow async track loading to complete; rapid-fire presses (<500ms apart) can cause unexpected track ordering due to concurrent async handlers.
+
+## Manifest Screenshots & Icons
+
+- `npm run screenshots` and `npm run icons` regenerate `src/resources/screenshots/*.png` and `src/resources/icons/*.png` via Playwright (see each script's header for how). Host-only — not part of `npm test` or the Docker image. Re-run after a change that affects the home page's appearance or either icon SVG; both skip writing when the output is unchanged.
+- Screenshots are excluded from the service worker precache (`test/pwa.test.js` filters `./resources/screenshots/`) — they're only fetched by the OS install UI before the app is installed, never by the running page. Icons remain part of `OPTIONAL_ASSETS`.
 
 ## Versioning
 

@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -31,6 +31,7 @@ const OPTIONAL_ASSETS = [
     "./resources/icons/apple-touch-icon.png",
     "./resources/icons/favicon-16.png",
     "./resources/icons/favicon-32.png",
+    "./resources/icons/icon-96.png",
     "./resources/icons/icon-192.png",
     "./resources/icons/icon-512.png",
     "./resources/icons/maskable-icon-512.png",

@@ -15,8 +15,10 @@ opencode.json
 *.md
 docs/
 
-# Host-side helper scripts (media-key injection, icon export)
+# Host-side helper scripts (media-key injection, icon/screenshot export) and
+# their devDependencies — npm test needs neither, it only imports src/js.
 scripts/
+node_modules/
 
 # GitHub Pages deployment config — irrelevant inside the container
 CNAME
