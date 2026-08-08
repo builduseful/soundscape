@@ -14,9 +14,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const iconDir = path.join(__dirname, "..", "src", "resources", "icons");
 
 const ICONS = [
-    { source: "icon.svg", output: "icon-192.png", size: 192 },
-    { source: "icon.svg", output: "icon-512.png", size: 512 },
     { source: "icon.svg", output: "icon-96.png", size: 96 },
+    { source: "icon.svg", output: "icon-128.png", size: 128 },
+    { source: "icon.svg", output: "icon-192.png", size: 192 },
+    { source: "icon.svg", output: "icon-256.png", size: 256 },
+    { source: "icon.svg", output: "icon-384.png", size: 384 },
+    { source: "icon.svg", output: "icon-512.png", size: 512 },
     { source: "icon.svg", output: "favicon-16.png", size: 16 },
     { source: "icon.svg", output: "favicon-32.png", size: 32 },
     { source: "maskable-icon.svg", output: "apple-touch-icon.png", size: 180 },
