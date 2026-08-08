@@ -162,6 +162,10 @@ test("updateMediaSessionStatus falls back to plain metadata without MediaMetadat
         title: "White Noise",
         artist: "Soundscape",
         album: "Soundscape",
+        artwork: [
+            { src: "resources/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+            { src: "resources/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+        ],
     });
 });
 
