@@ -49,7 +49,7 @@ export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOO
 }
 
 export class AudioPlayer {
-    constructor(audioElement, { onStateChange } = {}) {
+    constructor(audioElement, { onStateChange, onLoadingChange } = {}) {
         this.audioElement = audioElement;
         this.audioElement.preload = "auto";
         this.audioElement.loop = true;
@@ -70,7 +70,9 @@ export class AudioPlayer {
         this.playbackRequestId = 0;
         this.playbackRequested = false;
         this.browserPlaybackSyncSuppressed = false;
+        this.loadingRequestId = 0;
         this.onStateChange = onStateChange;
+        this.onLoadingChange = onLoadingChange;
     }
 
     get state() {
@@ -99,6 +101,14 @@ export class AudioPlayer {
 
     isBrowserPlaybackSyncSuppressed() {
         return this.browserPlaybackSyncSuppressed;
+    }
+
+    // True while a track's audio is still being fetched and decoded. Until that
+    // finishes there is nothing to start, so the app keeps playing whatever it
+    // was already playing — from the listener's side the new title is up but the
+    // sound has not changed yet, which is the gap this reports.
+    isLoading() {
+        return this.loadingRequestId !== 0;
     }
 
     getCurrentPosition() {
@@ -138,6 +148,8 @@ export class AudioPlayer {
 
         let loopWindow;
 
+        this.beginLoading(requestId);
+
         try {
             loopWindow = await this.loadBuffer(track.url);
         } catch (error) {
@@ -146,6 +158,8 @@ export class AudioPlayer {
             }
 
             throw error;
+        } finally {
+            this.endLoading(requestId);
         }
 
         if (requestId !== this.playbackRequestId) {
@@ -253,6 +267,38 @@ export class AudioPlayer {
 
         await this.play();
         return true;
+    }
+
+    // Skipping again mid-load hands the loading state to the newer request
+    // without reporting a stop: the listener has been waiting since the first
+    // press, so the indicator should stay up rather than blink between tracks.
+    beginLoading(requestId) {
+        const wasLoading = this.isLoading();
+
+        this.loadingRequestId = requestId;
+
+        if (!wasLoading) {
+            this.notifyLoadingChange(true);
+        }
+    }
+
+    endLoading(requestId) {
+        if (this.loadingRequestId !== requestId) return;
+
+        this.loadingRequestId = 0;
+        this.notifyLoadingChange(false);
+    }
+
+    // endLoading runs in a `finally`, so a throwing indicator would replace the
+    // real playback error with its own — destroying the diagnostic and turning a
+    // superseded "ignore me" into a rejection. A cosmetic callback must never
+    // cost the app that, so it is contained here.
+    notifyLoadingChange(isLoading) {
+        try {
+            this.onLoadingChange?.(isLoading);
+        } catch (error) {
+            console.warn("Could not update the loading indicator.", error);
+        }
     }
 
     async loadBuffer(url) {

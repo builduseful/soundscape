@@ -59,10 +59,19 @@
                     </button>
                 </div>
             </div>
-            <h1 id="title" class="track-title" aria-live="polite">
-                <span class="track-title-text track-title-text--current">Soundscape</span>
-                <span class="track-title-text track-title-text--incoming" aria-hidden="true"></span>
-            </h1>
+            <div class="track-status">
+                <h1 id="title" class="track-title" aria-live="polite">
+                    <span class="track-title-text track-title-text--current">Soundscape</span>
+                    <span class="track-title-text track-title-text--incoming" aria-hidden="true"></span>
+                </h1>
+                <p id="trackLoading" class="track-loading" role="status" hidden>
+                    <span class="track-loading-bar" aria-hidden="true"></span>
+                    <!-- Text is written by script.js rather than authored here: a
+                         live region announces content changes it can observe, and
+                         static text that only gets un-hidden gives it nothing. -->
+                    <span id="trackLoadingLabel" class="track-loading-label"></span>
+                </p>
+            </div>
             <p id="playbackError" class="playback-error" role="status" hidden></p>
         </main>
         <footer class="app-footer">

@@ -101,6 +101,14 @@ body {
     width: 100%;
 }
 
+/* Anchors the loading indicator to the title without giving it a row of its
+   own, so a slow track change cannot nudge the controls around. */
+.track-status {
+    display: grid;
+    justify-items: center;
+    position: relative;
+}
+
 .track-title {
     color: var(--color-text);
     font-size: 1.28rem;
@@ -121,6 +129,69 @@ body {
 
 .track-title-text--incoming {
     opacity: 0;
+}
+
+/* Dimmed while the audio for the shown title is still on its way; fades back
+   to full opacity the instant it's ready. Not gated behind reduced-motion:
+   it's a two-state opacity change, not a decorative loop. */
+.track-title.is-loading {
+    opacity: 0.3;
+}
+
+/* The title changes the moment a track is picked, but the audio still has to be
+   fetched and decoded. On a slow connection that leaves seconds where the name
+   on screen is not the sound in the room. This says "still coming" — quietly,
+   below the title, taking no layout space of its own.
+
+   The font-size belongs here rather than on the label: this element's line box
+   is sized by its inherited strut, so leaving it at the 18px body size would
+   reserve 25px of height for a 2px bar and misplace the text fallback. */
+.track-loading {
+    font-size: 0.85rem;
+    inset-inline: 0;
+    margin: 0;
+    position: absolute;
+    text-align: center;
+    top: calc(100% + 12px);
+}
+
+.track-loading[hidden] {
+    display: none;
+}
+
+.track-loading-bar {
+    background-color: var(--color-border);
+    border-radius: 999px;
+    display: block;
+    height: 2px;
+    margin-inline: auto;
+    overflow: hidden;
+    position: relative;
+    width: 72px;
+}
+
+/* This 2px dash is the entire message for a sighted user, so it takes the muted
+   text token rather than the softer one: --color-text-soft only reaches 2.9:1
+   against the light page, under the 3:1 floor for non-text graphics. */
+.track-loading-bar::after {
+    background-color: var(--color-text-muted);
+    border-radius: inherit;
+    content: "";
+    inset-block: 0;
+    left: -40%;
+    position: absolute;
+    width: 40%;
+}
+
+/* The bar is the whole message for sighted users; the label carries it for
+   screen readers via the role="status" wrapper. */
+.track-loading-label {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
 }
 
 /* Muted rather than alarming: this only appears when the user asked for sound
@@ -245,6 +316,31 @@ button.play[data-playing="true"] .play-icon--pause {
     }
 }
 
+/* Two cases where the bar cannot carry the message, both answered with words.
+   Frozen, a sweep reads as a stalled progress bar rather than as work in
+   progress. And in forced-colors the bar disappears outright: its meaning rides
+   entirely on background-color, which the platform palette overrides — text is
+   the only thing guaranteed to render. */
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+    .track-loading {
+        top: calc(100% + 16px);
+    }
+
+    .track-loading-bar {
+        display: none;
+    }
+
+    .track-loading-label {
+        clip-path: none;
+        color: var(--color-text-muted);
+        height: auto;
+        overflow: visible;
+        position: static;
+        white-space: normal;
+        width: auto;
+    }
+}
+
 @media (prefers-reduced-motion: no-preference) {
     body,
     button,
@@ -255,6 +351,30 @@ button.play[data-playing="true"] .play-icon--pause {
             box-shadow 0.18s ease,
             color 0.18s ease,
             transform 0.12s ease;
+    }
+
+    /* Linear, not eased: the travel ends are exactly where overflow clips the
+       dash, so easing there makes it hesitate as a sliver at each edge and reads
+       as a pulse rather than a sweep. */
+    .track-loading-bar::after {
+        animation: track-loading-sweep 1.1s linear infinite;
+    }
+
+    @keyframes track-loading-sweep {
+        0% {
+            left: -40%;
+        }
+
+        100% {
+            left: 100%;
+        }
+    }
+
+    /* The dim/undim is a two-state change rather than a decorative loop, so it
+       stays visible under reduced motion too — only the fade transition
+       itself is gated here. */
+    .track-title {
+        transition: opacity 0.3s ease;
     }
 
     .track-title.is-changing .track-title-text--current {

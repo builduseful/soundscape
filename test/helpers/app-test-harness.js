@@ -177,6 +177,7 @@ export function installAppTestEnvironment({
     const documentHandlers = new Map();
     const intervals = new Map();
     const timeouts = new Map();
+    const timeoutLog = [];
     const storage = createStorageMap(storageEntries);
     let nextIntervalId = 1;
     let nextTimeoutId = 1;
@@ -196,13 +197,16 @@ export function installAppTestEnvironment({
         "themeSelector",
         "appVersion",
         "playbackError",
+        "trackLoading",
+        "trackLoadingLabel",
     ]) {
         elements.set(id, new FakeElement());
     }
 
-    // Mirrors the `hidden` attribute on the real element so tests can assert
-    // whether a playback failure is actually surfaced to the user.
+    // Mirrors the `hidden` attribute on the real elements so tests can assert
+    // whether a playback failure — or a slow load — is actually surfaced.
     elements.get("playbackError").hidden = true;
+    elements.get("trackLoading").hidden = true;
 
     elements.set("title", title);
     elements.set("audioElement", audioElement);
@@ -283,22 +287,36 @@ export function installAppTestEnvironment({
     globalThis.clearInterval = (id) => {
         intervals.delete(id);
     };
+    // `timeouts` only holds timers that are still pending, so a timer that was
+    // armed and then cleared is indistinguishable from one that was never armed.
+    // For debounced UI that difference is the whole behaviour, so every timer is
+    // also recorded here with what eventually happened to it.
     globalThis.setTimeout = (handler, delay) => {
         const id = nextTimeoutId++;
+        const record = { id, delay, fired: false, cleared: false };
+
+        timeoutLog.push(record);
 
         if (delay === 0) {
             originalSetTimeout(() => {
                 if (timeouts.has(id)) {
                     timeouts.delete(id);
+                    record.fired = true;
                     handler();
                 }
             }, 0);
         }
 
-        timeouts.set(id, { delay, handler });
+        timeouts.set(id, { delay, handler, record });
         return id;
     };
     globalThis.clearTimeout = (id) => {
+        const timeout = timeouts.get(id);
+
+        if (timeout) {
+            timeout.record.cleared = true;
+        }
+
         timeouts.delete(id);
     };
     globalThis.AudioContext = class FakeAudioContext {
@@ -436,6 +454,7 @@ export function installAppTestEnvironment({
         elements,
         intervals,
         timeouts,
+        timeoutLog,
         mediaActions: createMediaActions(mediaSessionHandlers),
         mediaSessionHandlers,
         get mediaSessionHandlerCalls() {
@@ -450,6 +469,11 @@ export function installAppTestEnvironment({
         async triggerTimeout(id) {
             const timeout = timeouts.get(id);
             timeouts.delete(id);
+
+            if (timeout) {
+                timeout.record.fired = true;
+            }
+
             return await timeout?.handler();
         },
     };

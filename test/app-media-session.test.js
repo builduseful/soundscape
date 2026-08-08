@@ -450,6 +450,214 @@ async function startFailingPlay(mediaActions, audioContexts) {
     return context;
 }
 
+// Kept in step with src/js/script.js; component-contract.test.js pins that value
+// against the title change animation it has to outlast.
+const LOADING_INDICATOR_DELAY_MS = 450;
+
+// Audio the app has never fetched can take seconds to arrive on a slow
+// connection. The title switches immediately, so without this the listener is
+// told they are on the new soundscape while the old one is still playing.
+function installGatedFetch() {
+    const pending = [];
+    let gateOpen = false;
+
+    const respond = () => ({
+        ok: true,
+        async arrayBuffer() {
+            return new ArrayBuffer(8);
+        },
+    });
+
+    return {
+        fetch() {
+            if (gateOpen) return Promise.resolve(respond());
+
+            return new Promise((resolve) => pending.push(() => resolve(respond())));
+        },
+        openGate() {
+            gateOpen = true;
+        },
+        closeGate() {
+            gateOpen = false;
+        },
+        release() {
+            const next = pending.shift();
+
+            assert.ok(next, "expected a pending audio fetch to release");
+            next();
+        },
+    };
+}
+
+function loadingTimers(timeoutLog) {
+    return timeoutLog.filter((timeout) => timeout.delay === LOADING_INDICATOR_DELAY_MS);
+}
+
+function pendingLoadingTimer(timeoutLog) {
+    return loadingTimers(timeoutLog).find((timeout) => !timeout.fired && !timeout.cleared);
+}
+
+async function showLoadingIndicator(timeoutLog, triggerTimeout) {
+    await waitFor(() => pendingLoadingTimer(timeoutLog) !== undefined);
+    await triggerTimeout(pendingLoadingTimer(timeoutLog).id);
+}
+
+test("a track change that has to wait for audio shows a loading indicator", async () => {
+    const gatedFetch = installGatedFetch();
+    const { elements, mediaActions, navigator, timeoutLog, triggerTimeout } = await startAppTestEnvironment({
+        fetch: () => gatedFetch.fetch(),
+    });
+    const trackLoading = elements.get("trackLoading");
+    const title = elements.get("title");
+
+    const play = mediaActions.play();
+    await waitFor(() => pendingLoadingTimer(timeoutLog) !== undefined);
+
+    // Nothing on screen yet: a cached track resolves well inside this window and
+    // a flash of a loading bar on every skip is worse than no bar at all.
+    assert.equal(trackLoading.hidden, true);
+    assert.equal(title.classList.contains("is-loading"), false);
+
+    await triggerTimeout(pendingLoadingTimer(timeoutLog).id);
+    assert.equal(trackLoading.hidden, false);
+    // The text has to land in the live region after it is revealed, not sit in
+    // the markup: an announcement follows the content change, not the unhiding.
+    assert.equal(elements.get("trackLoadingLabel").textContent, "Loading soundscape");
+    assert.equal(title.classList.contains("is-loading"), true);
+
+    gatedFetch.release();
+    await play;
+
+    assert.equal(trackLoading.hidden, true);
+    assert.equal(elements.get("trackLoadingLabel").textContent, "");
+    assert.equal(title.classList.contains("is-loading"), false);
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+});
+
+// Asserting on the timer log rather than the final `hidden` value is what makes
+// this a real test: an implementation that showed the indicator immediately
+// would also end up hidden, and would only be caught by the timer never firing.
+test("a track change fast enough to need no indicator never shows one", async () => {
+    const gatedFetch = installGatedFetch();
+    gatedFetch.openGate();
+    const { elements, mediaActions, timeoutLog } = await startAppTestEnvironment({
+        fetch: () => gatedFetch.fetch(),
+    });
+    const trackLoading = elements.get("trackLoading");
+
+    await mediaActions.play();
+    await mediaActions.next();
+    // Back to a track whose decoded buffer is already in memory — the real
+    // cache-hit path, which skips the fetch entirely.
+    await mediaActions.previous();
+
+    const timers = loadingTimers(timeoutLog);
+
+    assert.equal(timers.length, 3);
+    assert.ok(
+        timers.every((timeout) => timeout.cleared && !timeout.fired),
+        "every loading timer should be cleared before it can show anything",
+    );
+    assert.equal(trackLoading.hidden, true);
+    assert.equal(elements.get("title").classList.contains("is-loading"), false);
+});
+
+// The offline case reaches the same code path: audio that never arrives has to
+// hand the screen over to the error message, not leave the bar sweeping forever.
+test("a track change that fails after the indicator is showing hides it again", async () => {
+    const gatedFetch = installGatedFetch();
+    const { audioContexts, elements, mediaActions, timeoutLog, triggerTimeout } = await startAppTestEnvironment({
+        fetch: () => gatedFetch.fetch(),
+    });
+    const warnings = captureConsoleWarn();
+    const trackLoading = elements.get("trackLoading");
+    const playbackError = elements.get("playbackError");
+
+    gatedFetch.openGate();
+    await mediaActions.play();
+    await mediaActions.pause();
+
+    gatedFetch.closeGate();
+    audioContexts[0].decodeAudioDataShouldFail = true;
+
+    const next = mediaActions.next();
+    await showLoadingIndicator(timeoutLog, triggerTimeout);
+    assert.equal(trackLoading.hidden, false);
+
+    gatedFetch.release();
+    await next;
+
+    assert.equal(trackLoading.hidden, true);
+    assert.equal(playbackError.hidden, false);
+    assert.equal(warnings.length, 1);
+});
+
+// A second skip must inherit the wait rather than restart it. Re-arming the
+// delay on every press would mean a listener skipping faster than the debounce
+// never sees the indicator at all — exactly when they most need it.
+test("skipping again mid-load keeps the indicator up instead of restarting it", async () => {
+    const gatedFetch = installGatedFetch();
+    const { elements, mediaActions, timeoutLog, triggerTimeout } = await startAppTestEnvironment({
+        fetch: () => gatedFetch.fetch(),
+    });
+    const trackLoading = elements.get("trackLoading");
+
+    gatedFetch.openGate();
+    await mediaActions.play();
+    gatedFetch.closeGate();
+
+    const firstSkip = mediaActions.next();
+    await showLoadingIndicator(timeoutLog, triggerTimeout);
+    assert.equal(trackLoading.hidden, false);
+
+    const secondSkip = mediaActions.next();
+    assert.equal(pendingLoadingTimer(timeoutLog), undefined, "the delay should not be re-armed");
+    assert.equal(trackLoading.hidden, false);
+
+    // The superseded request finishing must not take the indicator down with it.
+    gatedFetch.release();
+    assert.equal(await firstSkip, false);
+    assert.equal(trackLoading.hidden, false);
+
+    gatedFetch.release();
+    await secondSkip;
+    assert.equal(trackLoading.hidden, true);
+});
+
+// A stale failure notice under a live loading bar reads as a contradiction, and
+// in the reduced-motion variant the two messages overlap outright.
+test("starting a new load takes down a previous failure notice", async () => {
+    const gatedFetch = installGatedFetch();
+    const { audioContexts, elements, mediaActions, timeoutLog, triggerTimeout } = await startAppTestEnvironment({
+        fetch: () => gatedFetch.fetch(),
+    });
+    captureConsoleWarn();
+    const trackLoading = elements.get("trackLoading");
+    const playbackError = elements.get("playbackError");
+
+    gatedFetch.openGate();
+    await mediaActions.play();
+    await mediaActions.pause();
+
+    audioContexts[0].decodeAudioDataShouldFail = true;
+    await mediaActions.next();
+    assert.equal(playbackError.hidden, false);
+
+    audioContexts[0].decodeAudioDataShouldFail = false;
+    gatedFetch.closeGate();
+    const retry = mediaActions.next();
+    await showLoadingIndicator(timeoutLog, triggerTimeout);
+
+    assert.equal(trackLoading.hidden, false);
+    assert.equal(playbackError.hidden, true, "the failure notice should not sit under a live loading bar");
+    assert.equal(playbackError.textContent, "");
+
+    gatedFetch.release();
+    await retry;
+    assert.equal(trackLoading.hidden, true);
+    assert.equal(playbackError.hidden, true);
+});
+
 test("media play failures after a track switch keep the switched track selected", async () => {
     const { audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment({
         matchMediaMatches: true,

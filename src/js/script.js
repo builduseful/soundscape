@@ -25,7 +25,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -36,6 +36,15 @@ const SAVED_VOLUME_KEY = "soundscape.volume";
 const SAVED_TRACK_URL_KEY = "soundscape.currentTrackUrl";
 const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
 const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
+const LOADING_LABEL = "Loading soundscape";
+// A track already in the cache decodes in a few milliseconds, so showing the
+// indicator the instant loading starts would flash it on almost every skip.
+// Holding it back until the wait is long enough to notice means it only ever
+// appears when there is a real delay to explain. It also has to outlast the
+// title change animation: the h1's accessible text only settles when that ends,
+// so announcing "loading" sooner would reach a screen reader before the name of
+// the track it refers to. A test pins it against the animation duration.
+const LOADING_INDICATOR_DELAY_MS = 450;
 
 customElements.define("theme-selector", ThemeSelector);
 customElements.define("volume-control", VolumeControl);
@@ -51,14 +60,18 @@ const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
 const playbackError = document.getElementById("playbackError");
+const trackLoading = document.getElementById("trackLoading");
+const trackLoadingLabel = document.getElementById("trackLoadingLabel");
 
 const requestedTrackIndex = getTrackIndexFromUrl(globalThis.location?.href);
 let currentTrackIndex = requestedTrackIndex === -1 ? getSavedTrackIndex() : requestedTrackIndex;
 let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
+let loadingIndicatorTimer = 0;
 
 const audioPlayer = new AudioPlayer(audioElement, {
     onStateChange: () => syncPlaybackState(audioPlayer.isPlaying()),
+    onLoadingChange: syncLoadingIndicator,
 });
 
 // Media Session connects browser/OS media controls to the app's playback actions.
@@ -352,6 +365,34 @@ function reportPlaybackFailure(logMessage, error) {
         ? "You're offline and this soundscape hasn't been downloaded yet."
         : "This soundscape could not be played. Try again, or pick another.";
     playbackError.hidden = false;
+}
+
+function syncLoadingIndicator(isLoading) {
+    clearTimeout(loadingIndicatorTimer);
+    loadingIndicatorTimer = 0;
+
+    if (!isLoading) {
+        title.classList.remove("is-loading");
+        trackLoadingLabel.textContent = "";
+        trackLoading.hidden = true;
+        return;
+    }
+
+    loadingIndicatorTimer = setTimeout(() => {
+        loadingIndicatorTimer = 0;
+        // A failure notice from an earlier attempt contradicts a bar that says
+        // audio is on its way, and the two sit close enough to collide once
+        // reduced motion turns the bar into a line of text. The message is about
+        // an attempt that is over; this one is still running.
+        clearPlaybackError();
+        // Reveal first, write second. A hidden element is out of the
+        // accessibility tree entirely, so a screen reader has no live region to
+        // observe until it is shown — and it is the text landing in that region
+        // that produces the announcement.
+        trackLoading.hidden = false;
+        trackLoadingLabel.textContent = LOADING_LABEL;
+        title.classList.add("is-loading");
+    }, LOADING_INDICATOR_DELAY_MS);
 }
 
 function clearPlaybackError() {

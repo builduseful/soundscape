@@ -718,6 +718,82 @@ test("playTrack respects a pause while a replacement track is still loading", as
     assert.equal(contexts[0].state, "suspended");
 });
 
+test("playTrack reports loading for as long as the new track's audio is still arriving", async () => {
+    installAudioContext();
+    const requests = installDeferredFetch();
+    const audioElement = createAudioElement();
+    const loadingChanges = [];
+    const player = new AudioPlayer(audioElement, {
+        onLoadingChange: (isLoading) => loadingChanges.push(isLoading),
+    });
+
+    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    assert.equal(player.isLoading(), true);
+    assert.deepEqual(loadingChanges, [true]);
+
+    // Yield past the microtask queue: loading has to stay true for as long as
+    // the request is outstanding, not merely at the moment playTrack was called.
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(player.isLoading(), true);
+    assert.deepEqual(loadingChanges, [true]);
+
+    requests[0].resolveWithBytes(8);
+    assert.equal(await firstPlay, true);
+    assert.equal(player.isLoading(), false);
+    assert.deepEqual(loadingChanges, [true, false]);
+
+    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+    assert.equal(player.isLoading(), true);
+
+    requests[1].resolveWithBytes(16);
+    assert.equal(await secondPlay, true);
+    assert.equal(player.isLoading(), false);
+    assert.deepEqual(loadingChanges, [true, false, true, false]);
+});
+
+// The listener has been waiting since the first press, so a second skip has to
+// hand the loading state over rather than report a stop and an immediate start.
+test("playTrack keeps reporting loading when a second track change supersedes the first", async () => {
+    installAudioContext();
+    const requests = installDeferredFetch();
+    const loadingChanges = [];
+    const player = new AudioPlayer(createAudioElement(), {
+        onLoadingChange: (isLoading) => loadingChanges.push(isLoading),
+    });
+
+    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+
+    // Resolving the superseded request must not clear the indicator.
+    requests[0].resolveWithBytes(8);
+    assert.equal(await firstPlay, false);
+    assert.equal(player.isLoading(), true);
+    assert.deepEqual(loadingChanges, [true]);
+
+    requests[1].resolveWithBytes(16);
+    assert.equal(await secondPlay, true);
+    assert.equal(player.isLoading(), false);
+    assert.deepEqual(loadingChanges, [true, false]);
+});
+
+test("playTrack stops reporting loading when the audio fails to arrive", async () => {
+    installAudioContext();
+    const loadingChanges = [];
+    const player = new AudioPlayer(createAudioElement(), {
+        onLoadingChange: (isLoading) => loadingChanges.push(isLoading),
+    });
+
+    globalThis.fetch = async () => ({ ok: false, status: 504, statusText: "Offline" });
+
+    await assert.rejects(
+        () => player.playTrack({ url: "/missing.ogg" }, true),
+        /Could not load audio: 504 Offline/,
+    );
+
+    assert.equal(player.isLoading(), false);
+    assert.deepEqual(loadingChanges, [true, false]);
+});
+
 test("playTrack refreshes the browser playback surface when replacing a paused track", async () => {
     const contexts = installAudioContext({ initialState: "running" });
     installFetch();
