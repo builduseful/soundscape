@@ -3,9 +3,14 @@
  *
  * @element volume-control
  * @attr {string} value - Slider value between 0 and 1.
+ * @attr {string} label - Accessible name for the control. Defaults to "Volume".
+ * @attr {boolean} disabled - Inert and dimmed; used while a cast owns the audio,
+ *   where the level belongs to the receiving device rather than to this app.
  * @fires input - Mirrors the internal range input's current value.
  * @fires change - Mirrors committed range changes.
  */
+const DEFAULT_LABEL = "Volume";
+
 export class VolumeControl extends HTMLElement {
     constructor() {
         super();
@@ -18,12 +23,14 @@ export class VolumeControl extends HTMLElement {
     }
 
     static get observedAttributes() {
-        return ["value"];
+        return ["value", "label", "disabled"];
     }
 
     connectedCallback() {
         this.render();
         this.syncValue(this.getAttribute("value") ?? "1");
+        this.syncLabel();
+        this.syncDisabled();
         this.addEventListeners();
     }
 
@@ -34,8 +41,19 @@ export class VolumeControl extends HTMLElement {
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-        if (name !== "value" || oldValue === newValue) return;
-        this.syncValue(newValue ?? "1");
+        if (oldValue === newValue) return;
+
+        if (name === "value") {
+            this.syncValue(newValue ?? "1");
+            return;
+        }
+
+        if (name === "label") {
+            this.syncLabel();
+            return;
+        }
+
+        this.syncDisabled();
     }
 
     get value() {
@@ -243,6 +261,33 @@ export class VolumeControl extends HTMLElement {
                         border: 0;
                     }
 
+                    /* Placed after the hover/focus rules above so it wins the
+                       cascade at equal specificity, and written against the
+                       same states so the popover cannot be coaxed open. */
+                    :scope[disabled] button {
+                        color: var(--color-text-muted);
+                        cursor: default;
+                        opacity: 0.4;
+                    }
+
+                    :scope[disabled] .popover-anchor,
+                    :scope[disabled]:hover .popover-anchor,
+                    :scope[disabled]:focus-within .popover-anchor {
+                        pointer-events: none;
+                    }
+
+                    :scope[disabled] .popover,
+                    :scope[disabled]:hover .popover,
+                    :scope[disabled]:focus-within .popover {
+                        opacity: 0;
+                    }
+
+                    :scope[disabled] .popover-surface,
+                    :scope[disabled]:hover .popover-surface,
+                    :scope[disabled]:focus-within .popover-surface {
+                        clip-path: inset(140px 0 0 round 999px);
+                    }
+
                     @media (prefers-reduced-motion: reduce) {
                         button,
                         .mute-slash,
@@ -332,6 +377,32 @@ export class VolumeControl extends HTMLElement {
     handleFocusOut(event) {
         if (this.contains(event.relatedTarget)) return;
         this.open = false;
+    }
+
+    syncLabel() {
+        const label = this.getAttribute("label") || DEFAULT_LABEL;
+        const button = this.querySelector("button");
+        const slider = this.querySelector('input[type="range"]');
+        const sliderLabel = this.querySelector("label");
+
+        button?.setAttribute("aria-label", label);
+        slider?.setAttribute("aria-label", label);
+
+        if (sliderLabel) sliderLabel.textContent = label;
+    }
+
+    // Disabled means another output owns the level, so the popover is closed as
+    // well as inert — leaving a slider on screen that moves nothing would be a
+    // control that lies.
+    syncDisabled() {
+        const disabled = this.hasAttribute("disabled");
+        const button = this.querySelector("button");
+        const slider = this.querySelector('input[type="range"]');
+
+        if (button) button.disabled = disabled;
+        if (slider) slider.disabled = disabled;
+
+        if (disabled) this.open = false;
     }
 
     syncValue(value) {

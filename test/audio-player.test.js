@@ -232,6 +232,7 @@ function installFetch() {
         calls.push(url);
 
         return {
+            ok: true,
             async arrayBuffer() {
                 return new ArrayBuffer(8);
             },

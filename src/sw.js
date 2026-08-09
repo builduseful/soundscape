@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.8.3";
+const VERSION = "1.10.1";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -17,6 +17,7 @@ const APP_SHELL_ASSETS = [
     "./manifest.webmanifest",
     "./js/script.js",
     "./js/audio-player.js",
+    "./js/cast.js",
     "./js/media-session.js",
     "./js/pwa.js",
     "./js/theme-utils.js",
@@ -79,6 +80,17 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
+    // Cast twins are the one asset the worker deliberately does not touch.
+    // Handling them would mean reading each one whole whatever was asked for:
+    // cacheIfOk buffers the body, and handleRangeRequest upgrades a range miss to
+    // a full fetch. The cast element asks for ranges — it never wants the whole
+    // file up front — so every one of those partial reads would become a megabyte.
+    // Left alone, the browser gets exactly the bytes it asked for and its own HTTP
+    // cache handles the repeat.
+    if (isCastAudio(request)) {
+        return;
+    }
+
     if (request.headers.has("range")) {
         event.respondWith(handleRangeRequest(request));
         return;
@@ -86,6 +98,12 @@ self.addEventListener("fetch", (event) => {
 
     event.respondWith(tryCacheThenFetch(request));
 });
+
+// The .m4a twins that cast targets play. Their .opus originals — the files this
+// app actually decodes — are unaffected.
+function isCastAudio(request) {
+    return new URL(request.url).pathname.endsWith(".m4a");
+}
 
 // Cache-first navigation: serve the precached shell when available, fall
 // back to the network. Any shell update that should reach returning users

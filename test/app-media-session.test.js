@@ -788,6 +788,30 @@ test("app shortcut launches switch tracks in a running instance", async () => {
     await mediaActions.pause();
 });
 
+// Clicking a soundscape in the app's shortcut menu asks for that soundscape, and
+// the answer should not depend on which one happened to be showing. Starting
+// playback only for the current track left the other case changing the title
+// over silence.
+test("an app shortcut starts playback even when it also changes track", async () => {
+    let launchConsumer;
+    const { audioElement, navigator, storage } = await startAppTestEnvironment({
+        launchQueue: {
+            setConsumer(consumer) {
+                launchConsumer = consumer;
+            },
+        },
+    });
+
+    assert.equal(navigator.mediaSession.playbackState, "none", "nothing playing yet");
+
+    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${trackSlug(tracks[3])}` });
+    await waitFor(() => navigator.mediaSession.playbackState === "playing");
+
+    assert.equal(navigator.mediaSession.metadata.title, tracks[3].title);
+    assert.equal(audioElement.src, tracks[3].url);
+    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[3].url);
+});
+
 test("app shortcut launches ignore unknown slugs and the current track", async () => {
     let launchConsumer;
     const { audioElement, mediaActions, navigator } = await startAppTestEnvironment({

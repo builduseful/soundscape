@@ -17,8 +17,9 @@ soundscape/
 │   ├── js/
 │   │   ├── script.js                 # App bootstrap: wires audio, UI, state, and components
 │   │   ├── audio-player.js           # Web Audio + HTMLAudioElement playback engine
+│   │   ├── cast.js                   # Cast controller + platform backends (Remote Playback, AirPlay)
 │   │   ├── media-session.js          # Media Session API integration (metadata, actions)
-│   │   ├── pwa.js                    # PWA lifecycle (registration, install prompts, launch queue)
+│   │   ├── pwa.js                    # Service worker registration + Launch Queue consumer
 │   │   ├── theme-utils.js            # Light/dark/system theme helpers
 │   │   ├── tracks.js                 # Track catalog and metadata
 │   │   └── components/
@@ -28,23 +29,25 @@ soundscape/
 │   └── resources/
 │       ├── icons/                    # PWA/favicon icons (png + svg)
 │       ├── screenshots/              # manifest.webmanifest install screenshots (git-tracked PNGs)
-│       └── soundscapes/              # Looping ambience audio files (.opus)
+│       └── soundscapes/              # Ambience loops: .opus (local playback) + .m4a twins (cast)
 ├── test/                             # Unit tests (dependency-free)
 │   └── helpers/
 │       └── app-test-harness.js       # Shared test fixtures/utilities
 ├── scripts/
 │   ├── export-icons.mjs              # Icon PNG export from SVG sources
 │   ├── capture-screenshots.mjs       # Manifest install-screenshot capture
-│   └── send-media-key.ps1           # OS-level media key injection for testing
+│   ├── build-cast-audio.mjs          # AAC cast twins with the loop crossfade baked in (needs ffmpeg)
+│   └── send-media-key.ps1            # OS-level media key injection for testing
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml                # GitHub Pages deployment (uploads src/)
+│       └── deploy.yml                # CI: `npm test` gates the Pages deploy (uploads src/)
 ├── Dockerfile                        # Multi-target image: default = Caddy + Node (serve + npm test); `--target serve` = slim Caddy-only runtime
 ├── .dockerignore                     # Excludes unnecessary files from the build
 ├── package.json                      # Scripts and metadata
 ├── package-lock.json                 # Locks the scripts/ devDependencies (playwright); npm test itself has none
 ├── .config.md                        # Per-developer configuration (gitignored)
 ├── AGENTS.md
+├── CLAUDE.md                         # Includes AGENTS.md; keep the guidance itself in AGENTS.md
 ├── README.md
 └── opencode.json
 ```
@@ -69,7 +72,230 @@ soundscape/
   - Skipping again mid-load hands the state to the newer request without reporting a stop, so the indicator never blinks between tracks and the delay is not re-armed.
   - It and `#playbackError` are mutually exclusive. They are the app's only two status messages, they sit in the same strip under the title, and a failure notice under a live loading bar is both a contradiction and (with reduced motion, where the bar becomes text) an overlap.
 - Treat Media Session and Audio Session APIs as progressive enhancements. When available, keep metadata, playback state, actions, and decoded-buffer position state in sync; when unavailable, playback should still work.
+- Keep the cast element out of the Web Audio graph. `createMediaElementSource`
+  diverts an element's audio into the graph, which is precisely what makes the
+  app's long-lived `<audio>` unusable as a cast transport — hence a second,
+  un-wired `#castAudioElement`. Never pass it to `createMediaElementSource`.
+- For the same reason `#audioElement` carries `disableremoteplayback` and
+  `x-webkit-airplay="deny"`. Its audio is diverted into the graph, so a browser
+  or OS offering it as a cast source would hand the user a route the app knows
+  nothing about while the decoded buffer keeps playing locally — the
+  two-places-at-once that casting is otherwise built to prevent.
 - Re-register Media Session action handlers after every track change. Some browsers drop the Media Session association when the long-lived `<audio>` element's `src` changes, so refreshing the handlers (and metadata) inside `playCurrentTrack` keeps keyboard/earphone controls working across tracks.
+
+## Casting Invariants
+
+- Casting is not a second audio output the app mixes into. Nothing in the browser
+  can route an `AudioContext` to a cast target, so the two outputs are strictly
+  exclusive: exactly one of `audioPlayer` and `castController` drives playback at
+  any moment. While a cast is connected the local element is parked and the
+  `AudioContext` is suspended.
+- **Casting is three mechanisms, not one, and the difference decides everything
+  below.** Chrome on Android *flings*: the receiver is handed the URL and fetches
+  it. Chrome on desktop (121+) *remotes*: the browser demuxes locally and streams
+  encoded frames over the Cast mirroring protocol — `MediaRouterDesktop::
+  GetFlingingController` returns `nullptr`, so there is no flinging path there at
+  all. Safari (13.1+, which does implement the Remote Playback API — the AirPlay
+  backend is now a fallback for older WebKit only) drives AirPlay audio, where
+  the Mac or iPhone decodes and streams to the speaker. Two of the three fetch
+  the twin *through the page*, and only the first could loop without the browser.
+- Because the local element is parked on purpose, its own `play`/`pause` events
+  say nothing about what the listener hears. `handleBrowserPlaybackStart` and
+  `handleBrowserPlaybackPause` must stay guarded by `isCasting()`, or parking the
+  element reads as "the user paused" and stops the receiver too. Same for
+  `handleVisibilityChange`: a cast keeps playing whether the tab is visible or not.
+- **The cast element's `play`/`pause` events are the exact opposite, so do not
+  make the two symmetrical.** The receiver has its own controls and the person
+  holding them is not this page; the Remote Playback API reports nothing about
+  them, so those events are the app's only word that the room went quiet. They
+  drive `onPlaybackChange` → `syncPlaybackState`, which **re-reads** the transport
+  rather than trusting the event, and which never drives the transport back. Both
+  properties are load-bearing: assigning `src` runs the media load algorithm,
+  which pauses the element and fires `pause`, so every track change while casting
+  emits one for a cast that is not stopping at all. A handler that trusted the
+  event would clear the intent the very next `play()` had just set. It also must
+  not touch `playbackRequested` for the same reason. `app-cast.test.js` pins both.
+- Cast plays the `.m4a` twin, never the `.opus` original. Safari could not decode
+  Ogg Opus at all before 18.4, and desktop remoting only carries Opus if the sink
+  advertises it — AAC in MP4 is the one format every path accepts, and one shared
+  format keeps a single code path for every backend rather than per-platform
+  codec selection. `tracks.js` derives `castUrl` from `url`, so the two can never
+  drift; `tracks.test.js` checks every twin exists on disk.
+- Everything platform-specific lives in the two backend objects in `cast.js`, and
+  it comes to only two things: how you open the picker, and how you observe the
+  connection. Once connected, both platforms are driven by plain
+  `src`/`play`/`pause`. Keep it that way — new targets should be a backend, not a
+  branch in the controller.
+- **Do not "tidy" `remotePlaybackBackend.isSupported`.** It probes
+  `watchAvailability`, a method the module deliberately never calls, and that is
+  not an oversight. Because Safari 13.1+ implements part of the Remote Playback
+  API, the member being probed is what decides whether modern Safari selects that
+  backend or the AirPlay one — so narrowing the check to the methods actually used
+  could silently re-route Safari onto an untested path, on the one platform this
+  repo cannot test.
+- Do not add the Google Cast Web Sender SDK. It requires a cross-origin
+  `gstatic.com` script this offline-first app cannot precache, and buys little
+  over the Remote Playback API for plain media playback.
+- Do not replace the twins with an HLS playlist that lists one short segment
+  hundreds of times. It is a real technique and it looks tailor-made for this
+  problem — one 30 s segment on disk, a text playlist, hours of seamless output,
+  every repeat an HTTP cache hit — but it does not survive the three-mechanism
+  split above. Only Chrome *Android* hands the URL to a receiver that can parse
+  HLS. Chrome on **desktop** demuxes the media in the browser and streams frames,
+  and Blink has no native HLS demuxer at all: without MSE and a JS library, the
+  playlist simply fails to load, so the platform with the most cast devices
+  attached would be the one that stopped working. Safari would play it, and
+  AirPlay-to-a-speaker would have the *sending* device fetch it anyway, where
+  AVFoundation's caching is not something to rely on. A single self-contained
+  file is the only shape all three mechanisms read the same way, and the lever on
+  seam frequency is `REPEAT_TO_SECONDS`, which costs bytes and nothing else.
+- Sonos needs no code of its own. Modern models (One, Beam, Arc, Five, Move,
+  Roam on S2) are AirPlay 2 targets and appear in the AirPlay picker.
+- **The app never asks whether a cast device exists. Do not reintroduce
+  availability watching.** Both platforms discover devices inside their own picker
+  when it opens, so asking in advance bought exactly one thing — a conditionally
+  visible button — at the price of continuous local-network scanning for the whole
+  life of the page, which Apple documents as a battery cost and asks you not to
+  incur without a specific need. Verified in Chromium: `prompt()` reaches the
+  picker with no prior `watchAvailability` call **and** with the element still at
+  `readyState` 0, and a machine with no devices gets the browser's own picker
+  rather than an error to report — so there is nothing to hand-roll for the
+  no-devices case either. `cast.test.js` asserts neither backend registers a
+  scan.
+- The cast button is therefore always visible, and `hidden` is decided once at
+  boot from `isSupported()` alone — a browser either has a way to cast or it does
+  not, and that cannot change while the page is open. This is also what makes "a
+  live cast can never lose its stop control" true by construction rather than by a
+  guard. It carries all three states as
+  `data-cast-state="idle|connecting|connected"` — the filled screen in the glyph
+  means *connected*, so connecting takes the weight but not the fill and pulses
+  instead. `CastController.start()` reports the opening state so that appearance
+  comes from one path rather than the markup, which also catches a page loading
+  with a cast already live.
+- `prompt()` rejects as part of normal use: `NotAllowedError` (picker dismissed),
+  `NotFoundError` (no device found, or it went away), `OperationError` (a second
+  prompt raced the first), and `AbortError` (not in the spec, but Chromium has
+  used it for dismissal). These are swallowed; only genuinely unexpected failures
+  are logged. The common cause of that race — a double-click on the button — is
+  refused outright by `CastController.prompt()` rather than absorbed after the
+  fact. There is no
+  `disconnect()` in the Remote Playback API by design; prompting again while
+  connected is what offers "stop casting".
+- `#castAudioElement` keeps `preload="metadata"` because macOS Safari rejects
+  `prompt()` with `NotSupportedError` below `HAVE_METADATA` (iOS is explicitly
+  exempt in `RemotePlayback.cpp`), so the picker needs a header that has been
+  read. Chromium does not — verified at `readyState` 0 — but one rule for both is
+  simpler. The twins are written `+faststart` so the index is at the head, and the
+  service worker leaves `.m4a` alone (see below).
+- **`preload="metadata"` is a hint, not a budget — do not assume that read is
+  cheap.** Measured in Chrome against a ~1 MB twin, the first load buffers ~90% of
+  the file and later track changes tens of KB each. Two gates keep that off the
+  wire, both in `CastController.syncElementSource`:
+  - **No backend, no source.** Firefox ships neither API, so there is no button
+    and no picker: the whole cast budget is zero bytes.
+  - **No gesture, no source.** Nothing loads until the app reports a pointer or
+    key event via `allowTransportLoad()`, so a tab restored on startup and never
+    touched costs nothing. From that first gesture the file is kept current on
+    every track change, because the picker could then open at any moment.
+  Do **not** move the load into `prompt()` to defer it further: a fresh `src`
+  resets `readyState`, and that is exactly what Safari refuses to open a picker
+  on — it would break the call it was meant to serve. `needsCurrentSource()` also
+  answers true while connected or connecting, so a cast opened from outside the
+  app (the OS picker) still gets the current track. `app-cast.test.js` pins all
+  of it.
+- Chromium refuses to *remote* media of 15 seconds or less
+  (`kMinRemotingMediaDurationInSec`). Every twin must clear it — which the
+  repeat-to-two-minutes rule below does with room to spare, but a new soundscape
+  shorter than that would silently fail to cast on desktop Chrome. This no longer
+  shows up as a missing button, since the button no longer depends on discovery;
+  it would show up as a picker that lists nothing.
+- Cast twins are the one asset the service worker does not handle — neither
+  precached nor cached at runtime. It is not a caching preference: `cacheIfOk`
+  buffers the whole body and `handleRangeRequest` upgrades a range miss to a full
+  fetch, so every partial read the cast element makes would become a whole
+  megabyte. Passing them through leaves the browser fetching the bytes it
+  actually asked for. `test/pwa.test.js` already excludes everything under
+  `resources/soundscapes/`. The consequence to accept: casting needs the network,
+  which is true of the Android path regardless, since there the receiver does the
+  fetching.
+- **The cast transport reports nothing about being superseded, so `playCurrentTrack`
+  checks the track generation itself before `finishTrackChange`.** Two quick skips
+  leave two changes in flight and a receiver can answer the first one last. On the
+  local path `AudioPlayer`'s own stale-request guard makes this impossible — it
+  answers `false` and the caller never reaches the metadata write. `CastController`
+  has no equivalent (the whole point is that it is driven by plain
+  `src`/`play`/`pause`), so without the check the older skip would write its
+  captured track into the OS media UI while the receiver and the on-screen title
+  are on the newer one. Everything else in the playback tail re-reads live state
+  and is self-correcting; `finishTrackChange(track)` is the one call carrying a
+  value captured before the await. `app-cast.test.js` pins it.
+- The handover reads `AudioPlayer.wantsPlayback()`, not `isPlaybackRequested()`.
+  The latter ANDs in `hasTrack()` so no resume path can try to play nothing; the
+  handover needs the opposite reading. A device connecting while the *first*
+  track is still decoding finds `hasTrack()` false — nothing has ever loaded —
+  and would take that for "the user wasn't playing", handing the receiver a
+  silence after an explicit press of play. Keep the two callers apart.
+- `startCasting` checks `castTransitionId` before **everything** it writes, not
+  just the last line. A connect and a disconnect close together leave two
+  transitions in flight; the stale one clearing or posting a playback error would
+  overwrite the message belonging to the one still running. The log still happens
+  either way — a failure is worth a developer's attention whether or not it is
+  still worth the user's.
+- The volume slider does not reach the cast device. Element volume is not local
+  while connected — Chromium forwards it to the receiver as a stream volume
+  change, which on a Cast device is the speaker's own level and outlives the
+  session — so `CastController` has no volume API at all, and the control is
+  disabled and relabelled while connected rather than pretending to work.
+- Media Session position state is not published while casting. The receiver owns
+  the position and the page cannot read it, and the local player's answer is
+  worse than none: it still holds the buffer from before the cast and its context
+  is suspended, so it would pin a frozen position under a "playing" state. The
+  1 s polling timer stays off for the same reason.
+- Never rely on `loop`, or on `ended`, or on any end-of-media event. Neither spec
+  promises the attribute is honoured remotely; where a browser does honour it, it
+  implements it as a seek back to zero, which flushes the receiver's buffer and
+  is audible. Worse, Chrome Android reports no end at all —
+  `FlingingRenderer::OnMediaStatusUpdated` drops every status that is not playing
+  or paused and never calls `client_->OnEnded()`, so Blink never runs its
+  end-of-media algorithm: no `ended`, no `pause`, and `loop` never applied. The
+  room goes quiet with the app still showing playing. Position is the one signal
+  every platform keeps, so `LoopWatchdog` polls it and asks `CastController` to
+  restart a cast that has stopped advancing. It is kept a separate class on
+  purpose: liveness policy, knowing nothing about elements, backends or URLs. Keep
+  the `ended` handler too — it is one line and covers the receivers that do
+  announce it — but it is not the safety net.
+- The watchdog is patient before the first advance, not silent. A receiver can
+  take seconds to fetch and buffer, and a restart into that would fight the
+  connection it is still making — so a position that has never moved gets ~16 s
+  (`STALLED_SAMPLES_BEFORE_FIRST_START`) against the ~4 s a position that has
+  moved and then stopped gets. It must stay a count and not an open-ended
+  reprieve: a restart is only a request, a receiver can swallow one and stay
+  quiet, and `restartLoop` deliberately returns to the un-advanced posture. If
+  that posture meant "never intervene again", the first restart would disarm the
+  watchdog for the session and leave the app showing playing into a silent room —
+  the exact failure it exists to catch. `cast.test.js` pins the retry.
+- `npm run cast-audio` rebuilds the AAC twins (needs `ffmpeg`/`ffprobe` on PATH;
+  host-only, not in `npm test` or the Docker image). It imports the app's own
+  `applyLoopCrossfade`, trims to the loop period, and writes that period
+  repeatedly until the file passes `REPEAT_TO_SECONDS` (two minutes). Repetition
+  is bit-exact — every internal join is the sample-adjacent seam the crossfade
+  built — so the only audible seam is the one at the end of the file, and the
+  file's length is the only lever on how often it comes round. Re-run after
+  replacing any `.opus` source.
+- The cast crossfade is **not** fixed at `LOOP_CROSSFADE_MS`; it is stretched to
+  whatever length lands the loop period on a 1024-sample AAC frame boundary
+  (10–31 ms in practice). A partial final frame gets padded with silence by the
+  encoder, and that padding sits exactly on the loop seam — measured at ~224
+  samples, it took the seam discontinuity from 0.27x to 5.18x of the signal's own
+  typical sample step. The build fails loudly if the period is not frame-aligned.
+  This does not touch local playback, which still uses the 10 ms runtime fade.
+  Alignment matters now for the *internal* joins between repeats, which are the
+  seams the listener actually crosses; keep it if a native-looping receiver ever
+  appears, but do not expect one today.
+- What remains unfixable is AAC *encoder priming* at the head. It is intrinsic to
+  the codec — the container's edit list is the mechanism for it, and every
+  gapless-aware receiver honours it. `ffprobe` confirms the twins ship `edts`/
+  `elst` with `initial_padding=0`.
 
 ## Development and Testing
 
@@ -104,6 +330,7 @@ soundscape/
   ```sh
   <container-engine> container run --rm --volume ${PWD}:/app soundscape npm test  # live source: picks up your current file state
   ```
+- **CI runs the same suite and gates the deploy.** `.github/workflows/deploy.yml` runs `npm test` on every push to `trunk` and on every pull request against it; Pages only publishes if it passes, and never from a pull request (the deploy job names the events that may publish rather than excluding the ones that may not, and pins the ref to `trunk` — `workflow_dispatch` can otherwise be run from any branch). Concurrency lives on the jobs, not the workflow — at workflow level every pull request would join the Pages group, where pending runs cancel each other. Two things there are deliberate and should not be "fixed": there is **no `npm ci`** — the suite imports only `node:` builtins and `src/js`, so it passes from a bare checkout, and the one devDependency (playwright) belongs to the host-only `scripts/`, which CI never runs; and it does **not** build the Dockerfile — that image exists to make local runs match each other, and the runner is already a clean Linux box with the right Node.
 - For browser-driven testing, **always use visible (headed) mode** — never headless. Follow this exact sequence when opening the browser:
 
   1. **Open** the browser and navigate:
@@ -135,7 +362,8 @@ soundscape/
 - **Check console first** — run `playwright-cli console` after every action to catch warnings/errors before they scroll away.
 - **Verify network** — run `playwright-cli requests --static` to see every URL, method, and status code. Use `eval` with `performance.getEntriesByType('resource')` to check `transferSize`: **0** means served from the SW cache, **>0** means fetched from the network. For audio specifically, a **206 only** (without a preceding 200) on a replayed track confirms a cache hit — the SW served the full file and sliced the byte range without a network re-fetch. Use `eval` with `performance.getEntriesByType('navigation')[0].transferSize` to confirm the navigation itself came from cache.
 - **Check UI state** — use `snapshot` for visual structure, `eval` for JS-driven state (e.g. Media Session metadata/playbackState, localStorage values). `navigator.mediaSession.playbackState` is the most reliable playback source; DOM attributes (`aria-label`, `data-playing`) mirror the same value.
-- **Snapshot refs change after navigation** — refs (e.g. `e27`) are ephemeral and may point at different elements after navigation. Always take a fresh snapshot after navigating to get valid refs.
+- **Prefer CSS selectors over snapshot refs** — refs (e.g. `e27`) are renumbered on every re-render, not just on navigation, and a stale one usually *hits the wrong element instead of erroring*: a reload here turned `click e19` from Play into Previous, silently. `<target>` accepts any unique selector, so `playwright-cli click "#playPauseButton"` cannot drift that way — and this app gives every control a stable id. (It does **not** accept an accessible name: `click "Play"` fails with "does not match any elements".) If a ref is unavoidable, snapshot immediately before the click and use it immediately after; a ref that is even one command old is already suspect.
+- **An unknown subcommand prints usage and exits 0** — `playwright-cli navigate <url>` (the command is `goto`) does nothing, reports no error, and leaves the page where it was. Piping through `tail` hides the usage text, so it reads as success and every later assertion silently describes the old page. Check the command list in `playwright-cli --help` rather than guessing the verb.
 - **Testing slow loads needs a reload, not just a cache purge** — `AudioPlayer` keeps decoded buffers in an in-memory `bufferCache` for the page's lifetime, so a track played earlier in the session replays instantly even after you delete it from the SW cache. Reload the page to clear it. To throttle, use `context.route` (not `page.route`) — only the context-level route intercepts the service worker's own fetches — and delay with `page.waitForTimeout` inside the handler, since `run-code` route handlers have no `setTimeout`.
 - **Track changes have a 420ms title animation** — when testing track navigation, verify state via `navigator.mediaSession.metadata.title` (immediate) rather than the `<h1>` textContent (which settles after the animation completes). Or wait for the `animationend` event.
 - **Key press semantics** — `playwright-cli press "ArrowRight"` generates a `keydown` event with `event.key === "ArrowRight"`. Space for play/pause uses `event.key === " "`. The `handleDocumentKeydown` handler suppresses repeat events (`event.repeat`), so press keys without holding.
@@ -149,8 +377,42 @@ soundscape/
   ```
   The browser window must be focused (not minimized) for OS-level key events to reach it. **Click Play in Soundscape once before the first key press** so it owns the active media session; subsequent hardware keys will then route to it regardless of other media-playing Chrome windows. Use `Start-Sleep -Milliseconds 800` between successive key presses to allow async track loading to complete; rapid-fire presses (<500ms apart) can cause unexpected track ordering due to concurrent async handlers.
 
+## Testing Casting
+
+- **Never cast to a real device from an automated run.** Casting reaches out to
+  hardware on someone's network and starts playing audio in a room. Keep agent
+  testing to the unit suite and in-page simulation.
+- `test/cast.test.js` covers `CastController` against fake backends;
+  `test/app-cast.test.js` covers the transport handoff end to end via the
+  harness's opt-in `startAppTestEnvironment({ castDevices: true })`, which
+  attaches a fake Remote Playback object to the cast element and exposes
+  `castRemote` for driving `beginConnecting` / `connect` / `disconnect`. There is
+  no availability control to drive, because the app has no availability to hear
+  about; the fake's `watchAvailability` exists only to satisfy feature detection
+  and counts its calls so a test can prove it is never used.
+- **The cast element carries no `src` until a gesture is reported**, so a test
+  that inspects it after a bare `startAppTestEnvironment` will correctly find it
+  empty. Dispatch a `pointerdown` or `keydown` on the document first — the
+  `touchPage` helper in `app-cast.test.js` does exactly that. In a browser, any
+  real click or keypress does it.
+- To exercise the real browser path without any device, shadow the read-only
+  state on the live `RemotePlayback` object and dispatch its events — this drives
+  the app's actual handlers and contacts nothing:
+  ```js
+  const r = document.getElementById("castAudioElement").remote;
+  Object.defineProperty(r, "state", { value: "connected", configurable: true });
+  r.dispatchEvent(new Event("connect"));
+  ```
+- The cast button is visible on any browser that can cast, devices or not, so
+  there is nothing to un-hide before checking its appearance. Clicking it on a
+  machine with no devices is a safe, useful test: the browser opens its own
+  picker, finds nothing, and the dismissal is swallowed as a benign outcome —
+  a clean console is the pass condition.
+
 ## Manifest Screenshots & Icons
 
+- See also `npm run cast-audio` under Casting Invariants — same host-only,
+  skip-when-unchanged contract, but it needs `ffmpeg` rather than Playwright.
 - `npm run screenshots` and `npm run icons` regenerate `src/resources/screenshots/*.png` and `src/resources/icons/*.png` via Playwright (see each script's header for how). Host-only — not part of `npm test` or the Docker image. Re-run after a change that affects the home page's appearance or either icon SVG; both skip writing when the output is unchanged.
 - Screenshots are excluded from the service worker precache (`test/pwa.test.js` filters `./resources/screenshots/`) — they're only fetched by the OS install UI before the app is installed, never by the running page. Icons remain part of `OPTIONAL_ASSETS`.
 

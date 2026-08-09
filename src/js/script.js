@@ -7,6 +7,7 @@
 // perfect loop points are a hard product requirement for these short files.
 
 import { AudioPlayer } from "./audio-player.js";
+import { CastController } from "./cast.js";
 import {
     configurePlaybackAudioSession,
     initMediaSession,
@@ -26,10 +27,27 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.8.3";
+const VERSION = "1.10.1";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
+const CAST_BUTTON_LABEL_BY_STATE = {
+    idle: "Play on another device",
+    connecting: "Connecting to device",
+    connected: "Casting — change device or stop",
+};
+// The Remote Playback API never tells a page which device was picked, so these
+// stay generic on purpose rather than guessing a name.
+const CAST_CONNECTED_STATUS = "Now playing on another device.";
+const CAST_CONNECTING_STATUS = "Connecting to a device.";
+const CAST_DISCONNECTED_STATUS = "Playback returned to this device.";
+const CAST_STATUS_BY_STATE = {
+    connecting: CAST_CONNECTING_STATUS,
+    connected: CAST_CONNECTED_STATUS,
+};
+const VOLUME_LABEL = "Volume";
+const CAST_VOLUME_LABEL = "Volume is set on the device you're casting to";
+const CAST_FAILURE_MESSAGE = "That device couldn't play this soundscape. Try connecting again.";
 const KEY_SPACE = " ";
 const KEY_ARROW_RIGHT = "ArrowRight";
 const KEY_ARROW_LEFT = "ArrowLeft";
@@ -59,6 +77,9 @@ const playPauseButton = document.getElementById("playPauseButton");
 const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
+const castAudioElement = document.getElementById("castAudioElement");
+const castButton = document.getElementById("castButton");
+const castStatus = document.getElementById("castStatus");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
 const playbackError = document.getElementById("playbackError");
@@ -70,10 +91,27 @@ let currentTrackIndex = requestedTrackIndex === -1 ? getSavedTrackIndex() : requ
 let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
 let loadingIndicatorTimer = 0;
+// Every cast signal arrives through one callback that fires on any of them, so
+// the previously reported state is what makes a change in it detectable. One
+// variable for all three states rather than a flag per consumer: the
+// announcement and the transport handover are both driven by a change in this.
+let castConnectionState = "idle";
+let castTransitionId = 0;
 
 const audioPlayer = new AudioPlayer(audioElement, {
-    onStateChange: () => syncPlaybackState(audioPlayer.isPlaying()),
+    onStateChange: () => syncPlaybackState(isOutputPlaying()),
     onLoadingChange: syncLoadingIndicator,
+});
+
+// Exactly one of audioPlayer and castController drives playback at any moment;
+// cast.js explains why they can never overlap.
+const castController = new CastController(castAudioElement, {
+    onChange: handleCastChange,
+    // A pause pressed on the Chromecast itself is the app's only word that the
+    // room went quiet. Re-read rather than trust: the answer is whatever the
+    // transport says right now, which is also what makes this safe to receive
+    // during the app's own transitions.
+    onPlaybackChange: () => syncPlaybackState(isOutputPlaying()),
 });
 
 // Media Session connects browser/OS media controls to the app's playback actions.
@@ -88,10 +126,11 @@ const mediaSessionActions = {
 };
 
 volumeControl.addEventListener("input", () => {
-    audioPlayer.updateVolume(volumeControl.value);
+    applyVolume(volumeControl.value);
     savePreference(SAVED_VOLUME_KEY, volumeControl.value);
 });
 playPauseButton.addEventListener("click", playPauseClick);
+castButton.addEventListener("click", () => castController.prompt());
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 themeSelector.addEventListener("theme-change", (event) => {
@@ -101,18 +140,24 @@ title.addEventListener("animationend", handleTitleAnimationEnd);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
+// Capture, so a handler that stops propagation cannot hide the gesture. The two
+// together cover pointer and keyboard; either one is enough to release the cast
+// transport, so whichever lands first removes both.
+document.addEventListener("pointerdown", releaseCastTransport, true);
+document.addEventListener("keydown", releaseCastTransport, true);
 
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
 updateTrackTitle();
 applyRequestedTrack();
 startMediaSession();
+initCasting();
 registerServiceWorker();
 initLaunchQueue();
 appVersion.textContent = VERSION;
 
 async function playPauseClick() {
-    if (audioPlayer.isPlaying()) {
+    if (isOutputPlaying()) {
         await pauseAudio();
     } else {
         await playAudio();
@@ -177,18 +222,26 @@ async function playPreviousTrack() {
     return changeTrack(-1, "previous");
 }
 
+// An app shortcut is an explicit "play this soundscape", so it starts playback
+// whichever soundscape it names. Starting it only for the one already showing
+// would make the same click behave differently depending on state the user
+// cannot see: pick the current track and the room fills, pick any other and the
+// title changes over silence. Shortcuts exist only for an installed app, where
+// autoplay is not the obstacle it would be on a cold page load.
 async function selectTrack(requestedIndex) {
-    // A shortcut for the soundscape we're already on should still start it —
-    // the user clicked "Fireplace" expecting fireplace, not a no-op.
-    if (requestedIndex === currentTrackIndex) {
-        if (!audioPlayer.isPlaying()) await playAudio();
+    if (requestedIndex !== currentTrackIndex) {
+        const offset = requestedIndex - currentTrackIndex;
+        const didChangeTrack = await changeTrack(offset, offset > 0 ? "next" : "previous");
 
-        return false;
+        // A change that failed has already reported itself and rolled back to
+        // whatever was loaded before. Starting that would answer the shortcut
+        // with the wrong soundscape, over the top of its own error message.
+        if (!didChangeTrack) return false;
     }
 
-    const offset = requestedIndex - currentTrackIndex;
+    if (!isOutputPlaying()) await playAudio();
 
-    return changeTrack(offset, offset > 0 ? "next" : "previous");
+    return true;
 }
 
 async function changeTrack(offset, direction) {
@@ -198,7 +251,7 @@ async function changeTrack(offset, direction) {
     const attemptedTrack = getCurrentTrack();
 
     try {
-        const result = await playCurrentTrack(direction);
+        const result = await playCurrentTrack(trackChangeId, direction);
         if (trackChangeId !== currentTrackChangeId) {
             return false;
         }
@@ -208,21 +261,33 @@ async function changeTrack(offset, direction) {
             return false;
         }
 
-        if (audioPlayer.getTrackUrl() === attemptedTrack.url) {
+        if (isTrackLoaded(attemptedTrack)) {
             updateMediaSessionStatus(attemptedTrack);
-            syncPlaybackState(audioPlayer.isPlaying());
-            reportPlaybackFailure("Could not start soundscape track.", error);
+            syncPlaybackState(isOutputPlaying());
+            reportPlaybackFailure("Could not start soundscape track.", error, castFailureMessage());
             return false;
         }
 
         currentTrackIndex = previousTrackIndex;
         saveCurrentTrack();
+        castController.setTrack(getCurrentTrack());
         updateTrackTitle();
         updateMediaSessionStatus(getCurrentTrack());
-        syncPlaybackState(audioPlayer.isPlaying());
-        reportPlaybackFailure("Could not change soundscape track.", error);
+        syncPlaybackState(isOutputPlaying());
+        reportPlaybackFailure("Could not change soundscape track.", error, castFailureMessage());
         return false;
     }
+}
+
+// After a failed track change, did the attempted soundscape nonetheless become
+// the loaded one? If it did, the app is on it and rolling the title back would
+// describe a track that is no longer there. The answer belongs to whichever
+// output owns playback — while casting the local player still holds the track
+// from before the cast started, and would answer for the wrong device.
+function isTrackLoaded(track) {
+    return isCasting()
+        ? castController.getTrackUrl() === track.castUrl
+        : audioPlayer.getTrackUrl() === track.url;
 }
 
 function getCurrentTrack() {
@@ -350,7 +415,174 @@ function restoreSavedVolume() {
         : Number(volumeControl.value);
 
     volumeControl.value = String(volume);
+    applyVolume(volume);
+}
+
+// The slider governs local playback only. A cast target's volume belongs to the
+// device — pushing this onto it would mean connecting a cast quietly turns the
+// speaker in the room to wherever the slider happens to sit, and on a Cast
+// device that change outlives the session. The control says so while connected;
+// the level is still kept current underneath, ready for the handback.
+function applyVolume(volume) {
     audioPlayer.updateVolume(volume);
+}
+
+function isCasting() {
+    return castController.isConnected();
+}
+
+function isOutputPlaying() {
+    return isCasting() ? castController.isPlaying() : audioPlayer.isPlaying();
+}
+
+// Deliberately not "discovery": nothing is asked of the network here or ever.
+// The button's visibility is decided once and never recomputed, because a browser
+// either has a way to cast or it does not and that cannot change while the page
+// is open. Both platforms discover devices inside their own picker when it opens,
+// so the app never needs to know in advance whether one is out there — cast.js
+// explains what that replaced and why it is not coming back.
+//
+// The track is handed over now so the controller knows what to load, but no bytes
+// move until the first gesture releases it.
+function initCasting() {
+    castController.setTrack(getCurrentTrack());
+    castController.start();
+    castButton.hidden = !castController.isSupported();
+}
+
+// Connection governs which output owns the soundscape, and only a change in it
+// moves audio.
+async function handleCastChange({ connected, connecting }) {
+    const state = castState(connected, connecting);
+    const previousState = castConnectionState;
+
+    castConnectionState = state;
+    castButton.dataset.castState = state;
+    castButton.setAttribute("aria-label", CAST_BUTTON_LABEL_BY_STATE[state]);
+    announceCastState(state, previousState);
+
+    // Only the connected edge moves audio. Passing through "connecting" changes
+    // how the button looks and what is announced, but nothing about which
+    // transport owns the soundscape.
+    if (connected === (previousState === "connected")) return;
+
+    volumeControl.toggleAttribute("disabled", connected);
+    volumeControl.setAttribute("label", connected ? CAST_VOLUME_LABEL : VOLUME_LABEL);
+
+    // A connect and a disconnect arriving close together — a failed session, or
+    // a receiver taken over — leave two of these handlers in flight at once,
+    // each awaiting a transport the other is undoing. Same generation guard as
+    // changeTrack: whichever transition is no longer current stops touching
+    // shared state. stopCasting needs none of its own — it hands straight to
+    // playAudio, which re-checks isCasting() itself.
+    const transitionId = ++castTransitionId;
+
+    if (connected) {
+        await startCasting(transitionId);
+    } else {
+        await stopCasting();
+    }
+}
+
+// Reaching a Chromecast takes a few seconds, and the only sign of it is the
+// button's pulse and its changed label — neither of which a screen reader
+// announces on a control nobody is focused on. Idle is the one state with no
+// wording of its own: "returned to this device" is only true if the audio ever
+// left, and a connection abandoned at the picker never moved it. Writing an
+// empty string still clears whatever the previous state said, silently.
+function announceCastState(state, previousState) {
+    if (state === previousState) return;
+
+    castStatus.textContent = CAST_STATUS_BY_STATE[state]
+        ?? (previousState === "connected" ? CAST_DISCONNECTED_STATUS : "");
+}
+
+// The cast element fetches nothing until a person has touched the page. A tab
+// opened and left alone — restored on startup, or one of twenty from last
+// session — then costs nothing for a feature it will never use. The first
+// gesture loads it, well before anyone can reach the button, because Safari
+// refuses to open its picker on an element whose header has not been read.
+//
+// One release is all there is, so both listeners come off together.
+function releaseCastTransport() {
+    document.removeEventListener("pointerdown", releaseCastTransport, true);
+    document.removeEventListener("keydown", releaseCastTransport, true);
+    castController.allowTransportLoad();
+}
+
+// The one place the two signals collapse into a name. Everything the cast shows
+// the user — the glyph, the button's label, the announcement — is keyed off the
+// result, so there is a single answer to "what is it doing".
+function castState(connected, connecting) {
+    if (connected) return "connected";
+
+    return connecting ? "connecting" : "idle";
+}
+
+async function startCasting(transitionId) {
+    // Read the intent before pausing: audioPlayer.pause() clears it, and it is
+    // the answer to whether the cast should come up playing or silent. The raw
+    // intent, not isPlaybackRequested() — a device that connects while the first
+    // track is still decoding is still answering a press of play.
+    const wasPlaying = audioPlayer.wantsPlayback();
+
+    // Hand the intent to the cast before either transport moves. A session that
+    // fails as soon as it opens arrives as a disconnect while the local pause
+    // below is still in flight, and the handback decides from this flag alone —
+    // without it, a cast that never connected leaves the room silent.
+    castController.setPlaybackRequested(wasPlaying);
+
+    let failure = null;
+
+    try {
+        await audioPlayer.pause();
+
+        if (wasPlaying) {
+            await castController.play();
+        }
+    } catch (error) {
+        failure = error;
+    }
+
+    // Everything below writes shared UI, so the staleness check comes before all
+    // of it rather than only before the last line. A connect and a disconnect
+    // arriving close together leave two of these in flight, each awaiting a
+    // transport the other is undoing; the one that is no longer current must not
+    // clear an error the newer transition just posted, or post one over it. The
+    // log still happens either way — a failure is worth a developer's attention
+    // whether or not it is still worth the user's.
+    if (transitionId !== castTransitionId) {
+        if (failure) console.warn("Could not start casting.", failure);
+
+        return;
+    }
+
+    if (failure) {
+        reportPlaybackFailure("Could not start casting.", failure, CAST_FAILURE_MESSAGE);
+    } else {
+        clearPlaybackError();
+    }
+
+    syncPlaybackState(isOutputPlaying());
+}
+
+async function stopCasting() {
+    const wasPlaying = castController.isPlaybackRequested();
+
+    castController.pause();
+
+    if (!wasPlaying) {
+        syncPlaybackState(false);
+        return;
+    }
+
+    // Hand the soundscape back to local playback so ending a cast continues the
+    // audio rather than dropping the room into silence. This is the one place
+    // playback starts without a user gesture behind it: if the session began on
+    // the cast, there is no AudioContext yet and the browser may refuse. That
+    // failure is reported like any other, which is the honest outcome — the
+    // alternative is going quiet with nothing on screen to explain it.
+    await playAudio();
 }
 
 // Only a failure that left the listener in silence is worth showing. A failed
@@ -358,14 +590,17 @@ function restoreSavedVolume() {
 // soundscape keeps going and pressing next again just works — so surfacing it
 // would put a warning over music that never stopped. Those stay console-only,
 // which is where a developer wants them anyway.
-function reportPlaybackFailure(logMessage, error) {
+// `message` overrides the default when the failure is not about the soundscape.
+// A cast that will not start is the case that matters: "pick another" sends the
+// user hunting through tracks for a fault that is in the room, not the file.
+function reportPlaybackFailure(logMessage, error, message) {
     console.warn(logMessage, error);
 
-    if (audioPlayer.isPlaying()) return;
+    if (isOutputPlaying()) return;
 
-    playbackError.textContent = globalThis.navigator?.onLine === false
+    playbackError.textContent = message ?? (globalThis.navigator?.onLine === false
         ? "You're offline and this soundscape hasn't been downloaded yet."
-        : "This soundscape could not be played. Try again, or pick another.";
+        : "This soundscape could not be played. Try again, or pick another.");
     playbackError.hidden = false;
 }
 
@@ -432,34 +667,76 @@ function updateThemePreference(value, shouldSave = true) {
     }
 }
 
-async function playCurrentTrack(direction = "next") {
+async function playCurrentTrack(trackChangeId, direction = "next") {
     // Load the current soundscape
     const track = getCurrentTrack();
     // Decide from playback intent, not the media element's transient paused
     // state: during a track swap the element is briefly paused (src set +
     // load()), so isPlaying() can read false and wrongly start the new track
     // paused, stopping playback mid-navigation.
-    const wasPlaying = audioPlayer.isPlaybackRequested();
+    const wasPlaying = isCasting()
+        ? castController.isPlaybackRequested()
+        : audioPlayer.isPlaybackRequested();
 
     saveCurrentTrack();
+    // Unconditionally, not just while casting: the cast element's source is how
+    // a backend matches a device to a resource, and neither engine will report
+    // one until the header has been read, so it has to track the current
+    // soundscape even with nothing connected. Putting it behind an isCasting()
+    // check is the bug this line exists to prevent; being the one place it
+    // happens (with the boot seed and the failed-skip rollback) stops the
+    // element and the app drifting apart.
+    castController.setTrack(track);
     updateTrackTitle({ animate: true, direction });
+
+    // Casting has no local fetch or decode to do — the receiver pulls the new
+    // file itself — so there is no loading state and no crossfade to run here.
+    if (isCasting()) {
+        if (wasPlaying) {
+            await castController.play();
+        }
+
+        // Two quick skips leave two of these in flight, and the receiver can
+        // answer the first one last. Writing metadata from a skip that has
+        // already been superseded would name a soundscape the receiver is no
+        // longer pointed at, in the OS media UI, with the title on screen
+        // disagreeing. On the local path AudioPlayer reports this itself by
+        // answering false below; a cast has no equivalent, so the generation is
+        // checked here.
+        if (trackChangeId !== currentTrackChangeId) return false;
+
+        finishTrackChange(track);
+        return true;
+    }
+
     const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
     if (!didStartTrack) return false;
 
-    clearPlaybackError();
+    finishTrackChange(track);
+    return true;
+}
 
-    // Set metadata and re-register action handlers after the new source has
-    // started. Some browsers reset the Media Session association when the
-    // <audio> element's src changes, so refreshing the handlers here keeps
-    // keyboard/earphone controls working across track changes.
+// Set metadata and re-register action handlers after the new source has
+// started. Some browsers reset the Media Session association when the
+// <audio> element's src changes, so refreshing the handlers here keeps
+// keyboard/earphone controls working across track changes.
+function finishTrackChange(track) {
+    clearPlaybackError();
     updateMediaSessionStatus(track);
     registerMediaSessionHandlers(mediaSessionActions);
-    syncPlaybackState(audioPlayer.isPlaying());
-    return true;
+    syncPlaybackState(isOutputPlaying());
 }
 
 async function playAudio() {
     try {
+        if (isCasting()) {
+            saveCurrentTrack();
+            await castController.play();
+            clearPlaybackError();
+            syncPlaybackState(isOutputPlaying());
+            return;
+        }
+
         configurePlaybackAudioSession();
 
         if (audioPlayer.hasTrack()) {
@@ -471,26 +748,39 @@ async function playAudio() {
         }
 
         clearPlaybackError();
-        syncPlaybackState(audioPlayer.isPlaying());
+        syncPlaybackState(isOutputPlaying());
     } catch (error) {
-        reportPlaybackFailure("Could not start playback.", error);
-        syncPlaybackState(audioPlayer.isPlaying());
+        reportPlaybackFailure("Could not start playback.", error, castFailureMessage());
+        syncPlaybackState(isOutputPlaying());
     }
+}
+
+// Undefined hands reportPlaybackFailure back to its own wording, which is about
+// the soundscape rather than the device.
+function castFailureMessage() {
+    return isCasting() ? CAST_FAILURE_MESSAGE : undefined;
 }
 
 async function pauseAudio() {
     try {
-        await audioPlayer.pause();
+        if (isCasting()) {
+            castController.pause();
+        } else {
+            await audioPlayer.pause();
+        }
 
         syncPlaybackState(false);
     } catch (error) {
         console.warn("Could not pause playback.", error);
-        syncPlaybackState(audioPlayer.isPlaying());
+        syncPlaybackState(isOutputPlaying());
     }
 }
 
+// The local media element's play/pause events mirror app state back into the
+// app. While casting it is deliberately parked and paused, so its events say
+// nothing about what the listener is hearing and must not steer playback.
 async function handleBrowserPlaybackStart() {
-    if (audioPlayer.isBrowserPlaybackSyncSuppressed()) return;
+    if (audioPlayer.isBrowserPlaybackSyncSuppressed() || isCasting()) return;
 
     try {
         if (!audioPlayer.isPlaying()) {
@@ -506,7 +796,7 @@ async function handleBrowserPlaybackStart() {
 }
 
 async function handleBrowserPlaybackPause() {
-    if (audioPlayer.isBrowserPlaybackSyncSuppressed()) return;
+    if (audioPlayer.isBrowserPlaybackSyncSuppressed() || isCasting()) return;
 
     try {
         if (audioPlayer.isPlaybackRequested()) {
@@ -522,7 +812,9 @@ async function handleBrowserPlaybackPause() {
 }
 
 async function handleVisibilityChange() {
-    if (document.hidden || !audioPlayer.isPlaybackRequested()) return;
+    // A cast keeps playing on the receiver whether the tab is visible or not,
+    // and the local context is suspended on purpose — nothing to resume.
+    if (document.hidden || isCasting() || !audioPlayer.isPlaybackRequested()) return;
 
     try {
         await audioPlayer.play();
@@ -538,7 +830,7 @@ function syncPlaybackState(isPlaying) {
 
     if (isPlaying) {
         playbackState = "playing";
-    } else if (audioPlayer.hasTrack()) {
+    } else if (audioPlayer.hasTrack() || isCasting()) {
         playbackState = "paused";
     }
 
@@ -549,12 +841,17 @@ function syncPlaybackState(isPlaying) {
     playPauseButton.dataset.playing = isPlaying ? "true" : "false";
 }
 
+// A cast's position belongs to the receiver and the page cannot read it. The
+// local player's reading is worse than none here: it still holds the buffer it
+// was playing before the cast, and its context is suspended, so it would pin a
+// frozen position under a "playing" state in the OS media UI.
 function syncMediaSessionPositionState() {
-    updateMediaSessionPositionState(audioPlayer.getMediaSessionPositionState());
+    updateMediaSessionPositionState(isCasting() ? null : audioPlayer.getMediaSessionPositionState());
 }
 
 function updateMediaSessionPositionTimer(isPlaying) {
-    if (!isPlaying) {
+    // Nothing to poll while casting — there is no reading to refresh.
+    if (!isPlaying || isCasting()) {
         clearInterval(mediaSessionPositionTimer);
         mediaSessionPositionTimer = 0;
         return;
@@ -567,5 +864,5 @@ function updateMediaSessionPositionTimer(isPlaying) {
 
 function startMediaSession() {
     initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement);
-    syncPlaybackState(audioPlayer.isPlaying());
+    syncPlaybackState(isOutputPlaying());
 }

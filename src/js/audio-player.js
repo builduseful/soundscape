@@ -99,6 +99,16 @@ export class AudioPlayer {
         return this.playbackRequested && this.hasTrack();
     }
 
+    // The intent on its own, before asking whether a track has finished loading.
+    // isPlaybackRequested() ANDs in hasTrack() so that a resume path can never
+    // try to play nothing; handing playback to a cast needs the opposite reading.
+    // A device connecting while the very first track is still decoding finds
+    // hasTrack() false — no track has ever loaded — and would take that for "the
+    // user wasn't playing", leaving the receiver silent after an explicit press.
+    wantsPlayback() {
+        return this.playbackRequested;
+    }
+
     isBrowserPlaybackSyncSuppressed() {
         return this.browserPlaybackSyncSuppressed;
     }
@@ -324,7 +334,7 @@ export class AudioPlayer {
 
     async fetchBuffer(url) {
         const response = await fetch(url);
-        if ("ok" in response && !response.ok) {
+        if (!response.ok) {
             throw new Error(`Could not load audio: ${response.status} ${response.statusText}`);
         }
 

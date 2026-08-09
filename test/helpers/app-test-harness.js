@@ -114,6 +114,8 @@ class FakeAudioElement extends FakeElement {
         this.paused = true;
         this.src = "";
         this.currentTime = 0;
+        // The spec default, so a test can tell "left alone" from "set to full".
+        this.volume = 1;
         this.loadCalls = 0;
         this.playCalls = 0;
         this.pauseCalls = 0;
@@ -159,7 +161,71 @@ class FakeAudioElement extends FakeElement {
 export const FAKE_TRACK_SECONDS = 30;
 export const FAKE_TRACK_LOOP_SECONDS = (48000 * FAKE_TRACK_SECONDS - 480) / 48000;
 
+// Stands in for a Remote Playback API implementation on the cast element. It is
+// opt-in because the default environment should look like a machine with no
+// cast devices on the network — which is what most of the suite assumes.
+function createFakeRemotePlayback() {
+    const listeners = new Map();
+
+    return {
+        state: "disconnected",
+        promptCalls: 0,
+        promptShouldReject: null,
+
+        // Present but never expected to run. The backend feature-detects on this
+        // method without calling it — see its comment in cast.js for why it probes
+        // one it does not use — so the fake has to carry it to be selected at all.
+        // Counted so a test can prove no scan was started.
+        watchAvailabilityCalls: 0,
+        watchAvailability() {
+            this.watchAvailabilityCalls += 1;
+            return Promise.resolve(1);
+        },
+
+        addEventListener(type, handler) {
+            const handlers = listeners.get(type) ?? [];
+
+            handlers.push(handler);
+            listeners.set(type, handlers);
+        },
+        removeEventListener(type, handler) {
+            const handlers = listeners.get(type) ?? [];
+
+            listeners.set(type, handlers.filter((candidate) => candidate !== handler));
+        },
+        prompt() {
+            this.promptCalls += 1;
+
+            if (this.promptShouldReject) return Promise.reject(this.promptShouldReject);
+
+            return Promise.resolve();
+        },
+
+        // Test-facing controls.
+        // The real sequence between the picker and a live session, which on a
+        // Chromecast lasts several seconds and is a state the app reports.
+        async beginConnecting() {
+            this.state = "connecting";
+            await this.emit("connecting");
+        },
+        async connect() {
+            this.state = "connected";
+            await this.emit("connect");
+        },
+        async disconnect() {
+            this.state = "disconnected";
+            await this.emit("disconnect");
+        },
+        async emit(type) {
+            for (const handler of listeners.get(type) ?? []) {
+                await handler({ type });
+            }
+        },
+    };
+}
+
 export function installAppTestEnvironment({
+    castDevices = false,
     fetch = defaultFetch,
     launchQueue,
     matchMediaMatches = false,
@@ -174,7 +240,13 @@ export function installAppTestEnvironment({
     const currentTitle = new FakeElement();
     const incomingTitle = new FakeElement();
     const audioElement = new FakeAudioElement();
+    const castAudioElement = new FakeAudioElement();
+    const castRemote = castDevices ? createFakeRemotePlayback() : null;
     const documentHandlers = new Map();
+
+    if (castRemote) {
+        castAudioElement.remote = castRemote;
+    }
     const intervals = new Map();
     const timeouts = new Map();
     const timeoutLog = [];
@@ -199,9 +271,13 @@ export function installAppTestEnvironment({
         "playbackError",
         "trackLoading",
         "trackLoadingLabel",
+        "castButton",
+        "castStatus",
     ]) {
         elements.set(id, new FakeElement());
     }
+
+    elements.get("castButton").hidden = true;
 
     // Mirrors the `hidden` attribute on the real elements so tests can assert
     // whether a playback failure — or a slow load — is actually surfaced.
@@ -210,6 +286,7 @@ export function installAppTestEnvironment({
 
     elements.set("title", title);
     elements.set("audioElement", audioElement);
+    elements.set("castAudioElement", castAudioElement);
 
     globalThis.HTMLElement = FakeElement;
     globalThis.Element = FakeElement;
@@ -451,6 +528,8 @@ export function installAppTestEnvironment({
     return {
         audioContexts,
         audioElement,
+        castAudioElement,
+        castRemote,
         elements,
         intervals,
         timeouts,

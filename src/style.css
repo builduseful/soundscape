@@ -86,6 +86,12 @@ body {
     gap: 26px;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
 .app-brand {
     display: grid;
     gap: 2px;
@@ -315,6 +321,101 @@ button.play[data-playing="true"] .play-icon--play {
 
 button.play[data-playing="true"] .play-icon--pause {
     display: block;
+}
+
+/* Announcement-only: the cast connection has no visible text of its own, and the
+   status strip under the title is spoken for by loading and error messages. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Overrides the global button reset the same way app-menu's trigger does: this
+   sits beside that button in the header and reads as a peer of it, not as one
+   of the app's bordered transport buttons. */
+button.cast {
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--color-text-muted);
+    transition: color 0.18s ease, background-color 0.18s ease;
+}
+
+button.cast:hover {
+    color: var(--color-text);
+    background-color: var(--color-surface-muted);
+}
+
+button.cast:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+/* Connected is the app's one persistent "audio is somewhere else" signal, so it
+   gets weight as well as a filled glyph — a shape change alone is small to read
+   at 22px. Connecting takes the same weight but not the fill: the screen stays
+   empty until something is actually on it. Not --color-primary: the palette is
+   monochrome and defines it as the same ink as --color-text, so the contrast has
+   to come from stepping off the muted idle colour. */
+button.cast[data-cast-state="connected"],
+button.cast[data-cast-state="connected"]:hover,
+button.cast[data-cast-state="connecting"],
+button.cast[data-cast-state="connecting"]:hover {
+    color: var(--color-text);
+}
+
+button.cast[hidden] {
+    display: none;
+}
+
+button.cast .button-icon {
+    width: 22px;
+    height: 22px;
+    fill: none;
+}
+
+button.cast .cast-icon-screen {
+    display: none;
+}
+
+button.cast[data-cast-state="connected"] .cast-icon-screen {
+    display: block;
+}
+
+/* Reaching a Chromecast can take several seconds. A slow pulse carries the wait
+   without moving anything in the header. */
+button.cast[data-cast-state="connecting"] .cast-icon {
+    animation: cast-connecting 1.4s ease-in-out infinite;
+}
+
+@keyframes cast-connecting {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button.cast {
+        transition: none;
+    }
+
+    /* The wait still needs saying, so the pulse settles into the dimmed half of
+       its own cycle rather than disappearing. */
+    button.cast[data-cast-state="connecting"] .cast-icon {
+        animation: none;
+        opacity: 0.55;
+    }
 }
 
 @media (max-width: 520px) {
