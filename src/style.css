@@ -101,8 +101,8 @@ body {
 
 .app-byline {
     color: var(--color-text-soft);
-    font-size: 0.75rem;
-    font-weight: 700;
+    font-size: 0.7rem;
+    font-weight: 600;
     letter-spacing: 0.02em;
     text-decoration: none;
 }

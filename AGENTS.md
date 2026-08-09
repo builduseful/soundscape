@@ -22,6 +22,7 @@ soundscape/
 │   │   ├── theme-utils.js            # Light/dark/system theme helpers
 │   │   ├── tracks.js                 # Track catalog and metadata
 │   │   └── components/
+│   │       ├── app-menu.js           # Custom element for the top-right menu
 │   │       ├── theme-selector.js     # Custom element for theme mode selection
 │   │       └── volume-control.js     # Custom element for volume slider
 │   └── resources/

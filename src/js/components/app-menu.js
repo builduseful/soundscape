@@ -249,6 +249,26 @@ export class AppMenu extends HTMLElement {
             this.open = !this.open;
         });
 
+        // Picking a theme with a pointer focuses its radio, and :focus-within
+        // then pins the panel open even after the pointer leaves — so a mouse
+        // user who opened via hover (this.open still false) sees it "stuck"
+        // open until an outside click. Only released for that hover-only
+        // case: an explicitly click-opened menu (this.open true) should stay
+        // open regardless of focus, closing only via an outside click or the
+        // toggle button. :focus-visible tells pointer and keyboard selection
+        // apart, so keyboard users keep focus to keep navigating with arrows.
+        this.addEventListener("change", (event) => {
+            if (this.open) return;
+            if (!event.target.matches('input[type="radio"]')) return;
+            if (event.target.matches(":focus-visible")) return;
+
+            setTimeout(() => {
+                if (document.activeElement === event.target) {
+                    event.target.blur();
+                }
+            }, 0);
+        });
+
         this.addEventListener("focusout", this._focusoutHandler);
         document.addEventListener("pointerdown", this._documentPointerHandler, true);
     }
