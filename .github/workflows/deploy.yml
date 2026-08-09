@@ -3,26 +3,69 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [trunk]
+  pull_request:
+    branches: [trunk]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
+  # Gates the deploy below: a red suite must not reach production. Also the whole
+  # of what a pull request runs — see the deploy job's `if`.
+  #
+  # No `npm ci` and no Dockerfile here, both deliberate; see "Development and
+  # Testing" in AGENTS.md for why. Verified: the suite passes from a bare
+  # checkout with no node_modules present.
+  test:
+    runs-on: ubuntu-latest
+    # Per branch, and superseded runs are dropped: pushing again to a pull
+    # request makes the previous commit's result irrelevant. Safe on trunk too —
+    # a cancelled test job takes its own deploy with it (deploy `needs` it), so
+    # only the newest green commit can publish.
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # Mirrors engines.node in package.json. The suite is built on
+          # node:test, so the runner's Node is the whole toolchain.
+          node-version: 26
+      - run: npm test
+
   deploy:
+    needs: test
+    # Named positively rather than as "not a pull request" so that adding a
+    # trigger later cannot quietly start publishing from it. The ref check is
+    # what holds for `workflow_dispatch`, which GitHub will run from any branch:
+    # only trunk is production.
+    if: >-
+      github.ref == 'refs/heads/trunk' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # Lives on the job, not the workflow. At workflow level every pull request
+    # run would join the Pages group as well, and runs in one group cancel each
+    # other while pending — open pull requests would fight over a slot they have
+    # no use for. Here it still does its real job: one deployment at a time, and
+    # never cancel one that is already under way.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    # Scoped to this job rather than the workflow, so the test job above runs
+    # with read-only access and cannot touch Pages.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/configure-pages@v6
+      # No `configure-pages` step: it exists to enable Pages and to hand a
+      # framework build its base path, and this deploy is a pre-built folder on
+      # a domain of its own. Nothing here reads its outputs.
       - uses: actions/upload-pages-artifact@v5
         with:
           path: src
