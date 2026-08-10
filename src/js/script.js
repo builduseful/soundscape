@@ -20,7 +20,7 @@ import {
 import { AppMenu } from "./components/app-menu.js";
 import { ThemeSelector } from "./components/theme-selector.js";
 import { VolumeControl } from "./components/volume-control.js";
-import { registerLaunchQueueConsumer, registerServiceWorker } from "./pwa.js";
+import { registerInstallPrompt, registerLaunchQueueConsumer, registerServiceWorker } from "./pwa.js";
 import {
     applyThemePreference,
     loadThemePreference,
@@ -28,7 +28,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.13.1";
+const VERSION = "1.14.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -87,6 +87,7 @@ const castButton = document.getElementById("castButton");
 const castStatus = document.getElementById("castStatus");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
+const installButton = document.getElementById("installButton");
 const playbackError = document.getElementById("playbackError");
 const trackLoading = document.getElementById("trackLoading");
 const trackLoadingLabel = document.getElementById("trackLoadingLabel");
@@ -186,6 +187,7 @@ applyRequestedTrack();
 startMediaSession();
 initCasting();
 registerServiceWorker();
+registerInstallPrompt(installButton);
 initLaunchQueue();
 appVersion.textContent = VERSION;
 

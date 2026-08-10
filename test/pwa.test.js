@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { afterEach, test } from "node:test";
 
-import { registerLaunchQueueConsumer, registerServiceWorker } from "../src/js/pwa.js";
+import { registerInstallPrompt, registerLaunchQueueConsumer, registerServiceWorker } from "../src/js/pwa.js";
 import { tracks, trackSlug } from "../src/js/tracks.js";
 
 const originalConsoleWarn = console.warn;
@@ -58,6 +58,103 @@ test("registerServiceWorker reports registration failures without crashing the a
 
     assert.equal(warnings.length, 1);
     assert.match(warnings[0][0], /offline support could not be installed/);
+});
+
+// Minimal stand-ins: only what registerInstallPrompt actually touches.
+function createFakeButton() {
+    const handlers = new Map();
+
+    return {
+        hidden: true,
+        addEventListener(type, handler) {
+            handlers.set(type, [...(handlers.get(type) ?? []), handler]);
+        },
+        async click() {
+            for (const handler of handlers.get("click") ?? []) await handler();
+        },
+    };
+}
+
+function createFakeScope({ standalone = false, iosStandalone = false } = {}) {
+    const handlers = new Map();
+
+    return {
+        matchMedia: () => ({ matches: standalone }),
+        navigator: iosStandalone ? { standalone: true } : {},
+        addEventListener(type, handler) {
+            handlers.set(type, [...(handlers.get(type) ?? []), handler]);
+        },
+        async dispatch(type, event = {}) {
+            for (const handler of handlers.get(type) ?? []) await handler(event);
+        },
+    };
+}
+
+test("registerInstallPrompt shows the button once the browser offers to install", async () => {
+    const button = createFakeButton();
+    const scope = createFakeScope();
+
+    assert.equal(registerInstallPrompt(button, { scope }), true);
+    assert.equal(button.hidden, true);
+
+    let prevented = false;
+
+    await scope.dispatch("beforeinstallprompt", { preventDefault: () => { prevented = true; } });
+
+    assert.equal(prevented, true, "the browser's own mini-infobar should be suppressed");
+    assert.equal(button.hidden, false);
+});
+
+// The captured event can only be used once, whichever way the user answers
+// it, so a stale button that does nothing on a second press must not exist.
+test("registerInstallPrompt spends the captured prompt on click and hides the button again", async () => {
+    const button = createFakeButton();
+    const scope = createFakeScope();
+    let promptCalls = 0;
+
+    registerInstallPrompt(button, { scope });
+    await scope.dispatch("beforeinstallprompt", { preventDefault() {}, prompt: () => { promptCalls += 1; } });
+    assert.equal(button.hidden, false);
+
+    await button.click();
+
+    assert.equal(promptCalls, 1);
+    assert.equal(button.hidden, true);
+
+    await button.click();
+
+    assert.equal(promptCalls, 1, "a spent prompt must not be reusable");
+});
+
+test("registerInstallPrompt hides the button again if installed mid-session", async () => {
+    const button = createFakeButton();
+    const scope = createFakeScope();
+
+    registerInstallPrompt(button, { scope });
+    await scope.dispatch("beforeinstallprompt", { preventDefault() {}, prompt() {} });
+    assert.equal(button.hidden, false);
+
+    await scope.dispatch("appinstalled");
+
+    assert.equal(button.hidden, true);
+
+    await button.click();
+    // No assertion needed beyond "does not throw": the deferred prompt was
+    // cleared, so a click after install must be a no-op.
+});
+
+test("registerInstallPrompt does nothing when already running standalone", () => {
+    assert.equal(registerInstallPrompt(createFakeButton(), {
+        scope: createFakeScope({ standalone: true }),
+    }), false);
+    assert.equal(registerInstallPrompt(createFakeButton(), {
+        scope: createFakeScope({ iosStandalone: true }),
+    }), false);
+});
+
+test("registerInstallPrompt degrades gracefully without a button", () => {
+    assert.equal(registerInstallPrompt(null, { scope: createFakeScope() }), false);
+    assert.equal(registerInstallPrompt(undefined, { scope: createFakeScope() }), false);
 });
 
 test("registerLaunchQueueConsumer installs the consumer when the Launch Queue API is available", () => {

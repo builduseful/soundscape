@@ -21,10 +21,19 @@ export class AppMenu extends HTMLElement {
 
     connectedCallback() {
         const themeSelector = this.querySelector("theme-selector");
+        const installButton = this.querySelector(".menu-install");
         const versionLink = this.querySelector(".app-version");
         this.render();
+        const panel = this.querySelector(".menu-panel");
         if (themeSelector) this.querySelector(".menu-theme-row").append(themeSelector);
-        if (versionLink) this.querySelector(".menu-panel").append(versionLink);
+        if (installButton) {
+            // Visibility follows the button via .menu-install[hidden] + .menu-divider below.
+            const installDivider = document.createElement("div");
+
+            installDivider.className = "menu-divider";
+            panel.append(installButton, installDivider);
+        }
+        if (versionLink) panel.append(versionLink);
         this.addEventListeners();
     }
 
@@ -81,12 +90,9 @@ export class AppMenu extends HTMLElement {
                         transition: color 0.18s ease, background-color 0.18s ease;
                     }
 
-                    /* Guarded like every other hover rule in this file — an
-                       unguarded :hover here is the classic touch-device trap:
-                       a tap simulates :hover first and only a second tap
-                       actually clicks, and the simulated hover can stick
-                       around as a filled circle until the next tap elsewhere
-                       clears it. */
+                    /* Unguarded, this caused the classic touch double-tap bug (a tap
+                       simulates :hover and only a second tap clicks) — see other hover
+                       rules in this file. */
                     @media (hover: hover) and (pointer: fine) {
                         :scope > button:hover {
                             color: var(--color-text);
@@ -156,10 +162,14 @@ export class AppMenu extends HTMLElement {
                     }
 
                     .menu-panel {
+                        /* Reused by .menu-install to bleed back out to the panel edge. */
+                        --menu-panel-inset: 14px;
                         display: grid;
-                        gap: 14px;
+                        /* Same gap for every item, including both dividers, so the
+                           vertical rhythm is even. */
+                        gap: 10px;
                         width: max-content;
-                        padding: 14px;
+                        padding: var(--menu-panel-inset);
                         border: 1px solid var(--color-border-subtle);
                         border-radius: 16px;
                         background: var(--color-surface);
@@ -217,9 +227,80 @@ export class AppMenu extends HTMLElement {
                         color: var(--color-text-muted);
                     }
 
+                    /* Same button-reset override as the toggle button above. Hidden
+                       until pwa.js's registerInstallPrompt reveals it. border-radius
+                       and hover background are set explicitly — the global button
+                       reset is circular, which on a full-width row becomes a bulging
+                       pill. margin and padding both reference --menu-item-inset so
+                       they cancel out and the icon stays aligned with the theme row
+                       and version link. */
+                    .menu-install {
+                        --menu-item-inset: 4px;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        width: calc(100% + var(--menu-item-inset) * 2);
+                        margin: 0 calc(var(--menu-item-inset) * -1);
+                        padding: var(--menu-item-inset);
+                        border: 0;
+                        border-radius: 6px;
+                        background: transparent;
+                        box-shadow: none;
+                        color: var(--color-text-soft);
+                        font: inherit;
+                        font-size: 0.75rem;
+                        font-weight: 500;
+                        letter-spacing: 0.02em;
+                        text-align: left;
+                        cursor: pointer;
+                        -webkit-tap-highlight-color: transparent;
+                        tap-highlight-color: transparent;
+                        transition: color 0.18s ease, background-color 0.18s ease;
+                    }
+
+                    /* Overrides the generic svg rule above, sized for the toggle glyph. */
+                    .menu-install svg {
+                        width: 16px;
+                        height: 16px;
+                        fill: none;
+                        stroke: currentColor;
+                        stroke-linecap: round;
+                        stroke-linejoin: round;
+                        stroke-width: 2;
+                        flex-shrink: 0;
+                    }
+
+                    /* The author display above beats the UA's [hidden] rule; see volume-control. */
+                    .menu-install[hidden] {
+                        display: none;
+                    }
+
+                    /* Keeps the divider hidden along with the button — see connectedCallback. */
+                    .menu-install[hidden] + .menu-divider {
+                        display: none;
+                    }
+
+                    .menu-install:active {
+                        transform: none;
+                    }
+
+                    @media (hover: hover) and (pointer: fine) {
+                        .menu-install:hover {
+                            color: var(--color-text-muted);
+                            background-color: var(--color-surface-muted);
+                        }
+                    }
+
+                    .menu-install:focus-visible {
+                        outline: 2px solid var(--color-focus);
+                        outline-offset: 2px;
+                        box-shadow: none;
+                    }
+
                     @media (prefers-reduced-motion: reduce) {
                         :scope > button,
-                        .menu-panel {
+                        .menu-panel,
+                        .menu-install {
                             transition: none;
                         }
                     }
