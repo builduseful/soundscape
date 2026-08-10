@@ -55,6 +55,16 @@ const BENIGN_SESSION_ERRORS = new Set(["cancel", "timeout"]);
 // would sit showing "idle" beside a speaker that is still playing.
 const RESUME_KEY = "soundscape.casting";
 
+const APP_NAME = "Soundscape";
+
+// Largest first: cast UIs and their notifications pick from the list, and a TV
+// showing a full-screen backdrop wants the big one while a phone notification
+// wants the small. Both are already precached icons, so this costs no new asset.
+const ARTWORK_PATHS = [
+    "resources/icons/icon-512.png",
+    "resources/icons/icon-192.png",
+];
+
 // A receiver that has finished its media goes IDLE, and unlike a media element
 // there is no `ended` to wait for. Repeat mode should mean this never happens —
 // it is the belt to the queue's braces, for a receiver that ignores it.
@@ -164,9 +174,24 @@ function applyRepeat(chrome, request, mediaInfo) {
  * the file itself and reports its own state back.
  */
 export class CastSdkController {
-    constructor({ onChange, onPlaybackChange, scope = globalThis, loader = loadCastSdk } = {}) {
+    constructor({
+        onChange,
+        onPlaybackChange,
+        onTrackAdopted,
+        onVolumeChange,
+        tracks = [],
+        scope = globalThis,
+        loader = loadCastSdk,
+    } = {}) {
         this.onChange = onChange;
         this.onPlaybackChange = onPlaybackChange;
+        // Rejoining can discover the receiver on a soundscape this page never
+        // chose — someone changed it from another device, or from the speaker.
+        this.onTrackAdopted = onTrackAdopted;
+        // The device's level is the device's, and it can be changed from
+        // anywhere; this is how the slider hears about it.
+        this.onVolumeChange = onVolumeChange;
+        this.tracks = tracks;
         this.scope = scope;
         this.loader = loader;
         this.track = null;
@@ -226,6 +251,24 @@ export class CastSdkController {
     // so there is nothing to release and nothing to spend.
     allowTransportLoad() {
         return false;
+    }
+
+    // Someone is reaching for the button. Fetching a cross-origin script and
+    // starting a Cast context takes long enough to read as a dead control, and
+    // all of it can happen before the press rather than after it.
+    //
+    // This is the latest possible moment that keeps the promise the module is
+    // built on: a visitor who never goes near casting never contacts Google.
+    // Hovering or focusing the cast button is as clear a statement of intent as
+    // exists short of the click itself, and on a touch screen the pointerdown
+    // that precedes the click still arrives first.
+    prepare() {
+        if (!this.isSupported() || this.sdkReady) return false;
+
+        // Failure is the press's to report, not this one's — nobody asked.
+        void this.ensureSdk().catch(() => {});
+
+        return true;
     }
 
     // Read by the app as "could a press have reached a picker" — there is no
@@ -330,6 +373,16 @@ export class CastSdkController {
             this.handleCastStateChange,
         );
 
+        // The device's own level can be changed from the speaker, the Home app
+        // or another sender, and the slider has to follow it rather than sit
+        // where this page last left it.
+        if (cast.framework.RemotePlayerEventType.VOLUME_LEVEL_CHANGED) {
+            this.playerController.addEventListener(
+                cast.framework.RemotePlayerEventType.VOLUME_LEVEL_CHANGED,
+                this.handleVolumeChange,
+            );
+        }
+
         // The safety net under repeat mode. A receiver that played the file
         // through and stopped reports IDLE, and there is no `ended` event on
         // this path to catch it — the same reasoning that gave the Remote
@@ -361,6 +414,29 @@ export class CastSdkController {
 
     isPlaybackRequested() {
         return this.playbackRequested;
+    }
+
+    // Unlike the Remote Playback path, this transport has a volume API of its
+    // own — `RemotePlayerController.setVolumeLevel` — so the slider can drive
+    // the speaker instead of being switched off with an explanation.
+    //
+    // Answered false while disconnected so the app never routes a local level
+    // change into a session that does not exist.
+    canControlVolume() {
+        return this.isConnected() && Boolean(this.playerController);
+    }
+
+    getVolume() {
+        return this.canControlVolume() ? this.player?.volumeLevel : undefined;
+    }
+
+    setVolume(level) {
+        if (!this.canControlVolume()) return false;
+
+        this.player.volumeLevel = Math.min(1, Math.max(0, Number(level)));
+        this.playerController.setVolumeLevel();
+
+        return true;
     }
 
     setPlaybackRequested(requested) {
@@ -439,6 +515,42 @@ export class CastSdkController {
         return new URL(track.castUrl, this.scope.location?.href ?? SDK_URL).href;
     }
 
+    absoluteUrl(path) {
+        return new URL(path, this.scope.location?.href ?? SDK_URL).href;
+    }
+
+    // What the receiver, and every cast notification downstream of it, has to
+    // describe the sound with. Left at just a title it reads as "Default Media
+    // Receiver" with a bare track name and no picture — the app it came from is
+    // nowhere on screen.
+    //
+    // None of this needs a registered receiver application. The $5 registration
+    // buys a *custom receiver*; metadata and artwork are ordinary fields on a
+    // load request that the stock receiver renders.
+    buildMetadata(track) {
+        const { chrome } = this.scope;
+        const MetadataType = chrome.cast.media.MusicTrackMediaMetadata;
+
+        if (!MetadataType) return undefined;
+
+        const metadata = new MetadataType();
+
+        metadata.title = track.title;
+        // Artist rather than album: it is the line cast UIs show under the
+        // title, and "Soundscape" there is what identifies where the sound is
+        // coming from.
+        metadata.artist = APP_NAME;
+        metadata.albumName = APP_NAME;
+
+        if (chrome.cast.Image) {
+            metadata.images = ARTWORK_PATHS.map(
+                (path) => new chrome.cast.Image(this.absoluteUrl(path)),
+            );
+        }
+
+        return metadata;
+    }
+
     async loadTrack(track) {
         const session = this.context?.getCurrentSession?.();
 
@@ -449,12 +561,7 @@ export class CastSdkController {
 
         mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
 
-        if (chrome.cast.media.MusicTrackMediaMetadata) {
-            const metadata = new chrome.cast.media.MusicTrackMediaMetadata();
-
-            metadata.title = track.title;
-            mediaInfo.metadata = metadata;
-        }
+        mediaInfo.metadata = this.buildMetadata(track);
 
         const request = new chrome.cast.media.LoadRequest(mediaInfo);
 
@@ -498,18 +605,33 @@ export class CastSdkController {
     // app is reopened. Adopting what the receiver already holds turns that same
     // call into the no-op it should be.
     //
-    // Matched against the current track only. The controller has no catalogue to
-    // resolve an arbitrary contentId against, and a receiver playing something
-    // else is a case the app should correct rather than adopt.
+    // Matched against the whole catalogue, not just the current track. A session
+    // outlives the page that started it, so the receiver may well be on a
+    // soundscape this page never chose: changed from a phone while the tablet
+    // was closed, or from the speaker itself. Reopening the app should show what
+    // is actually playing, and reporting it is what lets the title, the saved
+    // track and the OS metadata follow.
     adoptReceiverMedia() {
-        if (this.loadedUrl || !this.track) return;
+        if (this.loadedUrl) return;
 
         const media = this.context?.getCurrentSession?.()?.getMediaSession?.()?.media
             ?? this.player?.mediaInfo;
+        const contentId = media?.contentId;
 
-        if (media?.contentId !== this.absoluteCastUrl(this.track)) return;
+        if (!contentId) return;
 
-        this.loadedUrl = this.track.castUrl;
+        const playing = this.tracks.find(
+            (candidate) => this.absoluteCastUrl(candidate) === contentId,
+        ) ?? (this.track && this.absoluteCastUrl(this.track) === contentId ? this.track : null);
+
+        if (!playing) return;
+
+        this.loadedUrl = playing.castUrl;
+
+        if (playing === this.track) return;
+
+        this.track = playing;
+        this.onTrackAdopted?.(playing);
     }
 
     cancelIdleRestart() {
@@ -574,6 +696,12 @@ export class CastSdkController {
                 console.warn("Could not restart the soundscape on the cast device.", error);
             });
         }, IDLE_RESTART_DELAY_MS);
+    };
+
+    handleVolumeChange = () => {
+        if (!this.isConnected()) return;
+
+        this.onVolumeChange?.(this.player?.volumeLevel);
     };
 
     handlePlaybackChange = () => {

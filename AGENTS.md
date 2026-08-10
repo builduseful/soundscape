@@ -126,6 +126,16 @@ soundscape/
   connection. Once connected, both platforms are driven by plain
   `src`/`play`/`pause`. Keep it that way — new targets should be a backend, not a
   branch in the controller.
+- **`remotePlaybackBackend.isSupported` also refuses Chromium, and that is not a
+  bug.** Chromium ships the whole Remote Playback API and never opens a picker
+  for this app's audio — measured on Chrome desktop, Chrome for Android and
+  Samsung Internet — so feature detection cannot tell a working implementation
+  from a decorative one; only the engine can. Chrome never reaches this backend
+  (it takes the Cast SDK), so the check decides one case: a Chromium browser with
+  no Cast SDK to fall back on. That is Samsung Internet, where the button
+  appeared and did nothing at all, and where it is now correctly absent. The
+  probe is `navigator.userAgentData.brands`, which is Chromium-only — Safari and
+  Firefox have no `userAgentData`, so they cannot be caught by it by accident.
 - **Do not "tidy" `remotePlaybackBackend.isSupported`.** It probes
   `watchAvailability`, a method the module deliberately never calls, and that is
   not an oversight. Because Safari 13.1+ implements part of the Remote Playback
@@ -271,11 +281,24 @@ soundscape/
   overwrite the message belonging to the one still running. The log still happens
   either way — a failure is worth a developer's attention whether or not it is
   still worth the user's.
-- The volume slider does not reach the cast device. Element volume is not local
-  while connected — Chromium forwards it to the receiver as a stream volume
-  change, which on a Cast device is the speaker's own level and outlives the
-  session — so `CastController` has no volume API at all, and the control is
-  disabled and relabelled while connected rather than pretending to work.
+- **Volume is a per-transport capability, asked as `canControlVolume()`.** The
+  two answer differently and for good reasons:
+  - `CastController` (Remote Playback / AirPlay) answers **false**. Element
+    volume is not local while connected — Chromium forwards it to the receiver
+    as a stream volume change, which on a Cast device is the speaker's own level
+    and outlives the session — so there is no session-scoped way to set it.
+  - `CastSdkController` answers **true**. `RemotePlayerController.setVolumeLevel`
+    is an explicit request rather than a side effect, so the slider drives the
+    device directly.
+  The app shows one of two honest shapes and never a third: a working slider,
+  relabelled to say whose level it moves, or no slider at all. It is deliberately
+  **not** disabled-and-greyed any more — that read as broken rather than absent
+  and explained nothing.
+- **The device's level is adopted on connect, never pushed.** Sending the page's
+  slider position to the receiver would turn the speaker in the room to wherever
+  it happened to sit, and on a Cast device that change outlives the session. For
+  the same reason a level set while casting is not persisted: it belongs to the
+  speaker, not to this app, and the saved preference is restored on handback.
 - Media Session position state is not published while casting. The receiver owns
   the position and the page cannot read it, and the local player's answer is
   worse than none: it still holds the buffer from before the cast and its context

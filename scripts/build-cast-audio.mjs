@@ -68,6 +68,45 @@ function frameAlignedOverlap(frameCount, sampleRate) {
     return overlap;
 }
 
+// The seam at the end of the file is not a waveform problem and cannot be fixed
+// like one. Every join *inside* the file is sample-adjacent and inaudible; the
+// one the listener hears is where the receiver reaches the end and starts over,
+// and Chromecast has never done that gaplessly — the device tears down and
+// re-initialises its pipeline, which no amount of matching either side of the
+// join can prevent.
+//
+// So the goal changes from "remove the gap" to "stop it being a click". Cutting
+// from full amplitude to a gap and back is a step discontinuity, which is what
+// makes it read as harsh; ramping the first and last few milliseconds to zero
+// turns the same interruption into a brief dip. On broadband ambience — rain,
+// noise, crackle — a 40 ms dip is very hard to hear, while the step is not.
+//
+// Deliberately short. Long enough to remove the edge, short enough not to be
+// audible as a fade in its own right, and negligible against the file length.
+const EDGE_FADE_MS = 40;
+
+function applyEdgeFade(audio, channels, sampleRate) {
+    const fadeFrames = Math.min(
+        Math.round((EDGE_FADE_MS * sampleRate) / 1000),
+        Math.floor(audio.length / channels / 2),
+    );
+
+    if (fadeFrames <= 0) return;
+
+    for (let frame = 0; frame < fadeFrames; frame++) {
+        // Equal-power rather than linear: the same curve the runtime crossfade
+        // uses, and it holds perceived loudness steadier through the ramp.
+        const gain = Math.sin((frame / fadeFrames) * (Math.PI / 2));
+        const head = frame * channels;
+        const tail = audio.length - head - channels;
+
+        for (let channel = 0; channel < channels; channel++) {
+            audio[head + channel] *= gain;
+            audio[tail + channel] *= gain;
+        }
+    }
+}
+
 // applyLoopCrossfade only ever calls createBuffer on the context it is given,
 // so this is the whole of the Web Audio surface it needs outside a browser.
 const offlineAudioContextShim = {
@@ -205,6 +244,8 @@ async function buildCastAudio(fileName) {
     for (let repeat = 0; repeat < repeats; repeat++) {
         audio.set(period, repeat * period.length);
     }
+
+    applyEdgeFade(audio, channels, sampleRate);
 
     // Encoded beside the output rather than over it, so a failure anywhere below
     // leaves the existing twin intact. The finally clears the temp file whether

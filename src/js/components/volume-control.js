@@ -4,8 +4,10 @@
  * @element volume-control
  * @attr {string} value - Slider value between 0 and 1.
  * @attr {string} label - Accessible name for the control. Defaults to "Volume".
- * @attr {boolean} disabled - Inert and dimmed; used while a cast owns the audio,
- *   where the level belongs to the receiving device rather than to this app.
+ * @attr {boolean} disabled - Inert and dimmed. Note the app no longer uses this
+ *   for casting: a cast that can carry volume drives the device through the same
+ *   slider, and one that cannot hides the control outright, because a disabled
+ *   slider reads as broken rather than absent.
  * @fires input - Mirrors the internal range input's current value.
  * @fires change - Mirrors committed range changes.
  */
@@ -87,6 +89,13 @@ export class VolumeControl extends HTMLElement {
                         justify-self: end;
                     }
 
+                    /* The UA's [hidden] rule is display: none, but an author
+                       display above beats it whatever the order — so hiding
+                       this element needs saying here or it does nothing. */
+                    :scope[hidden] {
+                        display: none;
+                    }
+
                     *,
                     *::before,
                     *::after {
@@ -142,6 +151,10 @@ export class VolumeControl extends HTMLElement {
                         color: var(--color-text);
                     }
 
+                    /* The speaker glyph's bounding box is horizontally
+                       symmetric, but the solid cone reads heavier than the
+                       thin sound-wave strokes, so a box-centered icon looks
+                       optically left-heavy. Nudge it right to compensate. */
                     svg {
                         width: 22px;
                         height: 22px;
@@ -217,7 +230,7 @@ export class VolumeControl extends HTMLElement {
                         place-items: center;
                         width: 100%;
                         height: 100%;
-                        padding: 18px 0 58px;
+                        padding: 18px 0 52px;
                         border: 1px solid var(--color-border-subtle);
                         border-radius: 999px;
                         background: var(--color-surface);

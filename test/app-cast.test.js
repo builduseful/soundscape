@@ -116,6 +116,29 @@ test("the cast button waits for the transport's header before prompting", async 
     assert.equal(environment.elements.get("playbackError").hidden, true);
 });
 
+// Opening a picker is not instant — a header has to be read, and on the SDK path
+// a cross-origin script fetched — and until it appears the press has no visible
+// effect at all, which reads as a broken button.
+test("the cast button shows the wait while the picker is opening", async () => {
+    const environment = await startAppTestEnvironment({ castDevices: true });
+    const castButton = environment.elements.get("castButton");
+
+    environment.castAudioElement.autoLoadMetadata = false;
+
+    const clicked = castButton.dispatch("click");
+
+    await settle();
+
+    assert.equal(castButton.dataset.castBusy, "true");
+    // Nothing is connected, so the glyph must not claim otherwise.
+    assert.equal(castButton.dataset.castState, "idle");
+
+    environment.castAudioElement.completeMetadataLoad();
+    await clicked;
+
+    assert.equal(castButton.dataset.castBusy, undefined);
+});
+
 // Chromium reports a picker it never opened as an ordinary dismissal, so a
 // transport that never loads leaves the button looking simply broken. That is
 // the one cast outcome the app has to put into words itself — and it says so
@@ -569,20 +592,27 @@ test("the volume slider never reaches the cast device", async () => {
 });
 
 // A control that moves nothing is a control that lies, so it says so instead.
-test("the volume control stands down while a device owns the audio", async () => {
+// This transport has no volume API and cannot be given one — element volume is
+// forwarded to the receiver as a change to the speaker's own level, which
+// outlives the session. So the control goes away rather than greying out: a
+// disabled slider reads as broken rather than absent, and explains nothing.
+// (The Cast SDK transport does carry volume, and keeps the slider; see
+// cast-sdk.test.js.)
+test("a transport that cannot carry volume gets no slider", async () => {
     const environment = await startAppTestEnvironment({ castDevices: true });
     const volumeControl = environment.elements.get("volumeControl");
 
-    assert.equal(volumeControl.hasAttribute("disabled"), false);
+    // Boolean(): a real element defaults hidden to false, the fixture leaves it
+    // unset until the app writes it.
+    assert.equal(Boolean(volumeControl.hidden), false);
 
     await connectCast(environment);
 
-    assert.equal(volumeControl.hasAttribute("disabled"), true);
-    assert.match(volumeControl.getAttribute("label"), /device/i);
+    assert.equal(volumeControl.hidden, true);
 
     await disconnectCast(environment);
 
-    assert.equal(volumeControl.hasAttribute("disabled"), false);
+    assert.equal(volumeControl.hidden, false);
     assert.equal(volumeControl.getAttribute("label"), "Volume");
 });
 

@@ -200,6 +200,8 @@ export class AppMenu extends HTMLElement {
                         letter-spacing: 0.02em;
                         text-align: center;
                         text-decoration: none;
+                        -webkit-tap-highlight-color: transparent;
+                        tap-highlight-color: transparent;
                     }
 
                     .app-version:hover,

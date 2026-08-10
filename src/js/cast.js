@@ -33,13 +33,20 @@
  * specific need — and it buys nothing the picker does not already do, since both
  * platforms discover devices themselves when it opens. So the button is simply
  * always there when a backend exists, and nothing is asked of the network until
- * someone presses it. Verified in Chromium: prompt() reaches the picker with no
- * prior watchAvailability call and with the element still at readyState 0, and a
- * machine with no devices gets the browser's own picker rather than an error the
- * app would have to explain.
+ * someone presses it. A machine with no devices gets the browser's own picker
+ * rather than an error the app would have to explain.
  *
- * No vendor SDK: the Cast Web Sender SDK would mean a cross-origin script this
- * offline-first app cannot precache.
+ * Two things this file once claimed are now known to be false, and are corrected
+ * rather than deleted because both were argued for at length:
+ *
+ *   - "prompt() reaches the picker with the element still at readyState 0." It
+ *     does not. Chromium clears its availability URLs while duration is NaN and
+ *     then rejects with the same NotAllowedError a real dismissal produces, so
+ *     the failure is silent. Hence the metadata wait in prompt() below.
+ *   - "No vendor SDK." Chromium's Remote Playback never opened a picker for this
+ *     app's audio on any device tested, which is what forced cast-sdk.js. That
+ *     module's header carries the evidence and the SDK-free routes tried first.
+ *     This file is now the Safari and AirPlay path.
  */
 
 const REMOTE_CONNECTION_EVENTS = ["connecting", "connect", "disconnect"];
@@ -88,6 +95,26 @@ const TRANSPORT_METADATA_WAIT_MS = 2500;
 // exists to catch. Counting instead of waiting keeps the retry coming.
 const STALLED_SAMPLES_BEFORE_FIRST_START = 8;
 
+// Chromium ships a complete Remote Playback API and then never opens a picker
+// for this app's audio — measured on Chrome desktop, Chrome for Android and
+// Samsung Internet alike. Feature detection cannot see that, because every
+// member is present and correct; only the engine tells you.
+//
+// Chrome itself never reaches this backend: it takes the Cast SDK. So this
+// decides one case only — a Chromium browser with no Cast SDK to fall back on,
+// which is Samsung Internet, where the button appeared and did nothing at all.
+// Offering a control backed by an API known not to work is worse than offering
+// none, so that browser now gets no cast button.
+//
+// Brands rather than the UA string: `userAgentData` is Chromium-only, which
+// makes its mere absence most of the answer, and Safari and Firefox cannot be
+// caught by it by accident.
+function isChromium(scope = globalThis) {
+    return Boolean(scope.navigator?.userAgentData?.brands?.some(
+        ({ brand }) => brand === "Chromium",
+    ));
+}
+
 // Chromium's Remote Playback API. Covers Chromecast, Nest speakers, Google TV.
 const remotePlaybackBackend = {
     name: "remote-playback",
@@ -99,8 +126,10 @@ const remotePlaybackBackend = {
     // modern Safari lands on this backend or the AirPlay one below. That routing
     // has been tested as it stands, on a platform this repo cannot test, and it
     // must not change as a side effect of tidying.
-    isSupported(element) {
-        return typeof element.remote?.watchAvailability === "function";
+    //
+    // The engine check is not tidying and must stay: see isChromium above.
+    isSupported(element, scope = globalThis) {
+        return !isChromium(scope) && typeof element.remote?.watchAvailability === "function";
     },
 
     // "connecting" is watched as well as the two settled states because reaching
@@ -260,8 +289,8 @@ const BENIGN_PROMPT_ERRORS = new Set([
     "AbortError",
 ]);
 
-export function selectCastBackend(element, backends = CAST_BACKENDS) {
-    return backends.find((backend) => backend.isSupported(element)) ?? null;
+export function selectCastBackend(element, backends = CAST_BACKENDS, scope = globalThis) {
+    return backends.find((backend) => backend.isSupported(element, scope)) ?? null;
 }
 
 export class CastController {
@@ -270,9 +299,10 @@ export class CastController {
         onPlaybackChange,
         backends = CAST_BACKENDS,
         metadataWaitMs = TRANSPORT_METADATA_WAIT_MS,
+        scope = globalThis,
     } = {}) {
         this.element = element;
-        this.backend = selectCastBackend(element, backends);
+        this.backend = selectCastBackend(element, backends, scope);
         this.onChange = onChange;
         this.onPlaybackChange = onPlaybackChange;
         this.metadataWaitMs = metadataWaitMs;
@@ -369,8 +399,8 @@ export class CastController {
     // because a fresh src resets readyState and would break the very call it was
     // meant to serve. A gesture is the earliest honest signal that a click on the
     // button is possible, and it leaves a page that is opened and never touched
-    // costing nothing at all. (Chromium needs no metadata for its picker —
-    // verified at readyState 0 — but one rule for both platforms is simpler.)
+    // costing nothing at all. (Chromium turns out to need the metadata too — the
+    // claim that it opened a picker at readyState 0 was wrong, and silently so.)
     allowTransportLoad() {
         if (this.transportAllowed) return false;
 
@@ -378,6 +408,27 @@ export class CastController {
         this.syncElementSource();
 
         return true;
+    }
+
+    // Nothing to do: this backend's cost is the media header, and the first
+    // gesture on the page has already paid it. Present so the app can signal
+    // "the user is reaching for the button" without knowing which transport is
+    // listening — on the SDK path that is the moment a script gets fetched.
+    prepare() {
+        return false;
+    }
+
+    // This transport has no volume API at all, and cannot be given one. The
+    // element's own volume is not local while connected — Chromium forwards it
+    // to the receiver as a stream volume change, and on a Cast device that is
+    // the speaker's own level, which outlives the session — so driving it from
+    // here would mean connecting a cast quietly moved the room's volume to
+    // wherever this page's slider happened to sit.
+    //
+    // The Cast SDK path answers true: it has RemotePlayerController.setVolumeLevel,
+    // which is an explicit, session-scoped request rather than a side effect.
+    canControlVolume() {
+        return false;
     }
 
     stopWatching() {

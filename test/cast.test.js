@@ -132,6 +132,35 @@ test("the Remote Playback backend is preferred when both are present", () => {
     assert.equal(selectCastBackend(element, CAST_BACKENDS).name, "remote-playback");
 });
 
+// Chromium ships the whole Remote Playback API and never opens a picker for this
+// app's audio, so feature detection alone cannot tell a working implementation
+// from a decorative one. Chrome takes the Cast SDK and never reaches here; the
+// browser this protects is Samsung Internet, which is Chromium with no SDK to
+// fall back on and showed a button that did nothing.
+test("a Chromium browser is not offered the Remote Playback backend", () => {
+    const element = createElement({ remote: createRemote() });
+    const chromium = { navigator: { userAgentData: { brands: [{ brand: "Chromium" }] } } };
+
+    assert.equal(selectCastBackend(element, CAST_BACKENDS, chromium), null);
+    assert.equal(new CastController(element, { scope: chromium }).isSupported(), false);
+});
+
+// Safari and Firefox have no userAgentData at all, so the check cannot catch
+// them by accident — and Safari is the one platform this repo cannot test.
+test("a browser without userAgentData still gets the Remote Playback backend", () => {
+    const element = createElement({ remote: createRemote() });
+
+    assert.equal(selectCastBackend(element, CAST_BACKENDS, { navigator: {} }).name, "remote-playback");
+});
+
+// AirPlay is unaffected: WebKit is not Chromium, and the twin is loaded on the
+// first gesture rather than when the button is approached.
+test("preparing the AirPlay transport is a no-op", () => {
+    const controller = new CastController(createElement({ webkitShowPlaybackTargetPicker() {} }));
+
+    assert.equal(controller.prepare(), false);
+});
+
 test("the AirPlay backend is selected on WebKit", () => {
     const element = createElement({ webkitShowPlaybackTargetPicker() {} });
     const controller = new CastController(element);

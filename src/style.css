@@ -111,6 +111,8 @@ body {
     font-weight: 600;
     letter-spacing: 0.02em;
     text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    tap-highlight-color: transparent;
 }
 
 .app-byline:hover,
@@ -371,7 +373,9 @@ button.cast:focus-visible {
 button.cast[data-cast-state="connected"],
 button.cast[data-cast-state="connected"]:hover,
 button.cast[data-cast-state="connecting"],
-button.cast[data-cast-state="connecting"]:hover {
+button.cast[data-cast-state="connecting"]:hover,
+button.cast[data-cast-busy],
+button.cast[data-cast-busy]:hover {
     color: var(--color-text);
 }
 
@@ -394,8 +398,11 @@ button.cast[data-cast-state="connected"] .cast-icon-screen {
 }
 
 /* Reaching a Chromecast can take several seconds. A slow pulse carries the wait
-   without moving anything in the header. */
-button.cast[data-cast-state="connecting"] .cast-icon {
+   without moving anything in the header. Opening the picker is the same wait
+   from the user's side — a script may have to be fetched first — and says the
+   same thing, so it borrows the same pulse rather than inventing a second one. */
+button.cast[data-cast-state="connecting"] .cast-icon,
+button.cast[data-cast-busy] .cast-icon {
     animation: cast-connecting 1.4s ease-in-out infinite;
 }
 
@@ -412,7 +419,8 @@ button.cast[data-cast-state="connecting"] .cast-icon {
 
     /* The wait still needs saying, so the pulse settles into the dimmed half of
        its own cycle rather than disappearing. */
-    button.cast[data-cast-state="connecting"] .cast-icon {
+    button.cast[data-cast-state="connecting"] .cast-icon,
+    button.cast[data-cast-busy] .cast-icon {
         animation: none;
         opacity: 0.55;
     }

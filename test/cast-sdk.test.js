@@ -26,6 +26,7 @@ function createFakeSdk() {
         // rejoined session finds already loaded.
         receiverMedia: null,
         loadShouldFail: false,
+        volumeCommits: 0,
     };
 
     const emit = (map, type) => {
@@ -42,7 +43,7 @@ function createFakeSdk() {
         getMediaSession: () => (state.receiverMedia ? { media: state.receiverMedia } : null),
     };
 
-    const player = { isPaused: true, isConnected: false, playerState: "PLAYING" };
+    const player = { isPaused: true, isConnected: false, playerState: "PLAYING", volumeLevel: 1 };
     const store = new Map();
 
     const scope = {
@@ -73,6 +74,7 @@ function createFakeSdk() {
                 RemotePlayerEventType: {
                     IS_PAUSED_CHANGED: "ispausedchanged",
                     IS_CONNECTED_CHANGED: "isconnectedchanged",
+                    VOLUME_LEVEL_CHANGED: "volumelevelchanged",
                     PLAYER_STATE_CHANGED: "playerstatechanged",
                 },
                 CastContext: {
@@ -107,6 +109,12 @@ function createFakeSdk() {
                         playOrPause() {
                             player.isPaused = !player.isPaused;
                         },
+                        // The real controller reads the level off the player
+                        // rather than taking an argument, so the fake counts
+                        // commits to prove the two-step was completed.
+                        setVolumeLevel() {
+                            state.volumeCommits += 1;
+                        },
                         addEventListener(type, handler) {
                             state.playerListeners.set(type, [
                                 ...(state.playerListeners.get(type) ?? []),
@@ -126,6 +134,9 @@ function createFakeSdk() {
         chrome: {
             cast: {
                 AutoJoinPolicy: { ORIGIN_SCOPED: "origin_scoped" },
+                Image: function Image(url) {
+                    this.url = url;
+                },
                 media: {
                     DEFAULT_MEDIA_RECEIVER_APP_ID: "CC1AD845",
                     StreamType: { BUFFERED: "BUFFERED" },
@@ -176,6 +187,10 @@ function createFakeSdk() {
         },
         emitPlayerPaused() {
             emit(state.playerListeners, "ispausedchanged");
+        },
+        setVolumeLevel(next) {
+            player.volumeLevel = next;
+            emit(state.playerListeners, "volumelevelchanged");
         },
         setPlayerState(next) {
             player.playerState = next;
@@ -235,6 +250,35 @@ test("nothing is fetched from Google until the button is pressed", async () => {
     await controller.prompt();
 
     assert.equal(sdkLoads(), 1);
+});
+
+// Fetching a cross-origin script and starting a cast context takes long enough
+// that the press reads as a dead button. Approaching the button is as clear a
+// statement of intent as exists short of the click, so the wait can be spent
+// before the press instead of shown after it.
+test("approaching the button loads the SDK before it is pressed", async () => {
+    const { controller, sdkLoads } = createController();
+
+    assert.equal(controller.prepare(), true);
+    await settle();
+
+    assert.equal(sdkLoads(), 1);
+
+    // Once is enough; the listeners come off after the first one answers true.
+    assert.equal(controller.prepare(), false);
+
+    await controller.prompt();
+
+    assert.equal(sdkLoads(), 1, "the press reuses what the approach already loaded");
+});
+
+test("preparing does nothing where casting is not supported", () => {
+    const { controller, sdkLoads } = createController({
+        sdk: { scope: { isSecureContext: false } },
+    });
+
+    assert.equal(controller.prepare(), false);
+    assert.equal(sdkLoads(), 0);
 });
 
 test("the picker uses the free Default Media Receiver", async () => {
@@ -302,6 +346,123 @@ test("the receiver is handed an absolute URL to the AAC twin", async () => {
     assert.equal(request.media.contentType, "audio/mp4");
     assert.equal(request.media.metadata.title, "Rain");
     assert.equal(request.autoplay, true);
+});
+
+// Title alone reads as "Default Media Receiver" with a bare track name and no
+// picture: nothing on screen says where the sound came from. None of this needs
+// a registered receiver — the $5 buys a custom receiver, not metadata.
+test("the receiver is given enough metadata to name and picture the app", async () => {
+    const { sdk, controller } = createController();
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    const { metadata } = sdk.state.loads[0].media;
+
+    assert.equal(metadata.title, "Rain");
+    assert.equal(metadata.artist, "Soundscape");
+    assert.equal(metadata.images[0].url, "https://soundscape.test/resources/icons/icon-512.png");
+    // Largest first, so a TV backdrop and a phone notification can each pick.
+    assert.match(metadata.images[1].url, /icon-192\.png$/);
+});
+
+// A session outlives the page that started it, so the receiver can be on a
+// soundscape this page never chose — changed from another device, or from the
+// speaker. Reopening should show what is actually playing.
+test("rejoining adopts the soundscape the receiver is actually on", async () => {
+    const other = { title: "Fireplace", url: "resources/fire.opus", castUrl: "resources/fire.m4a" };
+    const sdk = createFakeSdk();
+    const adopted = [];
+
+    // A previous page left the receiver on the second soundscape.
+    const first = createController({ sdk, tracks: [TRACK, other] });
+
+    await first.controller.prompt();
+    first.controller.setTrack(other);
+    sdk.setCastState("CONNECTED");
+    await first.controller.play();
+
+    // The new page opens on its own saved track, which is the wrong one.
+    const reopened = createController({
+        sdk,
+        tracks: [TRACK, other],
+        onTrackAdopted: (track) => adopted.push(track),
+    });
+
+    reopened.controller.setTrack(TRACK);
+    reopened.controller.start();
+    await settle();
+
+    assert.deepEqual(adopted, [other]);
+    assert.equal(reopened.controller.getTrackUrl(), "resources/fire.m4a");
+
+    // And it must not then reload — the room is already playing this.
+    await reopened.controller.play();
+
+    assert.equal(sdk.state.loads.length, 1);
+});
+
+test("a receiver holding something unrecognised is not adopted", async () => {
+    const sdk = createFakeSdk();
+    const adopted = [];
+
+    sdk.state.receiverMedia = { contentId: "https://elsewhere.test/podcast.m4a" };
+    sdk.store.set("soundscape.casting", "1");
+
+    const { controller } = createController({
+        sdk,
+        tracks: [TRACK],
+        onTrackAdopted: (track) => adopted.push(track),
+    });
+
+    controller.setTrack(TRACK);
+    controller.start();
+    await settle();
+    sdk.setCastState("CONNECTED");
+
+    assert.deepEqual(adopted, []);
+    assert.equal(controller.getTrackUrl(), null);
+});
+
+// The Remote Playback path has no volume API and switches the slider off. This
+// one does, so the slider drives the speaker instead of being explained away.
+test("the slider drives the cast device's volume", async () => {
+    const volumes = [];
+    const { sdk, controller } = createController({ onVolumeChange: (v) => volumes.push(v) });
+
+    await controller.prompt();
+
+    // Nothing connected: a level change must not be routed into a session that
+    // does not exist.
+    assert.equal(controller.canControlVolume(), false);
+    assert.equal(controller.setVolume(0.5), false);
+
+    sdk.setCastState("CONNECTED");
+
+    assert.equal(controller.canControlVolume(), true);
+    assert.equal(controller.setVolume(0.4), true);
+    assert.equal(sdk.player.volumeLevel, 0.4);
+    assert.equal(sdk.state.volumeCommits, 1);
+
+    // Out of range is clamped rather than passed to the device.
+    controller.setVolume(3);
+
+    assert.equal(sdk.player.volumeLevel, 1);
+});
+
+// The level can be changed at the speaker, in the Home app, or by another
+// sender, and the slider has to follow rather than sit where this page left it.
+test("a volume change made elsewhere reaches the app", async () => {
+    const volumes = [];
+    const { sdk, controller } = createController({ onVolumeChange: (v) => volumes.push(v) });
+
+    await controller.prompt();
+    sdk.setCastState("CONNECTED");
+    sdk.setVolumeLevel(0.25);
+
+    assert.deepEqual(volumes, [0.25]);
 });
 
 test("connection state changes reach the listener", async () => {

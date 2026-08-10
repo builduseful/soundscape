@@ -28,7 +28,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.12.0";
+const VERSION = "1.13.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -47,7 +47,7 @@ const CAST_STATUS_BY_STATE = {
     connected: CAST_CONNECTED_STATUS,
 };
 const VOLUME_LABEL = "Volume";
-const CAST_VOLUME_LABEL = "Volume is set on the device you're casting to";
+const CAST_VOLUME_LABEL = "Volume on the device you're casting to";
 const CAST_FAILURE_MESSAGE = "That device couldn't play this soundscape. Try connecting again.";
 // Both platforms need the cast file's header read before they will show a
 // device list, and Chromium reports a picker it never opened as an ordinary
@@ -130,7 +130,12 @@ const castCallbacks = {
 // Exactly one of audioPlayer and the cast controller drives playback at any
 // moment; cast.js explains why they can never overlap.
 const castController = isCastSdkCapable()
-    ? new CastSdkController(castCallbacks)
+    ? new CastSdkController({
+        ...castCallbacks,
+        tracks,
+        onTrackAdopted: adoptCastTrack,
+        onVolumeChange: adoptCastVolume,
+    })
     : new CastController(castAudioElement, castCallbacks);
 
 // Media Session connects browser/OS media controls to the app's playback actions.
@@ -146,10 +151,19 @@ const mediaSessionActions = {
 
 volumeControl.addEventListener("input", () => {
     applyVolume(volumeControl.value);
-    savePreference(SAVED_VOLUME_KEY, volumeControl.value);
+
+    // Not persisted while the slider is driving a cast device: that level
+    // belongs to the speaker in the room, and saving it would carry the room's
+    // volume back to a pair of headphones tomorrow.
+    if (!castController.canControlVolume()) {
+        savePreference(SAVED_VOLUME_KEY, volumeControl.value);
+    }
 });
 playPauseButton.addEventListener("click", playPauseClick);
 castButton.addEventListener("click", handleCastClick);
+castButton.addEventListener("pointerenter", prepareCast);
+castButton.addEventListener("pointerdown", prepareCast);
+castButton.addEventListener("focus", prepareCast);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 themeSelector.addEventListener("theme-change", (event) => {
@@ -437,13 +451,52 @@ function restoreSavedVolume() {
     applyVolume(volume);
 }
 
-// The slider governs local playback only. A cast target's volume belongs to the
-// device — pushing this onto it would mean connecting a cast quietly turns the
-// speaker in the room to wherever the slider happens to sit, and on a Cast
-// device that change outlives the session. The control says so while connected;
-// the level is still kept current underneath, ready for the handback.
+// Whichever output is actually making the sound. While a cast that supports it
+// is connected the slider drives the speaker; otherwise it drives local
+// playback, which is every other moment.
 function applyVolume(volume) {
+    if (castController.canControlVolume()) {
+        castController.setVolume(volume);
+        return;
+    }
+
     audioPlayer.updateVolume(volume);
+}
+
+// A disabled slider that does not read as disabled is the worst of the three
+// options — it looks broken rather than absent, and gives no clue why. So the
+// control now takes one of two honest shapes while casting:
+//
+//   - The transport can carry volume (the Cast SDK can): the slider drives the
+//     device, relabelled so it is clear whose level is being moved.
+//   - It cannot (AirPlay, where element volume is not ours to set): no slider
+//     at all, because a control that moves nothing should not be on screen.
+//
+// The device's level is *adopted*, never pushed. Sending this page's slider
+// position on connect would turn the speaker in the room to wherever it
+// happened to sit, and on a Cast device that change outlives the session.
+function syncVolumeControlForCast(connected) {
+    if (connected && !castController.canControlVolume()) {
+        volumeControl.hidden = true;
+        return;
+    }
+
+    volumeControl.hidden = false;
+    volumeControl.setAttribute("label", connected ? CAST_VOLUME_LABEL : VOLUME_LABEL);
+
+    if (!connected) {
+        // The saved preference is this app's level, not the room's.
+        restoreSavedVolume();
+        return;
+    }
+
+    adoptCastVolume(castController.getVolume());
+}
+
+function adoptCastVolume(level) {
+    if (!Number.isFinite(level)) return;
+
+    volumeControl.value = String(level);
 }
 
 function isCasting() {
@@ -479,14 +532,61 @@ function initCasting() {
 // for this button, and the soundscape playing on is no consolation for a device
 // list that will not appear.
 async function handleCastClick() {
-    const opened = await castController.prompt();
+    // Opening a picker is not instant — a script may have to be fetched and a
+    // cast context started before the browser's own device list appears — and
+    // until it does the press has no visible effect at all, which reads as a
+    // broken button. The same pulse the connecting state uses, because it is the
+    // same thing being said: something is happening, wait.
+    //
+    // Not routed through handleCastChange: no connection state has changed, and
+    // claiming one would make the glyph describe a session that does not exist.
+    castButton.dataset.castBusy = "true";
+    castButton.setAttribute("aria-busy", "true");
 
-    if (opened || castController.isTransportReady()) {
-        return;
+    try {
+        const opened = await castController.prompt();
+
+        if (opened || castController.isTransportReady()) return;
+
+        playbackError.textContent = CAST_UNAVAILABLE_MESSAGE;
+        playbackError.hidden = false;
+    } finally {
+        delete castButton.dataset.castBusy;
+        castButton.removeAttribute("aria-busy");
     }
+}
 
-    playbackError.textContent = CAST_UNAVAILABLE_MESSAGE;
-    playbackError.hidden = false;
+// Hover, focus, or the pointerdown that precedes a tap: the last moment before
+// the press at which the wait can still be spent instead of shown. The transport
+// decides whether that means anything — on the Cast SDK path it fetches the
+// script, on the AirPlay path the first gesture already did the work.
+function prepareCast() {
+    if (castController.prepare()) {
+        castButton.removeEventListener("pointerenter", prepareCast);
+        castButton.removeEventListener("pointerdown", prepareCast);
+        castButton.removeEventListener("focus", prepareCast);
+    }
+}
+
+// A cast session outlives the page that started it, so rejoining one can find
+// the receiver on a soundscape this page never chose — changed from a phone
+// while this tablet was closed, or from the speaker itself. The app follows the
+// room rather than the other way round: what is audible is the truth, and
+// silently overwriting it with a stale saved track would move the sound in the
+// room to answer a question nobody asked.
+//
+// Not a track *change*: nothing is loaded, and playCurrentTrack is exactly what
+// must not run. This only catches the app up with what is already playing.
+function adoptCastTrack(track) {
+    const index = tracks.indexOf(track);
+
+    if (index === -1) return;
+
+    currentTrackIndex = index;
+    saveCurrentTrack();
+    updateTrackTitle();
+    updateMediaSessionStatus(track);
+    syncPlaybackState(isOutputPlaying());
 }
 
 // Connection governs which output owns the soundscape, and only a change in it
@@ -505,8 +605,7 @@ async function handleCastChange({ connected, connecting }) {
     // transport owns the soundscape.
     if (connected === (previousState === "connected")) return;
 
-    volumeControl.toggleAttribute("disabled", connected);
-    volumeControl.setAttribute("label", connected ? CAST_VOLUME_LABEL : VOLUME_LABEL);
+    syncVolumeControlForCast(connected);
 
     // A connect and a disconnect arriving close together — a failed session, or
     // a receiver taken over — leave two of these handlers in flight at once,
