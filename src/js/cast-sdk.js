@@ -90,9 +90,21 @@ const MAX_CONSECUTIVE_IDLE_RESTARTS = 3;
  * Deliberately false in Safari and Firefox. Neither ships the Presentation API,
  * so both fall through to cast.js — Safari to AirPlay, Firefox to no cast
  * button at all, which is correct in both cases.
+ *
+ * The Presentation API and secure-context checks alone are not enough: every
+ * Chromium browser exposes them, but Google's cast framework only ever comes
+ * up in actual Chrome — Samsung Internet passes both checks and then the SDK
+ * fails to load. Rather than show the button and report that failure after a
+ * press, capability is narrowed here with the same brand signal cast.js uses
+ * to exclude Samsung from the Remote Playback backend, so the browsers that
+ * cannot cast get no button at all instead of one that explains itself.
  */
 export function isCastSdkCapable(scope = globalThis) {
-    return typeof scope.PresentationRequest === "function" && scope.isSecureContext === true;
+    return (
+        typeof scope.PresentationRequest === "function" &&
+        scope.isSecureContext === true &&
+        Boolean(scope.navigator?.userAgentData?.brands?.some(({ brand }) => brand === "Google Chrome"))
+    );
 }
 
 /**
@@ -201,11 +213,12 @@ export class CastSdkController {
         this.playbackRequested = false;
         this.promptPending = false;
         this.sdkReady = null;
-        // Set once the SDK has definitively refused to come up. Chromium-based
-        // browsers without Google's cast stack — Samsung Internet is the one
-        // this app met — expose the Presentation API the capability check reads,
-        // then report the framework unavailable. Remembering that is what turns
-        // a button that does nothing into a button that says so.
+        // Set once the SDK has definitively refused to come up. isCastSdkCapable
+        // already keeps browsers without Google's cast stack (Samsung Internet)
+        // from reaching this controller at all, so this covers a narrower case:
+        // real Chrome where the gstatic fetch itself fails — network trouble, an
+        // extension, a corporate proxy. Remembering that is what turns a button
+        // that does nothing into a button that says so.
         this.sdkUnavailable = false;
         this.idleRestartTimer = 0;
         this.idleRestarts = 0;

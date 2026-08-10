@@ -49,6 +49,7 @@ function createFakeSdk() {
     const scope = {
         isSecureContext: true,
         PresentationRequest: function PresentationRequest() {},
+        navigator: { userAgentData: { brands: [{ brand: "Chromium" }, { brand: "Google Chrome" }] } },
         location: { href: "https://soundscape.test/index.html" },
         setTimeout: (fn) => {
             state.pendingTimers.push(fn);
@@ -230,11 +231,29 @@ async function settle() {
 // Capability has to be answerable before the SDK exists, since loading it is
 // exactly what must not happen at boot.
 test("cast support is detected without loading the SDK", () => {
-    assert.equal(isCastSdkCapable({ PresentationRequest() {}, isSecureContext: true }), true);
+    const chromeBrands = { userAgentData: { brands: [{ brand: "Chromium" }, { brand: "Google Chrome" }] } };
+
+    assert.equal(
+        isCastSdkCapable({ PresentationRequest() {}, isSecureContext: true, navigator: chromeBrands }),
+        true,
+    );
     // Safari and Firefox: no Presentation API, so they fall through to cast.js.
-    assert.equal(isCastSdkCapable({ isSecureContext: true }), false);
+    assert.equal(isCastSdkCapable({ isSecureContext: true, navigator: chromeBrands }), false);
     // The SDK needs a secure context, so an http origin gets no cast button.
-    assert.equal(isCastSdkCapable({ PresentationRequest() {}, isSecureContext: false }), false);
+    assert.equal(
+        isCastSdkCapable({ PresentationRequest() {}, isSecureContext: false, navigator: chromeBrands }),
+        false,
+    );
+    // Samsung Internet: Chromium enough for the Presentation API, but Google's
+    // cast framework never comes up there, so it must not reach this controller.
+    assert.equal(
+        isCastSdkCapable({
+            PresentationRequest() {},
+            isSecureContext: true,
+            navigator: { userAgentData: { brands: [{ brand: "Chromium" }, { brand: "Samsung Internet" }] } },
+        }),
+        false,
+    );
 });
 
 // The whole justification for adding a Google script to a self-contained app:
@@ -793,9 +812,10 @@ test("ending a session clears the rejoin hint", async () => {
     assert.equal(sdk.store.has("soundscape.casting"), false);
 });
 
-// Samsung Internet is Chromium enough to pass the capability check — it has the
-// Presentation API — and then reports no cast framework. Remembering that is
-// what lets the app say so instead of doing nothing.
+// isCastSdkCapable keeps browsers without Google's cast stack from reaching
+// this controller, but real Chrome can still fail the gstatic fetch itself —
+// network trouble, an extension, a corporate proxy. Remembering that is what
+// lets the app say so instead of doing nothing.
 test("a browser with no cast framework is reported as unreachable", async () => {
     console.warn = () => {};
 

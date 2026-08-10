@@ -81,9 +81,17 @@ export class AppMenu extends HTMLElement {
                         transition: color 0.18s ease, background-color 0.18s ease;
                     }
 
-                    :scope > button:hover {
-                        color: var(--color-text);
-                        background-color: var(--color-surface-muted);
+                    /* Guarded like every other hover rule in this file — an
+                       unguarded :hover here is the classic touch-device trap:
+                       a tap simulates :hover first and only a second tap
+                       actually clicks, and the simulated hover can stick
+                       around as a filled circle until the next tap elsewhere
+                       clears it. */
+                    @media (hover: hover) and (pointer: fine) {
+                        :scope > button:hover {
+                            color: var(--color-text);
+                            background-color: var(--color-surface-muted);
+                        }
                     }
 
                     :scope > button:focus {

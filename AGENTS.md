@@ -136,6 +136,13 @@ soundscape/
   appeared and did nothing at all, and where it is now correctly absent. The
   probe is `navigator.userAgentData.brands`, which is Chromium-only — Safari and
   Firefox have no `userAgentData`, so they cannot be caught by it by accident.
+  `cast-sdk.js`'s `isCastSdkCapable` narrows with the same brand signal in the
+  other direction — requiring `"Google Chrome"` rather than excluding
+  `"Chromium"` — because the Presentation API and secure-context checks alone
+  are Chromium-wide too, and Samsung Internet passes both; without the brand
+  check it would reach the Cast SDK controller instead of falling through to
+  this one, get a button, and fail on press instead of having none. Keep the two
+  checks pointed at each other.
 - **Do not "tidy" `remotePlaybackBackend.isSupported`.** It probes
   `watchAvailability`, a method the module deliberately never calls, and that is
   not an oversight. Because Safari 13.1+ implements part of the Remote Playback
@@ -143,9 +150,16 @@ soundscape/
   backend or the AirPlay one — so narrowing the check to the methods actually used
   could silently re-route Safari onto an untested path, on the one platform this
   repo cannot test.
-- Do not add the Google Cast Web Sender SDK. It requires a cross-origin
-  `gstatic.com` script this offline-first app cannot precache, and buys little
-  over the Remote Playback API for plain media playback.
+- The app does use the Google Cast Web Sender SDK (`cast-sdk.js`), for Chrome
+  specifically: the Remote Playback API is the standards-track answer and was
+  tried first, but its picker never opened on Chrome desktop or Android — Chrome
+  only offers devices once its Media Router judges the media "remotable", and
+  that judgement never engaged for a plain audio file. The SDK script is fetched
+  from `gstatic.com`, so it is not precached and nothing loads it until the cast
+  button is actually pressed (see `prepare()`/`allowTransportLoad` below) — a
+  visitor who never casts never contacts Google. Safari keeps the Remote
+  Playback/AirPlay path in `cast.js`, the one platform where that API is
+  properly honoured.
 - Do not replace the twins with an HLS playlist that lists one short segment
   hundreds of times. It is a real technique and it looks tailor-made for this
   problem — one 30 s segment on disk, a text playlist, hours of seamless output,
