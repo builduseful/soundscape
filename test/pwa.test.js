@@ -204,6 +204,26 @@ test("service worker keys non-range cache lookups on the original request", asyn
     assert.match(body, /cacheIfOk\(cache,\s*request,\s*response\)/);
 });
 
+// This answered every navigation with index.html, whatever was asked for, so
+// the site could only ever have one page: a second one — an about page, a
+// licence page, the cast diagnostic that found this — served the app instead,
+// and only a visitor with an empty cache saw the real thing. index.html stays
+// the fallback for a page that is neither cached nor reachable, which is the
+// case it was written for.
+test("navigations are served the page that was asked for, not always the app", async () => {
+    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
+    const match = /async function handleNavigation\(request\) \{([\s\S]*?)\n\}/.exec(source);
+
+    assert.ok(match, "handleNavigation function should exist");
+
+    const body = match[1];
+    const [cacheLookup] = body.split("catch");
+
+    assert.match(cacheLookup, /cache\.match\(request,\s*\{\s*ignoreSearch:\s*true\s*\}\)/);
+    assert.doesNotMatch(cacheLookup, /indexKey/, "the cached lookup must not be pinned to index.html");
+    assert.match(body, /catch[\s\S]*indexKey/, "index.html remains the offline fallback");
+});
+
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

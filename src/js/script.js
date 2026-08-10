@@ -28,7 +28,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.11.0";
+const VERSION = "1.12.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -563,7 +563,13 @@ async function startCasting(transitionId) {
     // the answer to whether the cast should come up playing or silent. The raw
     // intent, not isPlaybackRequested() — a device that connects while the first
     // track is still decoding is still answering a press of play.
-    const wasPlaying = audioPlayer.wantsPlayback();
+    //
+    // A receiver already playing counts too, and only the second half of this
+    // catches it: reopening the app rejoins a session that has been running all
+    // along, where nothing was ever pressed in *this* page's lifetime and the
+    // local player's intent is quite correctly false. Taking that alone would
+    // answer a speaker mid-soundscape with a paused button — and then pause it.
+    const wasPlaying = audioPlayer.wantsPlayback() || castController.isPlaying();
 
     // Hand the intent to the cast before either transport moves. A session that
     // fails as soon as it opens arrives as a disconnect while the local pause

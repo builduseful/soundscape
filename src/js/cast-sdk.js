@@ -49,6 +49,28 @@ const CAST_MIME = "audio/mp4";
 // and reporting them would turn normal use into console noise.
 const BENIGN_SESSION_ERRORS = new Set(["cancel", "timeout"]);
 
+// Set while a session is running, so the next page load knows to bring the SDK
+// up by itself. Without it the SDK's own ORIGIN_SCOPED rejoin can never happen
+// here: nothing loads the script until the button is pressed, so a reopened app
+// would sit showing "idle" beside a speaker that is still playing.
+const RESUME_KEY = "soundscape.casting";
+
+// A receiver that has finished its media goes IDLE, and unlike a media element
+// there is no `ended` to wait for. Repeat mode should mean this never happens —
+// it is the belt to the queue's braces, for a receiver that ignores it.
+//
+// Long enough to sit out the IDLE a receiver passes through while it is
+// accepting a load: restarting into that would fight the load already running,
+// and the resulting reload would land on IDLE again. The state is re-read when
+// it fires, so this only has to cover the transition, not guess at it.
+const IDLE_RESTART_DELAY_MS = 1500;
+
+// A receiver that cannot play the file at all answers every restart with
+// another IDLE. Without a cap that is an unbounded reload loop against someone's
+// speaker; with one it is three attempts and then silence, which is at least
+// honest. Reset the moment playback is actually observed.
+const MAX_CONSECUTIVE_IDLE_RESTARTS = 3;
+
 /**
  * Whether this browser can cast through the SDK, answered *before* the SDK is
  * loaded — which is the whole difficulty. `chrome.cast` only exists once the
@@ -102,6 +124,35 @@ export function loadCastSdk({ scope = globalThis, url = SDK_URL } = {}) {
 }
 
 /**
+ * Turns a load request into an endlessly repeating one.
+ *
+ * Ambience has to run for hours; the twins are two minutes long, so a plain
+ * load plays once and the room goes quiet — which is what it did. `loadMedia`
+ * carries a one-item queue through `queueData`, and `RepeatMode.SINGLE` means
+ * "the current item will be repeated indefinitely", so the repeat happens
+ * entirely on the device: no round trip per lap, and nothing to go wrong when
+ * the phone sleeps, locks, or leaves the house. That last part is the real
+ * prize — a sender-driven reload would tie hours of playback to this page
+ * staying awake, which on a phone it will not.
+ *
+ * Guarded rather than assumed: queue support is a property of the receiver
+ * build, and an older one missing these constructors should lose the looping,
+ * not the playback.
+ */
+function applyRepeat(chrome, request, mediaInfo) {
+    const media = chrome?.cast?.media;
+
+    if (!media?.QueueData || !media.QueueItem || !media.RepeatMode) return;
+
+    const queueData = new media.QueueData();
+
+    queueData.items = [new media.QueueItem(mediaInfo)];
+    queueData.repeatMode = media.RepeatMode.SINGLE;
+    queueData.startIndex = 0;
+    request.queueData = queueData;
+}
+
+/**
  * Drives casting through the SDK, presenting the same surface script.js already
  * uses for the Remote Playback path so the transport handover — pausing local
  * audio, suspending the AudioContext, handing playback back on disconnect —
@@ -125,6 +176,14 @@ export class CastSdkController {
         this.playbackRequested = false;
         this.promptPending = false;
         this.sdkReady = null;
+        // Set once the SDK has definitively refused to come up. Chromium-based
+        // browsers without Google's cast stack — Samsung Internet is the one
+        // this app met — expose the Presentation API the capability check reads,
+        // then report the framework unavailable. Remembering that is what turns
+        // a button that does nothing into a button that says so.
+        this.sdkUnavailable = false;
+        this.idleRestartTimer = 0;
+        this.idleRestarts = 0;
         this.context = null;
         this.player = null;
         this.playerController = null;
@@ -138,14 +197,26 @@ export class CastSdkController {
         return this.isSupported() ? "cast-sdk" : null;
     }
 
-    // Nothing can be observed before the SDK is loaded, and loading it is
-    // exactly what must not happen at boot. So this only reports the opening
-    // state, which is always "idle" — a session already running on the device
-    // is picked up by the SDK's own resume once it does load.
+    // Nothing can be observed before the SDK is loaded, so this reports the
+    // opening state — normally "idle" — and then, only for someone who was
+    // casting when they last closed the app, brings the SDK up so its
+    // ORIGIN_SCOPED rejoin can find the running session and report it.
+    //
+    // That condition is the whole design. Loading unconditionally would rejoin
+    // reliably but contact Google on every single visit, which is exactly what
+    // this module is written to avoid; loading never — which is what it did —
+    // means the rejoin can never happen at all, and reopening the app leaves it
+    // showing "idle" next to a speaker that is still playing.
     start() {
         if (!this.isSupported()) return false;
 
         this.notifyChange();
+
+        if (this.readResumeHint()) {
+            // Nothing to report on failure: no one asked for this, and a press
+            // of the button will surface it properly.
+            void this.ensureSdk().then(() => this.handleCastStateChange()).catch(() => {});
+        }
 
         return true;
     }
@@ -157,9 +228,33 @@ export class CastSdkController {
         return false;
     }
 
-    // No metadata precondition either, so a press can never be too early.
+    // Read by the app as "could a press have reached a picker" — there is no
+    // metadata precondition on this path, so the only thing that stops one is
+    // the SDK never coming up at all.
     isTransportReady() {
-        return true;
+        return !this.sdkUnavailable;
+    }
+
+    // Best effort on both sides: storage can throw (private mode, disabled
+    // cookies), and losing the hint costs a rejoin, not a feature.
+    readResumeHint() {
+        try {
+            return this.scope.localStorage?.getItem(RESUME_KEY) === "1";
+        } catch {
+            return false;
+        }
+    }
+
+    writeResumeHint(casting) {
+        try {
+            if (casting) {
+                this.scope.localStorage?.setItem(RESUME_KEY, "1");
+            } else {
+                this.scope.localStorage?.removeItem(RESUME_KEY);
+            }
+        } catch {
+            // Best effort by design.
+        }
     }
 
     stopWatching() {
@@ -179,12 +274,27 @@ export class CastSdkController {
             events.RemotePlayerEventType.IS_CONNECTED_CHANGED,
             this.handleCastStateChange,
         );
+        this.playerController?.removeEventListener(
+            events.RemotePlayerEventType.PLAYER_STATE_CHANGED,
+            this.handlePlayerStateChange,
+        );
+        this.scope.clearTimeout?.(this.idleRestartTimer);
+        this.idleRestartTimer = 0;
     }
 
     async ensureSdk() {
         if (this.sdkReady) return this.sdkReady;
 
-        this.sdkReady = this.loader({ scope: this.scope }).then(() => this.initialise());
+        this.sdkReady = this.loader({ scope: this.scope })
+            .then(() => this.initialise())
+            .catch((error) => {
+                // Not retried. A browser that answers "no cast framework here"
+                // will answer the same way for the life of the page, and
+                // remembering it is what lets the button explain itself.
+                this.sdkUnavailable = true;
+
+                throw error;
+            });
 
         return this.sdkReady;
     }
@@ -219,6 +329,18 @@ export class CastSdkController {
             cast.framework.RemotePlayerEventType.IS_CONNECTED_CHANGED,
             this.handleCastStateChange,
         );
+
+        // The safety net under repeat mode. A receiver that played the file
+        // through and stopped reports IDLE, and there is no `ended` event on
+        // this path to catch it — the same reasoning that gave the Remote
+        // Playback path its LoopWatchdog, minus the polling, because the SDK
+        // volunteers the state change.
+        if (cast.framework.RemotePlayerEventType.PLAYER_STATE_CHANGED) {
+            this.playerController.addEventListener(
+                cast.framework.RemotePlayerEventType.PLAYER_STATE_CHANGED,
+                this.handlePlayerStateChange,
+            );
+        }
     }
 
     castState() {
@@ -337,6 +459,7 @@ export class CastSdkController {
         const request = new chrome.cast.media.LoadRequest(mediaInfo);
 
         request.autoplay = true;
+        applyRepeat(chrome, request, mediaInfo);
 
         await session.loadMedia(request);
         this.loadedUrl = track.castUrl;
@@ -345,16 +468,124 @@ export class CastSdkController {
     }
 
     handleCastStateChange = () => {
+        const connected = this.isConnected();
+
+        // Before anything is announced, because the app decides what to do with
+        // the connection the instant it hears about it.
+        if (connected) this.adoptReceiverMedia();
+
         // A session that ends takes its loaded media with it, so the next
         // connection has to load again rather than assume the receiver still
         // holds the track.
-        if (!this.isConnected()) this.loadedUrl = null;
+        if (!connected) {
+            this.loadedUrl = null;
+            this.cancelIdleRestart();
+            this.idleRestarts = 0;
+        }
+
+        // Only a settled state is worth remembering: writing the hint while
+        // merely connecting would arm a rejoin for a session that may never
+        // exist.
+        if (connected || !this.isConnecting()) this.writeResumeHint(connected);
 
         this.notifyChange();
     };
 
+    // Rejoining a session that has been playing all along must not restart it.
+    // `loadedUrl` is null on a fresh page, so without this `play()` sees the
+    // current track as "not loaded" and loads it again — dropping a speaker
+    // that was minutes into a soundscape back to the beginning, every time the
+    // app is reopened. Adopting what the receiver already holds turns that same
+    // call into the no-op it should be.
+    //
+    // Matched against the current track only. The controller has no catalogue to
+    // resolve an arbitrary contentId against, and a receiver playing something
+    // else is a case the app should correct rather than adopt.
+    adoptReceiverMedia() {
+        if (this.loadedUrl || !this.track) return;
+
+        const media = this.context?.getCurrentSession?.()?.getMediaSession?.()?.media
+            ?? this.player?.mediaInfo;
+
+        if (media?.contentId !== this.absoluteCastUrl(this.track)) return;
+
+        this.loadedUrl = this.track.castUrl;
+    }
+
+    cancelIdleRestart() {
+        this.scope.clearTimeout?.(this.idleRestartTimer);
+        this.idleRestartTimer = 0;
+    }
+
+    isReceiverIdle() {
+        const { PlayerState } = this.scope.chrome?.cast?.media ?? {};
+
+        return Boolean(PlayerState) && this.player?.playerState === PlayerState.IDLE;
+    }
+
+    // Media loaded and working, whether or not it is currently making a sound.
+    // Deliberately not "anything that is not idle": BUFFERING is a receiver
+    // trying, not a receiver succeeding, and a device that never gets past
+    // fetching would cycle BUFFERING/IDLE and reset its own restart allowance
+    // for ever.
+    isReceiverWorking() {
+        const { PlayerState } = this.scope.chrome?.cast?.media ?? {};
+
+        if (!PlayerState) return false;
+
+        return this.player?.playerState === PlayerState.PLAYING
+            || this.player?.playerState === PlayerState.PAUSED;
+    }
+
+    // A receiver that reached the end anyway — repeat mode unhonoured, or the
+    // stream dropped. Reloading is the only move available, and it is safe to
+    // make wrongly: the app either wanted this playing or it did not.
+    //
+    // Deferred, and then re-checked when it fires, because IDLE is also the
+    // state a receiver passes through while a new load is being accepted. A
+    // restart into that would fight the load already running and land back on
+    // IDLE, which is the shape of a loop rather than a recovery.
+    handlePlayerStateChange = () => {
+        // Proof a restart worked, so the run of failed ones is over.
+        if (this.isReceiverWorking()) this.idleRestarts = 0;
+
+        if (!this.isReceiverIdle()) {
+            this.cancelIdleRestart();
+
+            return;
+        }
+
+        if (!this.isConnected() || !this.playbackRequested || !this.track) return;
+
+        if (this.idleRestarts >= MAX_CONSECUTIVE_IDLE_RESTARTS) return;
+
+        this.cancelIdleRestart();
+        this.idleRestartTimer = this.scope.setTimeout?.(() => {
+            this.idleRestartTimer = 0;
+
+            if (!this.isConnected() || !this.playbackRequested || !this.isReceiverIdle()) return;
+
+            this.idleRestarts += 1;
+            // Cleared so loadTrack is not mistaken for a no-op by anything that
+            // reads it while this is in flight.
+            this.loadedUrl = null;
+
+            void this.loadTrack(this.track).catch((error) => {
+                console.warn("Could not restart the soundscape on the cast device.", error);
+            });
+        }, IDLE_RESTART_DELAY_MS);
+    };
+
     handlePlaybackChange = () => {
         if (!this.isConnected()) return;
+
+        // A receiver that is playing *is* a request for playback, whoever made
+        // it. On a rejoin nothing was pressed in this page's lifetime, so the
+        // flag starts false while the room is full of sound — which would leave
+        // the idle safety net disarmed for a session it is meant to be watching.
+        // Only ever raised here: a pause has already cleared the flag by the
+        // time its event arrives, and must not be undone.
+        if (this.player?.isPaused === false) this.playbackRequested = true;
 
         this.onPlaybackChange?.();
     };

@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.11.0";
+const VERSION = "1.12.0";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -106,22 +106,34 @@ function isCastAudio(request) {
     return new URL(request.url).pathname.endsWith(".m4a");
 }
 
-// Cache-first navigation: serve the precached shell when available, fall
-// back to the network. Any shell update that should reach returning users
-// must change CACHE_NAME — bump VERSION.
+// Cache-first navigation, matched against the page that was actually asked
+// for. Answering every navigation with index.html — which this did until the
+// cast diagnostic page came along and could not be reached — makes the app the
+// only page the site has: any second page (an about page, a licence page)
+// silently serves the app instead, and only an uninstalled visitor with an
+// empty cache ever sees the real thing.
+//
+// index.html stays the *offline* fallback, which is the case it was written
+// for: a navigation to a page that was never cached, with no network to fetch
+// it from, is better answered by the app than by a browser error page.
+//
+// Any shell update that should reach returning users must change CACHE_NAME —
+// bump VERSION.
 async function handleNavigation(request) {
     const cache = await caches.open(CACHE_NAME);
-    const indexKey = new URL("./index.html", self.location.origin).href;
-
-    const cached = await cache.match(indexKey, { ignoreSearch: true });
+    const cached = await cache.match(request, { ignoreSearch: true });
 
     if (cached) return cached;
 
     try {
         const response = await fetch(request);
-        await cacheIfOk(cache, indexKey, response);
+
+        await cacheIfOk(cache, request, response);
+
         return response;
     } catch {
+        const indexKey = new URL("./index.html", self.location.origin).href;
+
         return await cache.match(indexKey) ?? Response.error();
     }
 }
