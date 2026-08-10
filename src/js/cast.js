@@ -51,6 +51,33 @@ const REMOTE_CONNECTION_EVENTS = ["connecting", "connect", "disconnect"];
 const PROGRESS_POLL_MS = 2000;
 const STALLED_SAMPLES_BEFORE_RESTART = 2;
 
+// Media element readyState for "the header has been read", which is the state
+// both platforms actually require before they will show a picker.
+const HAVE_METADATA = 1;
+
+// How long prompt() waits for the transport element to report metadata before
+// opening the picker regardless.
+//
+// This wait is not politeness, it is what makes the button work at all.
+// Chromium builds the list of cast targets from the element's *loaded*
+// metadata: RemotePlayback::UpdateAvailabilityUrlsAndStartListening() clears
+// the availability URLs whenever duration() is NaN or at or under
+// kMinRemotingMediaDurationInSec, and prompt() with an empty list never reaches
+// a picker — PromptInternal() posts PromptCancelled(), which rejects as
+// NotAllowedError "The prompt was dismissed." That is the identical rejection a
+// real dismissal produces, so the failure is completely silent, and it is
+// guaranteed on the first press: the pointerdown that releases the transport
+// and the click that prompts are the same gesture, so the element is still at
+// readyState 0 with an empty currentSrc when the picker is asked for. Safari
+// arrives at the same place from the other side, rejecting prompt() below
+// HAVE_METADATA outright. One wait answers both.
+//
+// The cap matters as much as the wait: prompt() has to still be inside the
+// browser's transient user activation window when it finally runs — five
+// seconds in Chromium — so this ends well short of that, leaving room for the
+// call itself.
+const TRANSPORT_METADATA_WAIT_MS = 2500;
+
 // Before the position has moved even once, the same stillness means the
 // receiver is still fetching and buffering a megabyte, not that it has stopped,
 // and restarting into that would fight the connection it is still making. So
@@ -238,11 +265,17 @@ export function selectCastBackend(element, backends = CAST_BACKENDS) {
 }
 
 export class CastController {
-    constructor(element, { onChange, onPlaybackChange, backends = CAST_BACKENDS } = {}) {
+    constructor(element, {
+        onChange,
+        onPlaybackChange,
+        backends = CAST_BACKENDS,
+        metadataWaitMs = TRANSPORT_METADATA_WAIT_MS,
+    } = {}) {
         this.element = element;
         this.backend = selectCastBackend(element, backends);
         this.onChange = onChange;
         this.onPlaybackChange = onPlaybackChange;
+        this.metadataWaitMs = metadataWaitMs;
         // Whether the element may hold a source yet. False until the app reports
         // a user gesture — see allowTransportLoad.
         this.transportAllowed = false;
@@ -416,6 +449,37 @@ export class CastController {
         });
     }
 
+    // Whether the element has read its header. Both platforms need this before
+    // they will show a picker — see TRANSPORT_METADATA_WAIT_MS — so it is also
+    // the caller's answer to "could that press have opened anything?".
+    isTransportReady() {
+        return this.element.readyState >= HAVE_METADATA;
+    }
+
+    // Resolves true once the element has read its header, false if the wait ran
+    // out or the load failed. It never rejects: prompting anyway is still the
+    // better move, since a picker that might open beats a button that certainly
+    // does nothing. The answer's real job is to tell the caller whether a
+    // "dismissed" can be taken at face value.
+    waitForTransportMetadata() {
+        if (this.isTransportReady()) return Promise.resolve(true);
+
+        return new Promise((resolve) => {
+            const settle = (ready) => {
+                clearTimeout(timer);
+                this.element.removeEventListener("loadedmetadata", onLoaded);
+                this.element.removeEventListener("error", onFailed);
+                resolve(ready);
+            };
+            const onLoaded = () => settle(true);
+            const onFailed = () => settle(false);
+            const timer = setTimeout(() => settle(false), this.metadataWaitMs);
+
+            this.element.addEventListener("loadedmetadata", onLoaded);
+            this.element.addEventListener("error", onFailed);
+        });
+    }
+
     // A second prompt while one is already open is an error on both platforms,
     // and a double-click on the button is all it takes. Refusing the re-entry
     // is the fix; BENIGN_PROMPT_ERRORS still absorbs a race the app cannot see,
@@ -433,7 +497,21 @@ export class CastController {
         this.allowTransportLoad();
         this.promptPending = true;
 
+        // Kept outside the try so the catch can tell a dismissal that could
+        // have been real from one the browser invented for a picker it never
+        // showed.
+        let ready = false;
+
         try {
+            ready = await this.waitForTransportMetadata();
+
+            if (!ready) {
+                // Worth saying out loud rather than leaving to the phantom
+                // dismissal below: the press is about to do nothing, and the
+                // reason is the file, not the devices.
+                console.warn("Opening the cast picker without transport metadata; the device list may not appear.");
+            }
+
             await this.backend.prompt(this.element);
             return true;
         } catch (error) {
@@ -448,7 +526,12 @@ export class CastController {
             // A machine with no devices does not usually land here at all:
             // Chromium opens its own picker and reports the eventual dismissal,
             // which is why the app needs no "nothing found" message of its own.
-            if (BENIGN_PROMPT_ERRORS.has(error?.name)) return false;
+            //
+            // Gated on `ready`, because without metadata Chromium rejects with
+            // that same NotAllowedError for a picker it never opened. Absorbing
+            // it there would file a real fault as an ordinary outcome, which is
+            // exactly how this stayed invisible.
+            if (ready && BENIGN_PROMPT_ERRORS.has(error?.name)) return false;
 
             console.warn("Could not open the cast device picker.", error);
             return false;

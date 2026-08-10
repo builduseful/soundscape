@@ -112,8 +112,14 @@ class FakeAudioElement extends FakeElement {
     constructor() {
         super();
         this.paused = true;
-        this.src = "";
+        this.sourceUrl = "";
         this.currentTime = 0;
+        // A real element reads its header off the network, so the app's wait for
+        // it is a real wait. Resolving on a microtask keeps that shape without
+        // costing the suite any time; a test that wants to hold the element at
+        // readyState 0 clears autoLoadMetadata and drives it by hand.
+        this.readyState = 0;
+        this.autoLoadMetadata = true;
         // The spec default, so a test can tell "left alone" from "set to full".
         this.volume = 1;
         this.loadCalls = 0;
@@ -121,6 +127,32 @@ class FakeAudioElement extends FakeElement {
         this.pauseCalls = 0;
         this.playShouldFail = false;
         this.playGates = [];
+    }
+
+    get src() {
+        return this.sourceUrl;
+    }
+
+    // Assigning src runs the media load algorithm, which drops readiness back to
+    // nothing — the behaviour the cast picker's metadata wait exists for.
+    set src(value) {
+        this.sourceUrl = value;
+        this.readyState = 0;
+
+        if (this.autoLoadMetadata && value) {
+            queueMicrotask(() => this.completeMetadataLoad());
+        }
+    }
+
+    completeMetadataLoad() {
+        if (!this.sourceUrl) return;
+
+        this.readyState = 1;
+        void this.dispatch("loadedmetadata");
+    }
+
+    failMetadataLoad() {
+        void this.dispatch("error");
     }
 
     canPlayType(mime) {

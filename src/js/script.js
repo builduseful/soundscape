@@ -8,6 +8,7 @@
 
 import { AudioPlayer } from "./audio-player.js";
 import { CastController } from "./cast.js";
+import { CastSdkController, isCastSdkCapable } from "./cast-sdk.js";
 import {
     configurePlaybackAudioSession,
     initMediaSession,
@@ -27,7 +28,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.10.1";
+const VERSION = "1.11.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -48,6 +49,10 @@ const CAST_STATUS_BY_STATE = {
 const VOLUME_LABEL = "Volume";
 const CAST_VOLUME_LABEL = "Volume is set on the device you're casting to";
 const CAST_FAILURE_MESSAGE = "That device couldn't play this soundscape. Try connecting again.";
+// Both platforms need the cast file's header read before they will show a
+// device list, and Chromium reports a picker it never opened as an ordinary
+// dismissal — so without this the press looks like nothing happened at all.
+const CAST_UNAVAILABLE_MESSAGE = "Couldn't open the device list yet. Check your connection, then try again.";
 const KEY_SPACE = " ";
 const KEY_ARROW_RIGHT = "ArrowRight";
 const KEY_ARROW_LEFT = "ArrowLeft";
@@ -103,16 +108,30 @@ const audioPlayer = new AudioPlayer(audioElement, {
     onLoadingChange: syncLoadingIndicator,
 });
 
-// Exactly one of audioPlayer and castController drives playback at any moment;
-// cast.js explains why they can never overlap.
-const castController = new CastController(castAudioElement, {
+// A pause pressed on the Chromecast itself is the app's only word that the room
+// went quiet. Re-read rather than trust: the answer is whatever the transport
+// says right now, which is also what makes this safe to receive during the
+// app's own transitions.
+const castCallbacks = {
     onChange: handleCastChange,
-    // A pause pressed on the Chromecast itself is the app's only word that the
-    // room went quiet. Re-read rather than trust: the answer is whatever the
-    // transport says right now, which is also what makes this safe to receive
-    // during the app's own transitions.
     onPlaybackChange: () => syncPlaybackState(isOutputPlaying()),
-});
+};
+
+// Two cast transports, chosen once at boot, presenting one surface to
+// everything below — so the handover between outputs has no branch of its own.
+//
+// Chrome gets the Cast SDK. Its Remote Playback implementation never opens a
+// picker for this app's audio, measured across desktop, Android and Samsung
+// Internet; cast-sdk.js records the evidence and the SDK-free routes that were
+// tried first. Safari keeps the Remote Playback and AirPlay path in cast.js,
+// which is the platform where that API is properly honoured, and Firefox has
+// neither and shows no button.
+//
+// Exactly one of audioPlayer and the cast controller drives playback at any
+// moment; cast.js explains why they can never overlap.
+const castController = isCastSdkCapable()
+    ? new CastSdkController(castCallbacks)
+    : new CastController(castAudioElement, castCallbacks);
 
 // Media Session connects browser/OS media controls to the app's playback actions.
 const mediaSessionActions = {
@@ -130,7 +149,7 @@ volumeControl.addEventListener("input", () => {
     savePreference(SAVED_VOLUME_KEY, volumeControl.value);
 });
 playPauseButton.addEventListener("click", playPauseClick);
-castButton.addEventListener("click", () => castController.prompt());
+castButton.addEventListener("click", handleCastClick);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 themeSelector.addEventListener("theme-change", (event) => {
@@ -448,6 +467,26 @@ function initCasting() {
     castController.setTrack(getCurrentTrack());
     castController.start();
     castButton.hidden = !castController.isSupported();
+}
+
+// A dismissed picker and a picker that never opened are the same `false` here,
+// and on Chromium they are the same DOMException too — so the transport's own
+// readiness is what separates them. Asked after the await, it describes the
+// state the press actually ran against.
+//
+// Deliberately not routed through reportPlaybackFailure: that suppresses
+// messages while audio is playing, which is the usual moment someone reaches
+// for this button, and the soundscape playing on is no consolation for a device
+// list that will not appear.
+async function handleCastClick() {
+    const opened = await castController.prompt();
+
+    if (opened || castController.isTransportReady()) {
+        return;
+    }
+
+    playbackError.textContent = CAST_UNAVAILABLE_MESSAGE;
+    playbackError.hidden = false;
 }
 
 // Connection governs which output owns the soundscape, and only a change in it

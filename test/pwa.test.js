@@ -232,6 +232,10 @@ test("every deployable asset is precached by the service worker", async () => {
         // a deployment artefact the browser never requests. Screenshots are
         // only ever fetched by the OS install UI before the app is installed,
         // so offline precaching buys nothing.
+        // TEMPORARY, remove with the page: cast-debug.html is a hand-run
+        // diagnostic for the cast picker, not part of the app. Precaching it
+        // would put it in every visitor's offline cache.
+        .filter((path) => path !== "./cast-debug.html")
         .filter((path) => !/^\.\/(sw\.js|CNAME)$/.test(path))
         .filter((path) => !path.startsWith("./resources/soundscapes/"))
         .filter((path) => !path.startsWith("./resources/screenshots/"))

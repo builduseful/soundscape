@@ -156,12 +156,13 @@ soundscape/
   when it opens, so asking in advance bought exactly one thing — a conditionally
   visible button — at the price of continuous local-network scanning for the whole
   life of the page, which Apple documents as a battery cost and asks you not to
-  incur without a specific need. Verified in Chromium: `prompt()` reaches the
-  picker with no prior `watchAvailability` call **and** with the element still at
-  `readyState` 0, and a machine with no devices gets the browser's own picker
-  rather than an error to report — so there is nothing to hand-roll for the
-  no-devices case either. `cast.test.js` asserts neither backend registers a
-  scan.
+  incur without a specific need. `prompt()` reaches the picker with no prior
+  `watchAvailability` call — `RemotePlayback::prompt()` only consults
+  `availability_` to *reject early*, and it sits at `UNKNOWN` when nothing is
+  watching — and a machine with no devices gets the browser's own picker rather
+  than an error to report, so there is nothing to hand-roll for the no-devices
+  case either. `cast.test.js` asserts neither backend registers a scan. What is
+  **not** optional is metadata: see the `prompt()` bullet below.
 - The cast button is therefore always visible, and `hidden` is decided once at
   boot from `isSupported()` alone — a browser either has a way to cast or it does
   not, and that cannot change while the page is open. This is also what makes "a
@@ -175,18 +176,47 @@ soundscape/
 - `prompt()` rejects as part of normal use: `NotAllowedError` (picker dismissed),
   `NotFoundError` (no device found, or it went away), `OperationError` (a second
   prompt raced the first), and `AbortError` (not in the spec, but Chromium has
-  used it for dismissal). These are swallowed; only genuinely unexpected failures
-  are logged. The common cause of that race — a double-click on the button — is
+  used it for dismissal). These are swallowed — but only once the transport has
+  metadata, for the reason in the next bullet; without it `NotAllowedError` means
+  the opposite thing. Only genuinely unexpected failures are logged. The common
+  cause of that race — a double-click on the button — is
   refused outright by `CastController.prompt()` rather than absorbed after the
   fact. There is no
   `disconnect()` in the Remote Playback API by design; prompting again while
   connected is what offers "stop casting".
-- `#castAudioElement` keeps `preload="metadata"` because macOS Safari rejects
-  `prompt()` with `NotSupportedError` below `HAVE_METADATA` (iOS is explicitly
-  exempt in `RemotePlayback.cpp`), so the picker needs a header that has been
-  read. Chromium does not — verified at `readyState` 0 — but one rule for both is
-  simpler. The twins are written `+faststart` so the index is at the head, and the
-  service worker leaves `.m4a` alone (see below).
+- **`CastController.prompt()` waits for the transport's metadata before opening
+  the picker, and that wait is what makes the button work at all.** Both engines
+  need the header read first, and Chromium's way of saying so is silent:
+  `RemotePlayback::UpdateAvailabilityUrlsAndStartListening()` clears
+  `availability_urls_` whenever `duration()` is `NaN` or at or under
+  `kMinRemotingMediaDurationInSec`, and `PromptInternal()` with an empty list
+  never contacts the presentation service — it posts `PromptCancelled()`, which
+  rejects as `NotAllowedError` *"The prompt was dismissed."* That is
+  byte-for-byte the rejection a real dismissal produces, so it lands in
+  `BENIGN_PROMPT_ERRORS` and vanishes. It was also **guaranteed on the first
+  press**: the `pointerdown` that releases the transport and the `click` that
+  prompts are the same gesture, so the element is still at `readyState` 0 with an
+  empty `currentSrc` when the picker is asked for. Symptom: the cast button does
+  nothing, on desktop and Android alike, with a clean console. Safari reaches the
+  same place from the other side, rejecting below `HAVE_METADATA` with
+  `NotSupportedError`. Hence `#castAudioElement` keeps `preload="metadata"`, the
+  twins are written `+faststart` so the index is at the head, and the service
+  worker leaves `.m4a` alone (see below).
+  - The wait is capped (`TRANSPORT_METADATA_WAIT_MS`, 2.5 s) because `prompt()`
+    must still be inside the browser's transient user activation window when it
+    finally runs — five seconds in Chromium. Do not raise it past that.
+  - When the wait runs out the app prompts anyway (a picker that might open beats
+    one that certainly will not) but **stops treating `NotAllowedError` as
+    benign** — without metadata it is a phantom dismissal, not a user's — and
+    `script.js` puts `CAST_UNAVAILABLE_MESSAGE` on screen. This is the one cast
+    outcome written to `#playbackError` directly rather than through
+    `reportPlaybackFailure`, which suppresses messages while audio is playing;
+    that is exactly when someone reaches for this button.
+  - Do not "simplify" this to loading the source inside `prompt()`. A fresh `src`
+    resets `readyState`, which is the state neither engine will open a picker on.
+  - One Chromium gate the app cannot work around: `IsLowEndDevice()` disables
+    availability URL generation entirely, so on a low-RAM Android device
+    `prompt()` never reaches a picker no matter what the element holds.
 - **`preload="metadata"` is a hint, not a budget — do not assume that read is
   cheap.** Measured in Chrome against a ~1 MB twin, the first load buffers ~90% of
   the file and later track changes tens of KB each. Two gates keep that off the

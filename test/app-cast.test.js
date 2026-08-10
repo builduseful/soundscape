@@ -96,6 +96,51 @@ test("clicking the cast button opens the device picker", async () => {
     assert.equal(environment.castRemote.promptCalls, 1);
 });
 
+// The press that opens the picker is often the press that sources the element,
+// and neither platform will show a device list before the header is read. The
+// app waits for it rather than prompting into a guaranteed no-op.
+test("the cast button waits for the transport's header before prompting", async () => {
+    const environment = await startAppTestEnvironment({ castDevices: true });
+
+    environment.castAudioElement.autoLoadMetadata = false;
+
+    const clicked = environment.elements.get("castButton").dispatch("click");
+
+    await settle();
+    assert.equal(environment.castRemote.promptCalls, 0);
+
+    environment.castAudioElement.completeMetadataLoad();
+    await clicked;
+
+    assert.equal(environment.castRemote.promptCalls, 1);
+    assert.equal(environment.elements.get("playbackError").hidden, true);
+});
+
+// Chromium reports a picker it never opened as an ordinary dismissal, so a
+// transport that never loads leaves the button looking simply broken. That is
+// the one cast outcome the app has to put into words itself — and it says so
+// even while audio is playing, since the soundscape playing on is no answer to a
+// device list that will not appear.
+test("a cast press that cannot reach a picker says so", async () => {
+    const environment = await startAppTestEnvironment({ castDevices: true });
+
+    environment.castAudioElement.autoLoadMetadata = false;
+    environment.castRemote.promptShouldReject = Object.assign(new Error("dismissed"), {
+        name: "NotAllowedError",
+    });
+
+    const clicked = environment.elements.get("castButton").dispatch("click");
+
+    await settle();
+    environment.castAudioElement.failMetadataLoad();
+    await clicked;
+
+    const playbackError = environment.elements.get("playbackError");
+
+    assert.equal(playbackError.hidden, false);
+    assert.match(playbackError.textContent, /device list/i);
+});
+
 test("connecting moves the soundscape to the receiver and silences local audio", async () => {
     const environment = await startAppTestEnvironment({ castDevices: true });
 

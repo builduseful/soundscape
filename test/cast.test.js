@@ -16,6 +16,10 @@ function createElement(extras = {}) {
         baseURI: "https://soundscape.test/",
         paused: true,
         src: "",
+        // HAVE_ENOUGH_DATA by default, because the picker's metadata wait is not
+        // what most of these tests are about. The ones that are start at 0 and
+        // drive the element themselves.
+        readyState: 4,
         volume: 1,
         loop: false,
         playCalls: 0,
@@ -465,6 +469,77 @@ test("the progress watchdog runs only while a cast wants audio", async () => {
     assert.equal(controller.watchdog.isArmed(), false, "disarmed on pause");
 
     controller.stopWatching();
+});
+
+// The gesture that releases the transport and the click that prompts are the
+// same gesture, so on the first press the element has a src and nothing else.
+// Chromium builds its device list from the loaded metadata and answers a prompt
+// made without one by rejecting as though the user had dismissed a picker it
+// never showed — which is a button that silently does nothing. So the wait.
+test("prompt holds for the transport's metadata before opening the picker", async () => {
+    const remote = createRemote();
+    const element = createElement({ remote, readyState: 0 });
+    const controller = new CastController(element, { metadataWaitMs: 50 });
+
+    const opened = controller.prompt();
+
+    await Promise.resolve();
+    assert.equal(remote.promptCalls, 0, "picker asked for before the header was read");
+
+    element.readyState = 1;
+    await element.emit("loadedmetadata");
+
+    assert.equal(await opened, true);
+    assert.equal(remote.promptCalls, 1);
+});
+
+// An element that is already readable must not pay for the wait: the picker has
+// to open inside the browser's transient activation window, and every tick
+// spent here is one it does not have.
+test("prompt does not wait when the transport is already readable", async () => {
+    const remote = createRemote();
+    const controller = new CastController(createElement({ remote }));
+
+    assert.equal(await controller.prompt(), true);
+    assert.equal(remote.promptCalls, 1);
+});
+
+// Same rejection, opposite meaning. With metadata it is the user closing the
+// picker and is absorbed; without it, it is Chromium reporting a picker that was
+// never shown, and absorbing that is how the failure stayed invisible.
+test("a dismissal reported without metadata is logged rather than absorbed", async () => {
+    const warnings = [];
+    const remote = createRemote();
+
+    remote.promptRejection = Object.assign(new Error("dismissed"), { name: "NotAllowedError" });
+
+    const element = createElement({ remote, readyState: 0 });
+    const controller = new CastController(element, { metadataWaitMs: 5 });
+
+    console.warn = (...args) => warnings.push(args);
+
+    assert.equal(await controller.prompt(), false);
+    assert.equal(controller.isTransportReady(), false);
+    assert.match(warnings.at(-1)[0], /cast device picker/);
+});
+
+// A load that fails outright should not hold the press for the whole wait —
+// there is no header coming.
+test("a failed transport load ends the metadata wait immediately", async () => {
+    const remote = createRemote();
+    const element = createElement({ remote, readyState: 0 });
+    // Long enough that a timer, rather than the error, would be an obvious hang.
+    const controller = new CastController(element, { metadataWaitMs: 60_000 });
+
+    console.warn = () => {};
+
+    const opened = controller.prompt();
+
+    await Promise.resolve();
+    await element.emit("error");
+
+    assert.equal(await opened, true, "the picker is still attempted");
+    assert.equal(remote.promptCalls, 1);
 });
 
 test("an unexpected picker failure is logged rather than thrown at the caller", async () => {
