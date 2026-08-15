@@ -95,6 +95,9 @@ body {
 .app-brand {
     display: grid;
     gap: 2px;
+    /* Otherwise the byline's link box stretches to the name's width, so it is
+       clickable well past the end of its text. */
+    justify-items: start;
 }
 
 .app-name {
@@ -102,6 +105,10 @@ body {
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: 0;
+    /* Stated rather than inherited from body's 1.4: the name and the byline
+       under it are one lockup, and the body's leading pulls them apart. Same
+       value the Blocker extension's header uses, so the two read as one app. */
+    line-height: 1.1;
     margin: 0;
 }
 

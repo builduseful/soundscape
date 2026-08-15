@@ -1,4 +1,14 @@
 /**
+ * How long the pointer has to rest on the button before hovering opens the
+ * panel. Long enough that a pointer crossing the top-right corner on its way
+ * somewhere else opens nothing on the way; short enough that stopping on the
+ * button still feels immediate. A pointer crossing a 40px button takes
+ * something like 20-50ms, so this is about the shortest wait that still tells
+ * crossing apart from arriving.
+ */
+const HOVER_INTENT_DELAY_MS = 80;
+
+/**
  * Top-right "more" menu: houses the theme selector and the version/source
  * link, both secondary controls that don't need permanent header space.
  *
@@ -17,6 +27,7 @@ export class AppMenu extends HTMLElement {
         this._listenersAttached = false;
         this._documentPointerHandler = this.handleDocumentPointerDown.bind(this);
         this._focusoutHandler = this.handleFocusOut.bind(this);
+        this._hoverIntentTimer = 0;
     }
 
     connectedCallback() {
@@ -40,6 +51,7 @@ export class AppMenu extends HTMLElement {
     disconnectedCallback() {
         this.removeEventListener("focusout", this._focusoutHandler);
         document.removeEventListener("pointerdown", this._documentPointerHandler, true);
+        this.cancelHoverIntent();
         this._listenersAttached = false;
     }
 
@@ -90,15 +102,12 @@ export class AppMenu extends HTMLElement {
                         transition: color 0.18s ease, background-color 0.18s ease;
                     }
 
-                    /* Unguarded, this caused the classic touch double-tap bug (a tap
-                       simulates :hover and only a second tap clicks) — see other hover
-                       rules in this file. */
-                    @media (hover: hover) and (pointer: fine) {
-                        :scope > button:hover {
-                            color: var(--color-text);
-                            background-color: var(--color-surface-muted);
-                        }
-                    }
+                    /* No hover state of its own. A filled circle appearing the
+                       instant the pointer touched the button undid the wait
+                       below: it flashed on for whoever was only passing
+                       through, and for whoever stayed it painted a disc that
+                       the opening panel immediately fades back out. The panel
+                       itself is the feedback. */
 
                     :scope > button:focus {
                         outline: none;
@@ -120,8 +129,12 @@ export class AppMenu extends HTMLElement {
                         background-color: transparent;
                     }
 
+                    /* [hover-open] is hovering that has settled — see
+                       HOVER_INTENT_DELAY_MS below. A bare :hover opened the
+                       panel over whatever the pointer was actually heading
+                       for, simply because it crossed the corner on the way. */
                     @media (hover: hover) and (pointer: fine) {
-                        :scope:hover > button,
+                        :scope[hover-open] > button,
                         :scope:focus-within > button {
                             color: transparent;
                             background-color: transparent;
@@ -155,7 +168,7 @@ export class AppMenu extends HTMLElement {
                        volume-control; click-to-toggle ([open] above) still
                        covers touch and keyboard. */
                     @media (hover: hover) and (pointer: fine) {
-                        :scope:hover .menu-anchor,
+                        :scope[hover-open] .menu-anchor,
                         :scope:focus-within .menu-anchor {
                             pointer-events: auto;
                         }
@@ -186,7 +199,7 @@ export class AppMenu extends HTMLElement {
                     }
 
                     @media (hover: hover) and (pointer: fine) {
-                        :scope:hover .menu-panel,
+                        :scope[hover-open] .menu-panel,
                         :scope:focus-within .menu-panel {
                             opacity: 1;
                             transform: none;
@@ -340,6 +353,29 @@ export class AppMenu extends HTMLElement {
             this.open = !this.open;
         });
 
+        // Hover-to-open, but only once the pointer has stopped here. A touch
+        // tap raises these events too, and taking that for a hover is what
+        // makes a first tap open and only a second one click — hence the
+        // pointerType and media-query check.
+        this.addEventListener("pointerenter", (event) => {
+            if (!this.isHoverPointer(event)) return;
+
+            this.cancelHoverIntent();
+            this._hoverIntentTimer = setTimeout(() => {
+                this._hoverIntentTimer = 0;
+                this.toggleAttribute("hover-open", true);
+            }, HOVER_INTENT_DELAY_MS);
+        });
+
+        this.addEventListener("pointerleave", () => {
+            this.cancelHoverIntent();
+            this.toggleAttribute("hover-open", false);
+        });
+
+        // A click settles it either way, so a wait still counting down must not
+        // reopen the panel the click just shut.
+        this.addEventListener("pointerdown", () => this.cancelHoverIntent());
+
         // Picking a theme with a pointer focuses its radio, and :focus-within
         // then pins the panel open even after the pointer leaves — so a mouse
         // user who opened via hover (this.open still false) sees it "stuck"
@@ -362,6 +398,24 @@ export class AppMenu extends HTMLElement {
 
         this.addEventListener("focusout", this._focusoutHandler);
         document.addEventListener("pointerdown", this._documentPointerHandler, true);
+    }
+
+    /**
+     * Whether this pointer is one that can rest without pressing.
+     * @param {PointerEvent} event - The event to judge.
+     * @returns {boolean} True for a mouse on a hover-capable device.
+     */
+    isHoverPointer(event) {
+        if (event.pointerType && event.pointerType !== "mouse") return false;
+
+        return globalThis.matchMedia?.("(hover: hover) and (pointer: fine)").matches ?? true;
+    }
+
+    cancelHoverIntent() {
+        if (!this._hoverIntentTimer) return;
+
+        clearTimeout(this._hoverIntentTimer);
+        this._hoverIntentTimer = 0;
     }
 
     handleDocumentPointerDown(event) {

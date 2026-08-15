@@ -32,7 +32,7 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.14.7";
+const VERSION = "1.14.8";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
