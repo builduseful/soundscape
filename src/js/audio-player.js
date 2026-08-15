@@ -95,16 +95,21 @@ export class AudioPlayer {
         return this.currentTrackUrl;
     }
 
+    // Whether this output holds the given soundscape. A PlaybackOutput member,
+    // and the reason getTrackUrl() is not one: the caller would otherwise have
+    // to know that the local player compares `track.url` while a remote compares
+    // the AAC twin it derives from it — remote knowledge sitting in the core.
+    holdsTrack(track) {
+        return Boolean(track) && this.currentTrackUrl === track.url;
+    }
+
     isPlaybackRequested() {
         return this.playbackRequested && this.hasTrack();
     }
 
     // The intent on its own, before asking whether a track has finished loading.
-    // isPlaybackRequested() ANDs in hasTrack() so that a resume path can never
-    // try to play nothing; handing playback to a cast needs the opposite reading.
-    // A device connecting while the very first track is still decoding finds
-    // hasTrack() false — no track has ever loaded — and would take that for "the
-    // user wasn't playing", leaving the receiver silent after an explicit press.
+    // This is the reading a handover needs; playback-output.js explains why the
+    // two must stay apart, and the contract suite pins the implication.
     wantsPlayback() {
         return this.playbackRequested;
     }
@@ -127,6 +132,14 @@ export class AudioPlayer {
         return (this.audioContext.currentTime - this.activeSourceStartedAt) % this.activeLoopEnd;
     }
 
+    // Whether this transport can ever report a position, as opposed to whether
+    // it has one right now. Two different facts, and the polling timer needs the
+    // first: keyed off a null reading it would refuse to arm during the window
+    // before the first buffer is set, and nothing would re-arm it afterwards.
+    canReportPosition() {
+        return true;
+    }
+
     getMediaSessionPositionState() {
         if (!this.activeBuffer || !this.activeLoopEnd) return null;
 
@@ -135,6 +148,24 @@ export class AudioPlayer {
             playbackRate: 1,
             position: Math.min(this.getCurrentPosition(), this.activeLoopEnd),
         };
+    }
+
+    /**
+     * The PlaybackOutput verb: be on this track, playing iff `wasPlaying`.
+     *
+     * Deliberately narrower than playTrack below, which it delegates to. The two
+     * arguments it drops are not simplifications — they are dead from the app's
+     * side. `loop` is passed `true` at every call site the app has, and
+     * `resetContext` only forces a media-element reload when the URL is
+     * unchanged, which never happens on a track change. Both stay on playTrack
+     * because its own tests exercise them.
+     *
+     * Resolves without reporting whether it was superseded. That answer belongs
+     * to the core's track generation, which covers every output the same way;
+     * see playback-output.js.
+     */
+    async startTrack(track, { wasPlaying = true } = {}) {
+        await this.playTrack(track, true, true, !wasPlaying);
     }
 
     /**
@@ -409,6 +440,37 @@ export class AudioPlayer {
         await this.audioContext.suspend();
     }
 
+    // Park the element for a handover, without its own pause event being read
+    // back as a person pressing pause.
+    //
+    // The app already ignores this element's events while a remote owns the
+    // soundscape, by asking whether one is active when the event arrives. That
+    // question is answered live, and the answer can change first: a session that
+    // fails the moment it opens disconnects while this pause is still in flight,
+    // so by the time the event is delivered no remote is active, the handback has
+    // already resumed local playback, and the event — caused by this very call —
+    // reads as "the user paused" and stops the room. Suppressing at the source
+    // says the one thing the live read cannot: this pause carries no intent,
+    // whoever owns the output by the time anyone hears about it.
+    //
+    // The release is scheduled rather than awaited, and that is not a detail:
+    // the caller is a handover, and making it wait a task before the receiver
+    // may start would put a gap in the middle of moving the sound between two
+    // outputs. Awaiting the pause alone is exactly what it did before; only the
+    // suppression outlives the call, by the one task the pause event needs to be
+    // dispatched in.
+    async pauseForHandover() {
+        this.browserPlaybackSyncSuppressed = true;
+
+        try {
+            await this.pause();
+        } finally {
+            setTimeout(() => {
+                this.browserPlaybackSyncSuppressed = false;
+            }, 0);
+        }
+    }
+
     async refreshPausedBrowserPlaybackSurface() {
         if (!this.audioElement.paused) return;
 
@@ -427,6 +489,32 @@ export class AudioPlayer {
             await new Promise((resolve) => setTimeout(resolve, 0));
             this.browserPlaybackSyncSuppressed = false;
         }
+    }
+
+    // Volume is a per-transport capability, because the two kinds of output
+    // answer differently for real reasons: the app owns its own output level,
+    // whereas on a cast the level being moved may be the speaker's own and
+    // outlive the session. Local playback is the unambiguous case.
+    canControlVolume() {
+        return true;
+    }
+
+    getVolume() {
+        return this.volume;
+    }
+
+    // Port spelling of updateVolume, which keeps its name because it is also the
+    // local player's own fade-aware API and is called that throughout its tests.
+    setVolume(volume) {
+        this.updateVolume(volume);
+    }
+
+    // Nothing to override: a local failure is about the soundscape — the file,
+    // the network, the decode — which is exactly what the app's default wording
+    // already says. A remote returns its own, because "pick another track" sends
+    // someone hunting through the catalogue for a fault that is in the room.
+    failureMessage() {
+        return null;
     }
 
     updateVolume(volume) {

@@ -348,10 +348,15 @@ test("every deployable asset is precached by the service worker", async () => {
         // sw.js registers itself; audio is cached on demand by design; CNAME is
         // a deployment artefact the browser never requests. Screenshots are
         // only ever fetched by the OS install UI before the app is installed,
-        // so offline precaching buys nothing.
+        // so offline precaching buys nothing. Markdown is documentation that
+        // happens to sit beside the code it documents (remote-playback/README.md
+        // ships with its plugin so deleting the directory takes the docs too) —
+        // the app never requests it, and precaching it would cost every visitor
+        // bytes for a file only a developer reads.
         .filter((path) => !/^\.\/(sw\.js|CNAME)$/.test(path))
         .filter((path) => !path.startsWith("./resources/soundscapes/"))
         .filter((path) => !path.startsWith("./resources/screenshots/"))
+        .filter((path) => !path.endsWith(".md"))
         .filter((path) => /\.[a-z0-9]+$/i.test(path));
 
     assert.notEqual(deployable.length, 0, "expected to find deployable assets under src/");

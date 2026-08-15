@@ -7,8 +7,12 @@
 // perfect loop points are a hard product requirement for these short files.
 
 import { AudioPlayer } from "./audio-player.js";
-import { CastController } from "./cast.js";
-import { CastSdkController, isCastSdkCapable } from "./cast-sdk.js";
+import { createRemotePlayback } from "./remote-playback/index.js";
+// The control is a custom element like the three imported below, and the only
+// one that does not live in js/components/ — it belongs to remote playback and
+// is deleted with it. Not routed through the plugin's index.js on purpose: that
+// module must stay loadable without a DOM. See its header.
+import { REMOTE_VOLUME_LABEL, RemotePlayback } from "./remote-playback/control.js";
 import {
     configurePlaybackAudioSession,
     initMediaSession,
@@ -28,31 +32,11 @@ import {
     saveThemePreference,
 } from "./theme-utils.js";
 import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.14.0";
+const VERSION = "1.14.6";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
-const CAST_BUTTON_LABEL_BY_STATE = {
-    idle: "Play on another device",
-    connecting: "Connecting to device",
-    connected: "Casting — change device or stop",
-};
-// The Remote Playback API never tells a page which device was picked, so these
-// stay generic on purpose rather than guessing a name.
-const CAST_CONNECTED_STATUS = "Now playing on another device.";
-const CAST_CONNECTING_STATUS = "Connecting to a device.";
-const CAST_DISCONNECTED_STATUS = "Playback returned to this device.";
-const CAST_STATUS_BY_STATE = {
-    connecting: CAST_CONNECTING_STATUS,
-    connected: CAST_CONNECTED_STATUS,
-};
 const VOLUME_LABEL = "Volume";
-const CAST_VOLUME_LABEL = "Volume on the device you're casting to";
-const CAST_FAILURE_MESSAGE = "That device couldn't play this soundscape. Try connecting again.";
-// Both platforms need the cast file's header read before they will show a
-// device list, and Chromium reports a picker it never opened as an ordinary
-// dismissal — so without this the press looks like nothing happened at all.
-const CAST_UNAVAILABLE_MESSAGE = "Couldn't open the device list yet. Check your connection, then try again.";
 const KEY_SPACE = " ";
 const KEY_ARROW_RIGHT = "ArrowRight";
 const KEY_ARROW_LEFT = "ArrowLeft";
@@ -71,6 +55,7 @@ const LOADING_LABEL = "Loading soundscape";
 const LOADING_INDICATOR_DELAY_MS = 450;
 
 customElements.define("app-menu", AppMenu);
+customElements.define("remote-playback", RemotePlayback);
 customElements.define("theme-selector", ThemeSelector);
 customElements.define("volume-control", VolumeControl);
 
@@ -82,9 +67,8 @@ const playPauseButton = document.getElementById("playPauseButton");
 const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
 const audioElement = document.getElementById("audioElement");
-const castAudioElement = document.getElementById("castAudioElement");
-const castButton = document.getElementById("castButton");
-const castStatus = document.getElementById("castStatus");
+const remoteTransportElement = document.getElementById("remoteTransportElement");
+const remotePlaybackUi = document.getElementById("remotePlaybackUi");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
 const installButton = document.getElementById("installButton");
@@ -97,47 +81,63 @@ let currentTrackIndex = requestedTrackIndex === -1 ? getSavedTrackIndex() : requ
 let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
 let loadingIndicatorTimer = 0;
-// Every cast signal arrives through one callback that fires on any of them, so
-// the previously reported state is what makes a change in it detectable. One
-// variable for all three states rather than a flag per consumer: the
-// announcement and the transport handover are both driven by a change in this.
-let castConnectionState = "idle";
-let castTransitionId = 0;
+// The handover's state. It belongs beside the handover, far below, and cannot
+// live there: see the comment above handleRemoteConnectionChange.
+//
+// Only the connected edge moves audio, and every connection signal arrives
+// through one callback that fires on any of them — so the previous answer to
+// that one question is what makes the edge detectable. The three-state name the
+// control shows is the component's business, not this file's.
+let remoteWasConnected = false;
+let remoteTransitionId = 0;
 
-const audioPlayer = new AudioPlayer(audioElement, {
+// The local output. Always present, and the one the app falls back to.
+const localOutput = new AudioPlayer(audioElement, {
     onStateChange: () => syncPlaybackState(isOutputPlaying()),
     onLoadingChange: syncLoadingIndicator,
 });
 
-// A pause pressed on the Chromecast itself is the app's only word that the room
+// The remote output, or null on a browser with no way to reach another device —
+// Firefox, Samsung Internet, anything without the APIs. Null is an ordinary
+// answer rather than a failure: every path below is written to work without one,
+// which is what lets the whole remote-playback directory be deleted without
+// touching anything else here.
+//
+// Which provider was chosen is deliberately not knowable from this file. The
+// registry decides once, from the browser alone, and nothing downstream branches
+// on the answer.
+//
+// A pause pressed on the receiving device itself is the app's only word that the room
 // went quiet. Re-read rather than trust: the answer is whatever the transport
 // says right now, which is also what makes this safe to receive during the
 // app's own transitions.
-const castCallbacks = {
-    onChange: handleCastChange,
+const remotePlayback = createRemotePlayback({
+    element: remoteTransportElement,
+    tracks,
+    onChange: handleRemoteConnectionChange,
     onPlaybackChange: () => syncPlaybackState(isOutputPlaying()),
-};
+    onTrackAdopted: adoptRemoteTrack,
+    onVolumeChange: adoptRemoteVolume,
+});
 
-// Two cast transports, chosen once at boot, presenting one surface to
-// everything below — so the handover between outputs has no branch of its own.
-//
-// Chrome gets the Cast SDK. Its Remote Playback implementation never opens a
-// picker for this app's audio, measured across desktop, Android and Samsung
-// Internet; cast-sdk.js records the evidence and the SDK-free routes that were
-// tried first. Safari keeps the Remote Playback and AirPlay path in cast.js,
-// which is the platform where that API is properly honoured, and Firefox has
-// neither and shows no button.
-//
-// Exactly one of audioPlayer and the cast controller drives playback at any
-// moment; cast.js explains why they can never overlap.
-const castController = isCastSdkCapable()
-    ? new CastSdkController({
-        ...castCallbacks,
-        tracks,
-        onTrackAdopted: adoptCastTrack,
-        onVolumeChange: adoptCastVolume,
-    })
-    : new CastController(castAudioElement, castCallbacks);
+// Exactly one output drives playback at any moment — nothing in the browser can
+// route an AudioContext to a remote target, so the two are strictly exclusive
+// rather than mixed. This is the app's single answer to "which one", and it is
+// *derived* rather than assigned: a variable holding the answer could disagree
+// with the transports, and every caller here re-reads this so it cannot.
+function activeOutput() {
+    return remotePlayback?.isConnected() ? remotePlayback : localOutput;
+}
+
+// Some paths legitimately need the local player specifically rather than
+// whichever output is active — the media element's own play/pause events,
+// visibility, and the volume the app is allowed to remember. Named so those
+// stay findable, and stay few.
+function isRemoteActive() {
+    return activeOutput() !== localOutput;
+}
+
+// --- Input: buttons, keyboard and OS media keys ---------------------------
 
 // Media Session connects browser/OS media controls to the app's playback actions.
 const mediaSessionActions = {
@@ -153,18 +153,14 @@ const mediaSessionActions = {
 volumeControl.addEventListener("input", () => {
     applyVolume(volumeControl.value);
 
-    // Not persisted while the slider is driving a cast device: that level
+    // Not persisted while the slider is driving a remote device: that level
     // belongs to the speaker in the room, and saving it would carry the room's
     // volume back to a pair of headphones tomorrow.
-    if (!castController.canControlVolume()) {
+    if (!isRemoteActive()) {
         savePreference(SAVED_VOLUME_KEY, volumeControl.value);
     }
 });
 playPauseButton.addEventListener("click", playPauseClick);
-castButton.addEventListener("click", handleCastClick);
-castButton.addEventListener("pointerenter", prepareCast);
-castButton.addEventListener("pointerdown", prepareCast);
-castButton.addEventListener("focus", prepareCast);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
 themeSelector.addEventListener("theme-change", (event) => {
@@ -174,18 +170,13 @@ title.addEventListener("animationend", handleTitleAnimationEnd);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
-// Capture, so a handler that stops propagation cannot hide the gesture. The two
-// together cover pointer and keyboard; either one is enough to release the cast
-// transport, so whichever lands first removes both.
-document.addEventListener("pointerdown", releaseCastTransport, true);
-document.addEventListener("keydown", releaseCastTransport, true);
 
 updateThemePreference(loadThemePreference(), false);
 restoreSavedVolume();
 updateTrackTitle();
 applyRequestedTrack();
 startMediaSession();
-initCasting();
+initRemotePlayback();
 registerServiceWorker();
 registerInstallPrompt(installButton);
 initLaunchQueue();
@@ -249,6 +240,8 @@ function isTransportButton(button) {
         || button === previousButton;
 }
 
+// --- Track selection and navigation ---------------------------------------
+
 async function playNextTrack() {
     return changeTrack(1, "next");
 }
@@ -296,33 +289,28 @@ async function changeTrack(offset, direction) {
             return false;
         }
 
-        if (isTrackLoaded(attemptedTrack)) {
+        // After a failed track change, did the attempted soundscape nonetheless
+        // become the loaded one? If it did, the app is on it and rolling the
+        // title back would describe a track that is no longer there. The answer
+        // belongs to whichever output owns playback — while a remote is active
+        // the local player still holds the track from before, and would answer
+        // for the wrong device.
+        if (activeOutput().holdsTrack(attemptedTrack)) {
             updateMediaSessionStatus(attemptedTrack);
             syncPlaybackState(isOutputPlaying());
-            reportPlaybackFailure("Could not start soundscape track.", error, castFailureMessage());
+            reportPlaybackFailure("Could not start soundscape track.", error, outputFailureMessage());
             return false;
         }
 
         currentTrackIndex = previousTrackIndex;
         saveCurrentTrack();
-        castController.setTrack(getCurrentTrack());
+        remotePlayback?.setTrack(getCurrentTrack());
         updateTrackTitle();
         updateMediaSessionStatus(getCurrentTrack());
         syncPlaybackState(isOutputPlaying());
-        reportPlaybackFailure("Could not change soundscape track.", error, castFailureMessage());
+        reportPlaybackFailure("Could not change soundscape track.", error, outputFailureMessage());
         return false;
     }
-}
-
-// After a failed track change, did the attempted soundscape nonetheless become
-// the loaded one? If it did, the app is on it and rolling the title back would
-// describe a track that is no longer there. The answer belongs to whichever
-// output owns playback — while casting the local player still holds the track
-// from before the cast started, and would answer for the wrong device.
-function isTrackLoaded(track) {
-    return isCasting()
-        ? castController.getTrackUrl() === track.castUrl
-        : audioPlayer.getTrackUrl() === track.url;
 }
 
 function getCurrentTrack() {
@@ -392,6 +380,8 @@ function saveCurrentTrack() {
     savePreference(SAVED_TRACK_URL_KEY, getCurrentTrack().url);
 }
 
+// --- Title display --------------------------------------------------------
+
 function updateTrackTitle({ animate = false, direction = "next" } = {}) {
     const trackTitle = getCurrentTrack().title;
 
@@ -442,49 +432,64 @@ function restartTitleChangeAnimation(direction) {
     title.classList.add("is-changing", `is-changing-${direction}`);
 }
 
+// --- Volume ---------------------------------------------------------------
+
 function restoreSavedVolume() {
     const savedVolumeValue = loadPreference(SAVED_VOLUME_KEY);
     const savedVolume = savedVolumeValue === null ? Number.NaN : Number(savedVolumeValue);
+    // Falls back to the local player's own level rather than the slider's,
+    // because the slider is not always showing it: while a remote is driving the
+    // volume the control holds the *speaker's* level, adopted from the room. A
+    // listener who has never moved the slider has nothing saved, so on handback
+    // that fallback would hand the room's level to this device and keep it. The
+    // local player's level is untouched while a remote owns the output, which is
+    // exactly the one the handback is supposed to restore.
     const volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1
         ? savedVolume
-        : Number(volumeControl.value);
+        : localOutput.getVolume();
 
     volumeControl.value = String(volume);
     applyVolume(volume);
 }
 
-// Whichever output is actually making the sound. While a cast that supports it
+// Whichever output is actually making the sound. While a remote that supports it
 // is connected the slider drives the speaker; otherwise it drives local
 // playback, which is every other moment.
 function applyVolume(volume) {
-    if (castController.canControlVolume()) {
-        castController.setVolume(volume);
+    const output = activeOutput();
+
+    if (output.canControlVolume()) {
+        output.setVolume(volume);
         return;
     }
 
-    audioPlayer.updateVolume(volume);
+    // The active output's level is not the app's to set — on AirPlay the
+    // element's volume is the receiver's own and outlives the session. Set the
+    // local player's anyway: it is parked and silent, and this is the level the
+    // room gets back on handback.
+    localOutput.setVolume(volume);
 }
 
 // A disabled slider that does not read as disabled is the worst of the three
 // options — it looks broken rather than absent, and gives no clue why. So the
-// control now takes one of two honest shapes while casting:
+// control now takes one of two honest shapes while a remote is active:
 //
-//   - The transport can carry volume (the Cast SDK can): the slider drives the
-//     device, relabelled so it is clear whose level is being moved.
+//   - The transport can carry volume (one of the two providers can): the
+//     slider drives the device, relabelled so it is clear whose level moves.
 //   - It cannot (AirPlay, where element volume is not ours to set): no slider
 //     at all, because a control that moves nothing should not be on screen.
 //
 // The device's level is *adopted*, never pushed. Sending this page's slider
 // position on connect would turn the speaker in the room to wherever it
-// happened to sit, and on a Cast device that change outlives the session.
-function syncVolumeControlForCast(connected) {
-    if (connected && !castController.canControlVolume()) {
+// happened to sit, and on some devices that change outlives the session.
+function syncVolumeControlForRemote(connected) {
+    if (connected && !remotePlayback?.canControlVolume()) {
         volumeControl.hidden = true;
         return;
     }
 
     volumeControl.hidden = false;
-    volumeControl.setAttribute("label", connected ? CAST_VOLUME_LABEL : VOLUME_LABEL);
+    volumeControl.setAttribute("label", connected ? REMOTE_VOLUME_LABEL : VOLUME_LABEL);
 
     if (!connected) {
         // The saved preference is this app's level, not the room's.
@@ -492,85 +497,73 @@ function syncVolumeControlForCast(connected) {
         return;
     }
 
-    adoptCastVolume(castController.getVolume());
+    adoptRemoteVolume(remotePlayback?.getVolume());
 }
 
-function adoptCastVolume(level) {
+function adoptRemoteVolume(level) {
     if (!Number.isFinite(level)) return;
 
     volumeControl.value = String(level);
 }
 
-function isCasting() {
-    return castController.isConnected();
-}
-
 function isOutputPlaying() {
-    return isCasting() ? castController.isPlaying() : audioPlayer.isPlaying();
+    return activeOutput().isPlaying();
 }
 
+// --- Remote playback: wiring, then the handover ---------------------------
+
+// The one place the remote playback plugin is attached to the page, and the one
+// place the app decides whether the feature exists at all. With no provider the
+// control removes itself outright, so a Firefox visitor is left with no remote
+// markup, no listeners and no state for the rest of the app to have an opinion
+// about.
+//
+// The facade is small on purpose. The control can open a picker, spend the wait
+// early, ask whether a picker could have opened, and report that one could not.
+// It cannot connect, cannot read a connection, and cannot move audio — those are
+// the app's, and handing them over would make the control a second answer to
+// "which output owns the soundscape".
+//
 // Deliberately not "discovery": nothing is asked of the network here or ever.
-// The button's visibility is decided once and never recomputed, because a browser
-// either has a way to cast or it does not and that cannot change while the page
-// is open. Both platforms discover devices inside their own picker when it opens,
-// so the app never needs to know in advance whether one is out there — cast.js
-// explains what that replaced and why it is not coming back.
+// Both platforms discover devices inside their own picker when it opens, so the
+// app never needs to know in advance whether one is out there —
+// providers/media-element.js explains what that replaced and why it is not
+// coming back.
 //
-// The track is handed over now so the controller knows what to load, but no bytes
+// The track is handed over now so the provider knows what to load, but no bytes
 // move until the first gesture releases it.
-function initCasting() {
-    castController.setTrack(getCurrentTrack());
-    castController.start();
-    castButton.hidden = !castController.isSupported();
-}
-
-// A dismissed picker and a picker that never opened are the same `false` here,
-// and on Chromium they are the same DOMException too — so the transport's own
-// readiness is what separates them. Asked after the await, it describes the
-// state the press actually ran against.
-//
-// Deliberately not routed through reportPlaybackFailure: that suppresses
-// messages while audio is playing, which is the usual moment someone reaches
-// for this button, and the soundscape playing on is no consolation for a device
-// list that will not appear.
-async function handleCastClick() {
-    // Opening a picker is not instant — a script may have to be fetched and a
-    // cast context started before the browser's own device list appears — and
-    // until it does the press has no visible effect at all, which reads as a
-    // broken button. The same pulse the connecting state uses, because it is the
-    // same thing being said: something is happening, wait.
-    //
-    // Not routed through handleCastChange: no connection state has changed, and
-    // claiming one would make the glyph describe a session that does not exist.
-    castButton.dataset.castBusy = "true";
-    castButton.setAttribute("aria-busy", "true");
-
-    try {
-        const opened = await castController.prompt();
-
-        if (opened || castController.isTransportReady()) return;
-
-        playbackError.textContent = CAST_UNAVAILABLE_MESSAGE;
-        playbackError.hidden = false;
-    } finally {
-        delete castButton.dataset.castBusy;
-        castButton.removeAttribute("aria-busy");
+function initRemotePlayback() {
+    if (!remotePlayback) {
+        remotePlaybackUi.detach();
+        return;
     }
+
+    remotePlaybackUi.attach({
+        prompt: () => remotePlayback.prompt(),
+        prepare: () => remotePlayback.prepare(),
+        isTransportReady: () => remotePlayback.isTransportReady(),
+        // The control owns the wording; the app owns where it goes. Deliberately
+        // not routed through reportPlaybackFailure: that suppresses messages
+        // while audio is playing, which is the usual moment someone reaches for
+        // this button, and the soundscape playing on is no consolation for a
+        // device list that will not appear.
+        onUnavailable: (message) => {
+            playbackError.textContent = message;
+            playbackError.hidden = false;
+        },
+    });
+
+    // Capture, so a handler that stops propagation cannot hide the gesture. The
+    // two together cover pointer and keyboard; either one is enough to release
+    // the transport, so whichever lands first removes both.
+    document.addEventListener("pointerdown", releaseRemoteTransport, true);
+    document.addEventListener("keydown", releaseRemoteTransport, true);
+
+    remotePlayback.setTrack(getCurrentTrack());
+    remotePlayback.start();
 }
 
-// Hover, focus, or the pointerdown that precedes a tap: the last moment before
-// the press at which the wait can still be spent instead of shown. The transport
-// decides whether that means anything — on the Cast SDK path it fetches the
-// script, on the AirPlay path the first gesture already did the work.
-function prepareCast() {
-    if (castController.prepare()) {
-        castButton.removeEventListener("pointerenter", prepareCast);
-        castButton.removeEventListener("pointerdown", prepareCast);
-        castButton.removeEventListener("focus", prepareCast);
-    }
-}
-
-// A cast session outlives the page that started it, so rejoining one can find
+// A remote session outlives the page that started it, so rejoining one can find
 // the receiver on a soundscape this page never chose — changed from a phone
 // while this tablet was closed, or from the speaker itself. The app follows the
 // room rather than the other way round: what is audible is the truth, and
@@ -579,7 +572,7 @@ function prepareCast() {
 //
 // Not a track *change*: nothing is loaded, and playCurrentTrack is exactly what
 // must not run. This only catches the app up with what is already playing.
-function adoptCastTrack(track) {
+function adoptRemoteTrack(track) {
     const index = tracks.indexOf(track);
 
     if (index === -1) return;
@@ -591,77 +584,81 @@ function adoptCastTrack(track) {
     syncPlaybackState(isOutputPlaying());
 }
 
+// ---------------------------------------------------------------------------
+// The handover.
+//
+// The one part of the app that knows there is more than one output, and the only
+// place ownership of the soundscape moves. Everything else asks activeOutput()
+// and gets on with it.
+//
+// It is core rather than plugin: the plugin reports that a connection changed,
+// and what that *means* for the soundscape — who pauses, who resumes, what the
+// listener is told — is not a decision a provider should be making. A provider
+// that could move the audio itself would be a second answer to "which output",
+// and there is deliberately only one.
+//
+// Its two pieces of state — remoteWasConnected and remoteTransitionId — are
+// declared with the rest of the module's state near the top of the file, rather
+// than here beside their only readers, which would be the better place.
+//
+// The reason is a hoisting rule: a `let` cannot be read at all until its own
+// statement has run (its "temporal dead zone"), even from code further down the
+// file. initRemotePlayback() runs in the boot block above this point, so if the
+// declarations sat here, a provider reporting a connection during start() — a
+// session rejoined from a previous page load does exactly that — would reach
+// the handler before either binding existed, and throw. Two tests caught it.
+// ---------------------------------------------------------------------------
+
 // Connection governs which output owns the soundscape, and only a change in it
 // moves audio.
-async function handleCastChange({ connected, connecting }) {
-    const state = castState(connected, connecting);
-    const previousState = castConnectionState;
+async function handleRemoteConnectionChange({ connected, connecting }) {
+    remotePlaybackUi.setConnection({ connected, connecting });
 
-    castConnectionState = state;
-    castButton.dataset.castState = state;
-    castButton.setAttribute("aria-label", CAST_BUTTON_LABEL_BY_STATE[state]);
-    announceCastState(state, previousState);
+    const wasConnected = remoteWasConnected;
+
+    remoteWasConnected = Boolean(connected);
 
     // Only the connected edge moves audio. Passing through "connecting" changes
-    // how the button looks and what is announced, but nothing about which
-    // transport owns the soundscape.
-    if (connected === (previousState === "connected")) return;
+    // how the control looks and what is announced — which the line above has
+    // already done — but nothing about which output owns the soundscape.
+    if (Boolean(connected) === wasConnected) return;
 
-    syncVolumeControlForCast(connected);
+    syncVolumeControlForRemote(connected);
 
     // A connect and a disconnect arriving close together — a failed session, or
     // a receiver taken over — leave two of these handlers in flight at once,
     // each awaiting a transport the other is undoing. Same generation guard as
     // changeTrack: whichever transition is no longer current stops touching
-    // shared state. stopCasting needs none of its own — it hands straight to
-    // playAudio, which re-checks isCasting() itself.
-    const transitionId = ++castTransitionId;
+    // shared state. handBackOutput needs none of its own — it hands straight to
+    // playAudio, which re-reads activeOutput() itself.
+    const transitionId = ++remoteTransitionId;
 
     if (connected) {
-        await startCasting(transitionId);
+        await takeOverOutput(transitionId);
     } else {
-        await stopCasting();
+        await handBackOutput();
     }
 }
 
-// Reaching a Chromecast takes a few seconds, and the only sign of it is the
-// button's pulse and its changed label — neither of which a screen reader
-// announces on a control nobody is focused on. Idle is the one state with no
-// wording of its own: "returned to this device" is only true if the audio ever
-// left, and a connection abandoned at the picker never moved it. Writing an
-// empty string still clears whatever the previous state said, silently.
-function announceCastState(state, previousState) {
-    if (state === previousState) return;
-
-    castStatus.textContent = CAST_STATUS_BY_STATE[state]
-        ?? (previousState === "connected" ? CAST_DISCONNECTED_STATUS : "");
-}
-
-// The cast element fetches nothing until a person has touched the page. A tab
+// The transport element fetches nothing until a person has touched the page. A tab
 // opened and left alone — restored on startup, or one of twenty from last
 // session — then costs nothing for a feature it will never use. The first
 // gesture loads it, well before anyone can reach the button, because Safari
 // refuses to open its picker on an element whose header has not been read.
 //
 // One release is all there is, so both listeners come off together.
-function releaseCastTransport() {
-    document.removeEventListener("pointerdown", releaseCastTransport, true);
-    document.removeEventListener("keydown", releaseCastTransport, true);
-    castController.allowTransportLoad();
+function releaseRemoteTransport() {
+    document.removeEventListener("pointerdown", releaseRemoteTransport, true);
+    document.removeEventListener("keydown", releaseRemoteTransport, true);
+    remotePlayback.allowTransportLoad();
 }
 
-// The one place the two signals collapse into a name. Everything the cast shows
-// the user — the glyph, the button's label, the announcement — is keyed off the
-// result, so there is a single answer to "what is it doing".
-function castState(connected, connecting) {
-    if (connected) return "connected";
-
-    return connecting ? "connecting" : "idle";
-}
-
-async function startCasting(transitionId) {
-    // Read the intent before pausing: audioPlayer.pause() clears it, and it is
-    // the answer to whether the cast should come up playing or silent. The raw
+// The remote takes over. Ownership has already moved — activeOutput() answers
+// with the remote from the moment it reports connected — so this is not what
+// makes it the owner; it is what carries the soundscape across.
+async function takeOverOutput(transitionId) {
+    // Read the intent before pausing: localOutput.pause() clears it, and it is
+    // the answer to whether the remote should come up playing or silent. The raw
     // intent, not isPlaybackRequested() — a device that connects while the first
     // track is still decoding is still answering a press of play.
     //
@@ -670,21 +667,25 @@ async function startCasting(transitionId) {
     // along, where nothing was ever pressed in *this* page's lifetime and the
     // local player's intent is quite correctly false. Taking that alone would
     // answer a speaker mid-soundscape with a paused button — and then pause it.
-    const wasPlaying = audioPlayer.wantsPlayback() || castController.isPlaying();
+    const wasPlaying = localOutput.wantsPlayback() || remotePlayback.isPlaying();
 
-    // Hand the intent to the cast before either transport moves. A session that
-    // fails as soon as it opens arrives as a disconnect while the local pause
-    // below is still in flight, and the handback decides from this flag alone —
-    // without it, a cast that never connected leaves the room silent.
-    castController.setPlaybackRequested(wasPlaying);
+    // Hand the intent over before either transport moves. A session that fails
+    // as soon as it opens arrives as a disconnect while the local pause below is
+    // still in flight, and the handback decides from this flag alone — without
+    // it, a connection that never completed leaves the room silent.
+    remotePlayback.setPlaybackRequested(wasPlaying);
 
     let failure = null;
 
     try {
-        await audioPlayer.pause();
+        // Parked, not paused-by-anyone: the element's own pause event carries no
+        // intent here, and a session that fails as it opens would otherwise have
+        // that event land after the handback and stop the room. See
+        // AudioPlayer.pauseForHandover.
+        await localOutput.pauseForHandover();
 
         if (wasPlaying) {
-            await castController.play();
+            await remotePlayback.play();
         }
     } catch (error) {
         failure = error;
@@ -697,14 +698,14 @@ async function startCasting(transitionId) {
     // clear an error the newer transition just posted, or post one over it. The
     // log still happens either way — a failure is worth a developer's attention
     // whether or not it is still worth the user's.
-    if (transitionId !== castTransitionId) {
-        if (failure) console.warn("Could not start casting.", failure);
+    if (transitionId !== remoteTransitionId) {
+        if (failure) console.warn("Could not hand playback to the remote device.", failure);
 
         return;
     }
 
     if (failure) {
-        reportPlaybackFailure("Could not start casting.", failure, CAST_FAILURE_MESSAGE);
+        reportPlaybackFailure("Could not hand playback to the remote device.", failure, remotePlayback.failureMessage());
     } else {
         clearPlaybackError();
     }
@@ -712,24 +713,33 @@ async function startCasting(transitionId) {
     syncPlaybackState(isOutputPlaying());
 }
 
-async function stopCasting() {
-    const wasPlaying = castController.isPlaybackRequested();
+// The local player takes the soundscape back. Read the remote's intent first:
+// the connection is already gone, so this is the last moment anything can ask
+// whether the room was listening.
+async function handBackOutput() {
+    const wasPlaying = remotePlayback.isPlaybackRequested();
 
-    castController.pause();
+    remotePlayback.pause();
 
     if (!wasPlaying) {
         syncPlaybackState(false);
         return;
     }
 
-    // Hand the soundscape back to local playback so ending a cast continues the
-    // audio rather than dropping the room into silence. This is the one place
-    // playback starts without a user gesture behind it: if the session began on
-    // the cast, there is no AudioContext yet and the browser may refuse. That
-    // failure is reported like any other, which is the honest outcome — the
-    // alternative is going quiet with nothing on screen to explain it.
+    // Resume through the ordinary play path rather than driving the local player
+    // directly, so ending a remote session continues the audio rather than dropping the
+    // room into silence — and so it lands on whatever activeOutput() now says,
+    // which is the local player by the time this runs.
+    //
+    // This is the one place playback starts without a user gesture behind it: if
+    // the session began on the remote, there is no AudioContext yet and the
+    // browser may refuse. That failure is reported like any other, which is the
+    // honest outcome — the alternative is going quiet with nothing on screen to
+    // explain it.
     await playAudio();
 }
+
+// --- Status messages: errors and the loading indicator --------------------
 
 // Only a failure that left the listener in silence is worth showing. A failed
 // track change while audio is playing is absorbed completely — the previous
@@ -737,7 +747,7 @@ async function stopCasting() {
 // would put a warning over music that never stopped. Those stay console-only,
 // which is where a developer wants them anyway.
 // `message` overrides the default when the failure is not about the soundscape.
-// A cast that will not start is the case that matters: "pick another" sends the
+// A remote device that will not start is the case that matters: "pick another" sends the
 // user hunting through tracks for a fault that is in the room, not the file.
 function reportPlaybackFailure(logMessage, error, message) {
     console.warn(logMessage, error);
@@ -785,6 +795,8 @@ function clearPlaybackError() {
     playbackError.textContent = "";
 }
 
+// --- Preferences ----------------------------------------------------------
+
 function loadPreference(key) {
     try {
         return localStorage.getItem(key);
@@ -813,6 +825,8 @@ function updateThemePreference(value, shouldSave = true) {
     }
 }
 
+// --- Playback -------------------------------------------------------------
+
 async function playCurrentTrack(trackChangeId, direction = "next") {
     // Load the current soundscape
     const track = getCurrentTrack();
@@ -820,43 +834,33 @@ async function playCurrentTrack(trackChangeId, direction = "next") {
     // state: during a track swap the element is briefly paused (src set +
     // load()), so isPlaying() can read false and wrongly start the new track
     // paused, stopping playback mid-navigation.
-    const wasPlaying = isCasting()
-        ? castController.isPlaybackRequested()
-        : audioPlayer.isPlaybackRequested();
+    const wasPlaying = activeOutput().isPlaybackRequested();
 
     saveCurrentTrack();
-    // Unconditionally, not just while casting: the cast element's source is how
-    // a backend matches a device to a resource, and neither engine will report
-    // one until the header has been read, so it has to track the current
-    // soundscape even with nothing connected. Putting it behind an isCasting()
+    // Unconditionally, not just while connected: the transport element's source
+    // is how a backend matches a device to a resource, and neither engine will
+    // report one until the header has been read, so it has to track the current
+    // soundscape even with nothing connected. Putting it behind a connection
     // check is the bug this line exists to prevent; being the one place it
     // happens (with the boot seed and the failed-skip rollback) stops the
     // element and the app drifting apart.
-    castController.setTrack(track);
+    remotePlayback?.setTrack(track);
     updateTrackTitle({ animate: true, direction });
 
-    // Casting has no local fetch or decode to do — the receiver pulls the new
-    // file itself — so there is no loading state and no crossfade to run here.
-    if (isCasting()) {
-        if (wasPlaying) {
-            await castController.play();
-        }
+    await activeOutput().startTrack(track, { wasPlaying });
 
-        // Two quick skips leave two of these in flight, and the receiver can
-        // answer the first one last. Writing metadata from a skip that has
-        // already been superseded would name a soundscape the receiver is no
-        // longer pointed at, in the OS media UI, with the title on screen
-        // disagreeing. On the local path AudioPlayer reports this itself by
-        // answering false below; a cast has no equivalent, so the generation is
-        // checked here.
-        if (trackChangeId !== currentTrackChangeId) return false;
-
-        finishTrackChange(track);
-        return true;
-    }
-
-    const didStartTrack = await audioPlayer.playTrack(track, true, true, !wasPlaying);
-    if (!didStartTrack) return false;
+    // Two quick skips leave two of these in flight, and an output can answer the
+    // first one last. Writing metadata from a skip that has already been
+    // superseded would name a soundscape the output is no longer pointed at, in
+    // the OS media UI, with the title on screen disagreeing.
+    //
+    // Checked here for every output rather than delegated. AudioPlayer has its
+    // own internal request guard and used to report this by answering false, but
+    // that is a different question — it stops an older decode replacing the
+    // active source, not whether this caller may write OS metadata — and a
+    // remote has no equivalent at all, which is the whole reason the answer is
+    // the core's to give.
+    if (trackChangeId !== currentTrackChangeId) return false;
 
     finishTrackChange(track);
     return true;
@@ -875,45 +879,44 @@ function finishTrackChange(track) {
 
 async function playAudio() {
     try {
-        if (isCasting()) {
-            saveCurrentTrack();
-            await castController.play();
-            clearPlaybackError();
-            syncPlaybackState(isOutputPlaying());
-            return;
-        }
+        const output = activeOutput();
 
-        configurePlaybackAudioSession();
+        // Local playback only. The AudioContext and the browser's autoplay
+        // policy are this device's problem; a receiver has neither.
+        if (output === localOutput) configurePlaybackAudioSession();
 
-        if (audioPlayer.hasTrack()) {
-            await audioPlayer.play();
+        // Resume if this output is already holding the current soundscape,
+        // otherwise load it. Asked as "holds *this* track" rather than "holds
+        // anything": a session rejoined mid-soundscape moves the app's current
+        // track to whatever the room is playing, so the local player can be
+        // holding a soundscape the app is no longer on, and resuming it would
+        // answer play with the wrong sound.
+        if (output.holdsTrack(getCurrentTrack())) {
+            await output.play();
         } else {
             saveCurrentTrack();
-            const didStartTrack = await audioPlayer.playTrack(getCurrentTrack(), true);
-            if (!didStartTrack) return;
+            await output.startTrack(getCurrentTrack());
         }
 
         clearPlaybackError();
         syncPlaybackState(isOutputPlaying());
     } catch (error) {
-        reportPlaybackFailure("Could not start playback.", error, castFailureMessage());
+        reportPlaybackFailure("Could not start playback.", error, outputFailureMessage());
         syncPlaybackState(isOutputPlaying());
     }
 }
 
-// Undefined hands reportPlaybackFailure back to its own wording, which is about
-// the soundscape rather than the device.
-function castFailureMessage() {
-    return isCasting() ? CAST_FAILURE_MESSAGE : undefined;
+// What the active output wants said when it fails. Undefined hands
+// reportPlaybackFailure back to its own wording, which is about the soundscape
+// rather than the device — and that is exactly what the local player asks for by
+// answering null.
+function outputFailureMessage() {
+    return activeOutput().failureMessage() ?? undefined;
 }
 
 async function pauseAudio() {
     try {
-        if (isCasting()) {
-            castController.pause();
-        } else {
-            await audioPlayer.pause();
-        }
+        await activeOutput().pause();
 
         syncPlaybackState(false);
     } catch (error) {
@@ -923,13 +926,13 @@ async function pauseAudio() {
 }
 
 // The local media element's play/pause events mirror app state back into the
-// app. While casting it is deliberately parked and paused, so its events say
+// app. While a remote is active it is deliberately parked and paused, so its events say
 // nothing about what the listener is hearing and must not steer playback.
 async function handleBrowserPlaybackStart() {
-    if (audioPlayer.isBrowserPlaybackSyncSuppressed() || isCasting()) return;
+    if (localOutput.isBrowserPlaybackSyncSuppressed() || isRemoteActive()) return;
 
     try {
-        if (!audioPlayer.isPlaying()) {
+        if (!localOutput.isPlaying()) {
             await playAudio();
             return;
         }
@@ -937,15 +940,15 @@ async function handleBrowserPlaybackStart() {
         syncPlaybackState(true);
     } catch (error) {
         console.warn("Could not resume playback after the media element started.", error);
-        syncPlaybackState(audioPlayer.isPlaying());
+        syncPlaybackState(localOutput.isPlaying());
     }
 }
 
 async function handleBrowserPlaybackPause() {
-    if (audioPlayer.isBrowserPlaybackSyncSuppressed() || isCasting()) return;
+    if (localOutput.isBrowserPlaybackSyncSuppressed() || isRemoteActive()) return;
 
     try {
-        if (audioPlayer.isPlaybackRequested()) {
+        if (localOutput.isPlaybackRequested()) {
             await pauseAudio();
             return;
         }
@@ -953,22 +956,22 @@ async function handleBrowserPlaybackPause() {
         syncPlaybackState(false);
     } catch (error) {
         console.warn("Could not pause playback after the media element paused.", error);
-        syncPlaybackState(audioPlayer.isPlaying());
+        syncPlaybackState(localOutput.isPlaying());
     }
 }
 
 async function handleVisibilityChange() {
-    // A cast keeps playing on the receiver whether the tab is visible or not,
+    // A remote keeps playing on the receiver whether the tab is visible or not,
     // and the local context is suspended on purpose — nothing to resume.
-    if (document.hidden || isCasting() || !audioPlayer.isPlaybackRequested()) return;
+    if (document.hidden || isRemoteActive() || !localOutput.isPlaybackRequested()) return;
 
     try {
-        await audioPlayer.play();
+        await localOutput.play();
     } catch (error) {
         console.warn("Could not resume playback after visibility change.", error);
     }
 
-    syncPlaybackState(audioPlayer.isPlaying());
+    syncPlaybackState(localOutput.isPlaying());
 }
 
 function syncPlaybackState(isPlaying) {
@@ -976,7 +979,7 @@ function syncPlaybackState(isPlaying) {
 
     if (isPlaying) {
         playbackState = "playing";
-    } else if (audioPlayer.hasTrack() || isCasting()) {
+    } else if (isRemoteActive() || localOutput.hasTrack()) {
         playbackState = "paused";
     }
 
@@ -987,17 +990,18 @@ function syncPlaybackState(isPlaying) {
     playPauseButton.dataset.playing = isPlaying ? "true" : "false";
 }
 
-// A cast's position belongs to the receiver and the page cannot read it. The
-// local player's reading is worse than none here: it still holds the buffer it
-// was playing before the cast, and its context is suspended, so it would pin a
+// Asked of the active output, which answers null when it cannot know. A remote's
+// position belongs to the receiver and the page cannot read it, and the local
+// player's reading is worse than none while one is connected: it still holds the
+// buffer it was playing before, and its context is suspended, so it would pin a
 // frozen position under a "playing" state in the OS media UI.
 function syncMediaSessionPositionState() {
-    updateMediaSessionPositionState(isCasting() ? null : audioPlayer.getMediaSessionPositionState());
+    updateMediaSessionPositionState(activeOutput().getMediaSessionPositionState());
 }
 
 function updateMediaSessionPositionTimer(isPlaying) {
-    // Nothing to poll while casting — there is no reading to refresh.
-    if (!isPlaying || isCasting()) {
+    // Nothing to poll on an output that cannot report a position.
+    if (!isPlaying || !activeOutput().canReportPosition()) {
         clearInterval(mediaSessionPositionTimer);
         mediaSessionPositionTimer = 0;
         return;
@@ -1007,6 +1011,8 @@ function updateMediaSessionPositionTimer(isPlaying) {
 
     mediaSessionPositionTimer = setInterval(syncMediaSessionPositionState, MEDIA_SESSION_POSITION_INTERVAL_MS);
 }
+
+// --- Boot -----------------------------------------------------------------
 
 function startMediaSession() {
     initMediaSession(getCurrentTrack(), mediaSessionActions, audioElement);

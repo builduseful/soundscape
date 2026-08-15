@@ -2,16 +2,16 @@
  * Casting to Chromecast, Google/Nest speakers, Google TV, AirPlay targets
  * (HomePod, Apple TV) and AirPlay 2 speakers such as modern Sonos.
  *
- * Casting is not another audio output the app can mix into. Nothing in the
+ * Remote playback is not another audio output the app can mix into. Nothing in the
  * browser can route an AudioContext to a cast target, so a connected cast stops
  * the local Web Audio path entirely and this module's own media element takes
  * over as the transport.
  *
  * What happens beyond that element is not one mechanism but three, and the
  * difference matters. Chrome on Android flings: the receiver is handed the URL
- * and fetches it. Chrome on desktop remotes: the browser demuxes locally and
- * streams encoded frames to the device — MediaRouterDesktop has no flinging
- * controller at all. Safari drives AirPlay, where the Mac or iPhone decodes and
+ * and fetches it. Chrome on desktop remotes: the browser unpacks the audio from
+ * its container file itself and streams the encoded frames to the device —
+ * MediaRouterDesktop has no flinging controller at all. Safari drives AirPlay, where the Mac or iPhone decodes and
  * streams audio to the speaker. Two of the three fetch the file through the
  * page, and only the first can loop without the browser's help.
  *
@@ -25,29 +25,15 @@
  * element, so the controller stays generic and a new target should be a backend
  * rather than a branch.
  *
- * There is deliberately no third thing. Both APIs can also report whether a
- * device is out there, and that was once used for one purpose: hiding the button
- * when nothing could be cast to. It is not worth its price. Watching means
- * scanning the local network continuously for as long as the page is open —
- * something Apple documents as a battery cost and asks you not to do without a
- * specific need — and it buys nothing the picker does not already do, since both
- * platforms discover devices themselves when it opens. So the button is simply
- * always there when a backend exists, and nothing is asked of the network until
- * someone presses it. A machine with no devices gets the browser's own picker
- * rather than an error the app would have to explain.
+ * There is deliberately no third thing: neither backend asks whether a device is
+ * out there. See airPlayBackend's note on the event it does not register.
  *
- * Two things this file once claimed are now known to be false, and are corrected
- * rather than deleted because both were argued for at length:
- *
- *   - "prompt() reaches the picker with the element still at readyState 0." It
- *     does not. Chromium clears its availability URLs while duration is NaN and
- *     then rejects with the same NotAllowedError a real dismissal produces, so
- *     the failure is silent. Hence the metadata wait in prompt() below.
- *   - "No vendor SDK." Chromium's Remote Playback never opened a picker for this
- *     app's audio on any device tested, which is what forced cast-sdk.js. That
- *     module's header carries the evidence and the SDK-free routes tried first.
- *     This file is now the Safari and AirPlay path.
+ * This is the Safari and AirPlay path. Chrome takes providers/cast-sdk.js, whose
+ * header carries the evidence for why.
  */
+
+import { REMOTE_FAILURE_MESSAGE } from "../messages.js";
+import { remoteUrlFor } from "../track-source.js";
 
 const REMOTE_CONNECTION_EVENTS = ["connecting", "connect", "disconnect"];
 
@@ -104,7 +90,7 @@ const STALLED_SAMPLES_BEFORE_FIRST_START = 8;
 // decides one case only — a Chromium browser with no Cast SDK to fall back on,
 // which is Samsung Internet, where the button appeared and did nothing at all.
 // Offering a control backed by an API known not to work is worse than offering
-// none, so that browser now gets no cast button.
+// none, so that browser now gets no remote playback button.
 //
 // Brands rather than the UA string: `userAgentData` is Chromium-only, which
 // makes its mere absence most of the answer, and Safari and Firefox cannot be
@@ -202,23 +188,31 @@ const airPlayBackend = {
     },
 };
 
-export const CAST_BACKENDS = [remotePlaybackBackend, airPlayBackend];
+export const REMOTE_BACKENDS = [remotePlaybackBackend, airPlayBackend];
 
 /**
- * Watches a running cast for the one failure no platform reports: the receiver
+ * Watches a running remote session for the one failure no platform reports: the receiver
  * going quiet with nothing said about it.
  *
  * This is liveness policy, not transport and not platform, which is why it sits
  * apart from both the backends above and the controller below. It knows only
- * three things about the cast — where the position is, whether it should be
+ * three things about the session — where the position is, whether it should be
  * advancing right now, and how to ask for a restart — and nothing at all about
  * elements, backends or URLs.
  */
 class LoopWatchdog {
-    constructor({ getPosition, isRunning, restart }) {
+    // The clock is injected rather than taken from the module's globals. Not
+    // tidiness: this is a poll that outlives every call that starts it, so a
+    // test which plays and does not tear down leaks a live interval — under
+    // `node --test` that holds the event loop open and the run never ends. The
+    // timing is also the behaviour here (how long a stall is tolerated before a
+    // restart, and that a restart returns to the un-advanced posture), and that
+    // is not testable against a real two-second clock.
+    constructor({ getPosition, isRunning, restart, clock = globalClock }) {
         this.getPosition = getPosition;
         this.isRunning = isRunning;
         this.restart = restart;
+        this.clock = clock;
         this.timer = 0;
         this.lastPosition = -1;
         this.hasAdvanced = false;
@@ -232,11 +226,11 @@ class LoopWatchdog {
     arm() {
         this.disarm();
         this.reset();
-        this.timer = setInterval(() => this.check(), PROGRESS_POLL_MS);
+        this.timer = this.clock.setInterval(() => this.check(), PROGRESS_POLL_MS);
     }
 
     disarm() {
-        clearInterval(this.timer);
+        this.clock.clearInterval(this.timer);
         this.timer = 0;
     }
 
@@ -282,6 +276,22 @@ class LoopWatchdog {
     }
 }
 
+// The `scope` this module already took is a feature-detection scope — it exists
+// to answer "which engine is this?" and most callers pass nothing but a
+// `navigator`. Timers are resolved separately so a caller can inject a clock
+// without having to fake a whole global object, and so one that does not care
+// keeps the real one.
+const globalClock = {
+    setInterval: (...args) => globalThis.setInterval(...args),
+    clearInterval: (...args) => globalThis.clearInterval(...args),
+    setTimeout: (...args) => globalThis.setTimeout(...args),
+    clearTimeout: (...args) => globalThis.clearTimeout(...args),
+};
+
+function clockFrom(scope) {
+    return typeof scope?.setTimeout === "function" ? scope : globalClock;
+}
+
 const BENIGN_PROMPT_ERRORS = new Set([
     "NotAllowedError",
     "NotFoundError",
@@ -289,23 +299,24 @@ const BENIGN_PROMPT_ERRORS = new Set([
     "AbortError",
 ]);
 
-export function selectCastBackend(element, backends = CAST_BACKENDS, scope = globalThis) {
+export function selectRemoteBackend(element, backends = REMOTE_BACKENDS, scope = globalThis) {
     return backends.find((backend) => backend.isSupported(element, scope)) ?? null;
 }
 
-export class CastController {
+export class MediaElementController {
     constructor(element, {
         onChange,
         onPlaybackChange,
-        backends = CAST_BACKENDS,
+        backends = REMOTE_BACKENDS,
         metadataWaitMs = TRANSPORT_METADATA_WAIT_MS,
         scope = globalThis,
     } = {}) {
         this.element = element;
-        this.backend = selectCastBackend(element, backends, scope);
+        this.backend = selectRemoteBackend(element, backends, scope);
         this.onChange = onChange;
         this.onPlaybackChange = onPlaybackChange;
         this.metadataWaitMs = metadataWaitMs;
+        this.clock = clockFrom(scope);
         // Whether the element may hold a source yet. False until the app reports
         // a user gesture — see allowTransportLoad.
         this.transportAllowed = false;
@@ -315,12 +326,13 @@ export class CastController {
         // The two diverge while the transport is still held back — see
         // syncElementSource.
         this.track = null;
-        this.castUrl = null;
+        this.loadedUrl = null;
         this.stopWatchingConnection = null;
         this.watchdog = new LoopWatchdog({
             getPosition: () => this.element.currentTime,
             isRunning: () => this.playbackRequested && this.isConnected() && !this.element.paused,
             restart: () => this.restartLoop(),
+            clock: clockFrom(scope),
         });
         // Set once for the element's whole life rather than per play(). On the
         // paths that honour it the browser implements it as a seek back to zero;
@@ -348,6 +360,13 @@ export class CastController {
     // be able to ask "was this playing?" after the connection is already gone,
     // to decide whether local playback should pick the soundscape back up.
     isPlaybackRequested() {
+        return this.playbackRequested;
+    }
+
+    // PlaybackOutput. Identical to the above here, and not a redundancy to tidy
+    // away: a remote is handed a URL rather than a decode, so it has no "wants
+    // playback with nothing loaded" state for the two readings to differ over.
+    wantsPlayback() {
         return this.playbackRequested;
     }
 
@@ -431,6 +450,18 @@ export class CastController {
         return false;
     }
 
+    // Present to satisfy the port, and inert by construction: both are gated on
+    // canControlVolume() above, which is permanently false here. They are not a
+    // member carried for another implementation's benefit — every output has to
+    // answer "what is your level" — this one's honest answer is "not mine".
+    getVolume() {
+        return undefined;
+    }
+
+    setVolume() {
+        return false;
+    }
+
     stopWatching() {
         this.stopWatchingConnection?.();
         this.stopWatchingConnection = null;
@@ -461,6 +492,27 @@ export class CastController {
     // "paused" and then "playing" a tick later.
     handleTransportPlaybackChange = () => {
         if (!this.isConnected()) return;
+
+        // The settled state is also the playback intent, but only from an
+        // element that has read a header. That is the whole discriminator: a
+        // source change runs the media load algorithm, which resets readyState
+        // to nothing *and* queues the spurious pause described above, so an
+        // element at HAVE_NOTHING is reporting its own reload rather than the
+        // room. One that has its metadata is reporting the receiver.
+        //
+        // Without this nothing outside the app ever lowers the intent, and a
+        // pause pressed on the speaker itself left the handback reading the room
+        // as still listening — so ending a cast that had been paused started the
+        // soundscape on this device instead of leaving it quiet.
+        //
+        // Deliberately assigns the field rather than calling pause(): pause()
+        // also disarms the watchdog, and a receiver paused from its own remote
+        // is still a session worth watching when it resumes. isRunning() already
+        // reads the intent, so the poll simply stops counting until it comes
+        // back — which is the difference between pausing a cast and ending one.
+        if (this.isTransportReady()) {
+            this.playbackRequested = !this.element.paused;
+        }
 
         this.onPlaybackChange?.();
     };
@@ -496,7 +548,7 @@ export class CastController {
         this.watchdog.reset();
 
         void this.element.play().catch((error) => {
-            console.warn("Could not restart the cast loop.", error);
+            console.warn("Could not restart the remote loop.", error);
         });
     }
 
@@ -517,14 +569,14 @@ export class CastController {
 
         return new Promise((resolve) => {
             const settle = (ready) => {
-                clearTimeout(timer);
+                this.clock.clearTimeout(timer);
                 this.element.removeEventListener("loadedmetadata", onLoaded);
                 this.element.removeEventListener("error", onFailed);
                 resolve(ready);
             };
             const onLoaded = () => settle(true);
             const onFailed = () => settle(false);
-            const timer = setTimeout(() => settle(false), this.metadataWaitMs);
+            const timer = this.clock.setTimeout(() => settle(false), this.metadataWaitMs);
 
             this.element.addEventListener("loadedmetadata", onLoaded);
             this.element.addEventListener("error", onFailed);
@@ -560,7 +612,7 @@ export class CastController {
                 // Worth saying out loud rather than leaving to the phantom
                 // dismissal below: the press is about to do nothing, and the
                 // reason is the file, not the devices.
-                console.warn("Opening the cast picker without transport metadata; the device list may not appear.");
+                console.warn("Opening the device picker without transport metadata; the device list may not appear.");
             }
 
             await this.backend.prompt(this.element);
@@ -584,7 +636,7 @@ export class CastController {
             // exactly how this stayed invisible.
             if (ready && BENIGN_PROMPT_ERRORS.has(error?.name)) return false;
 
-            console.warn("Could not open the cast device picker.", error);
+            console.warn("Could not open the device picker.", error);
             return false;
         } finally {
             this.promptPending = false;
@@ -595,12 +647,46 @@ export class CastController {
     // track — see syncElementSource. Callers asking "is this the soundscape the
     // receiver has?" want this one, not `track`.
     getTrackUrl() {
-        return this.castUrl;
+        return this.loadedUrl;
     }
 
     setTrack(track) {
         this.track = track;
         this.syncElementSource();
+    }
+
+    // PlaybackOutput. Compares the twin, because that is what a receiver was
+    // actually given — and against what the element *holds*, not what the app
+    // last set, since the two diverge while the transport is still held back.
+    holdsTrack(track) {
+        return Boolean(track) && this.loadedUrl === remoteUrlFor(track);
+    }
+
+    // PlaybackOutput. There is no fetch or decode to wait for on this side: the
+    // receiver pulls the file itself, so changing track is assigning a source
+    // and, if the room was already full of sound, asking it to play again.
+    async startTrack(track, { wasPlaying = true } = {}) {
+        this.setTrack(track);
+
+        if (wasPlaying) await this.play();
+    }
+
+    // PlaybackOutput. The receiver owns the position and the page cannot read
+    // it. Answered as a capability rather than a null reading so the core can
+    // keep its polling timer off entirely rather than poll for nothing.
+    canReportPosition() {
+        return false;
+    }
+
+    getMediaSessionPositionState() {
+        return null;
+    }
+
+    // PlaybackOutput. The device could not play it, which is not a fault in the
+    // soundscape — so the app must not answer with wording that sends someone
+    // hunting through the catalogue for a problem that is in the room.
+    failureMessage() {
+        return REMOTE_FAILURE_MESSAGE;
     }
 
     // Whether the element has to be holding the app's current soundscape yet.
@@ -637,11 +723,11 @@ export class CastController {
     // live cast. It compares the URL the controller was given rather than
     // element.src, which the DOM resolves to an absolute URL on the way back out.
     applyElementSource() {
-        const url = this.track?.castUrl;
+        const url = remoteUrlFor(this.track);
 
-        if (!url || url === this.castUrl) return;
+        if (!url || url === this.loadedUrl) return;
 
-        this.castUrl = url;
+        this.loadedUrl = url;
         this.element.src = url;
     }
 
@@ -673,15 +759,8 @@ export class CastController {
         this.element.pause();
     }
 
-    // Deliberately no volume control. Element volume is not local while
-    // connected — Chromium forwards it to the receiver as a stream volume
-    // change, which on a Cast device is the device's own volume and outlives the
-    // session. Pushing the app's slider onto it would mean connecting a cast
-    // silently turns the speaker in the room up or down. The device keeps its
-    // own level; the app's slider governs the output the app actually owns.
-
     notifyChange() {
-        const report = (error) => console.warn("Could not apply a cast state change.", error);
+        const report = (error) => console.warn("Could not apply a remote state change.", error);
 
         try {
             // The listener is allowed to be async — moving playback between two

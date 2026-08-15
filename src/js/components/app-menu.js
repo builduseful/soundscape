@@ -372,8 +372,8 @@ export class AppMenu extends HTMLElement {
     handleFocusOut() {
         // relatedTarget is unreliable: clicking a theme-selector label blurs
         // this button (relatedTarget null) before the browser forwards the
-        // click to the hidden radio on mouseup. A macrotask lets that finish
-        // before checking whether focus actually left.
+        // click to the hidden radio on mouseup. Deferring with setTimeout(0)
+        // lets that finish before we check whether focus actually left.
         setTimeout(() => {
             if (this.contains(document.activeElement)) return;
             this.open = false;

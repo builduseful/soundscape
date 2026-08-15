@@ -814,6 +814,48 @@ test("playTrack refreshes the browser playback surface when replacing a paused t
     assert.equal(player.isBrowserPlaybackSyncSuppressed(), false);
 });
 
+// Parking the element for a handover has to pause it without its own pause
+// event being read back as a person pressing pause. The app ignores those events
+// by asking, when one arrives, whether a remote is active — and that answer can
+// have flipped back by then: a session that fails as it opens disconnects while
+// this pause is still in flight, so the event lands after the handback has
+// resumed local playback and stops the room. Suppressing at the source is what
+// says "this pause carries no intent" regardless of who owns the output by the
+// time anyone hears about it.
+test("pauseForHandover pauses without the element's own event reading as intent", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = new AudioPlayer(audioElement);
+
+    await player.playTrack({ url: "/quiet.ogg" }, true);
+    assert.equal(player.isBrowserPlaybackSyncSuppressed(), false);
+
+    const parked = player.pauseForHandover();
+
+    // Suppressed for the whole of the pause, which is when the element's event
+    // is generated.
+    assert.equal(player.isBrowserPlaybackSyncSuppressed(), true);
+
+    await parked;
+
+    assert.equal(player.isPlaying(), false);
+    assert.equal(contexts[0].state, "suspended");
+    assert.equal(player.wantsPlayback(), false);
+    // Still covered immediately after the await: the event is dispatched in a
+    // task of its own, so releasing synchronously here would release too early.
+    assert.equal(player.isBrowserPlaybackSyncSuppressed(), true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(
+        player.isBrowserPlaybackSyncSuppressed(),
+        false,
+        "the suppression never lifted, so a later real pause would be ignored",
+    );
+});
+
 test("playTrack applies the latest volume to the gain node", async () => {
     const contexts = installAudioContext();
     installFetch();

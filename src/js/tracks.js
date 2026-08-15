@@ -1,20 +1,8 @@
-// List of the soundscapes
+// List of the soundscapes. Deliberately knows nothing about remote playback:
+// the AAC twins cast targets play are derived in
+// js/remote-playback/track-source.js, so deleting that directory leaves this
+// file exactly as it is.
 const OGG_OPUS_MIME = "audio/ogg; codecs=opus";
-
-// Each track ships an AAC twin for cast targets, same basename, built by
-// scripts/build-cast-audio.mjs. Deriving the name rather than listing it keeps
-// the catalog to one line per track and the two files impossible to mismatch;
-// tracks.test.js checks every twin exists.
-//
-// Deliberately no cast MIME to match `mime`. That one feeds canPlayType() on
-// the local element, which answers for this browser — and the browser is not
-// what decodes a cast file, so the answer would be irrelevant.
-function withCastSource(track) {
-    return {
-        ...track,
-        castUrl: track.url.replace(/\.opus$/u, ".m4a"),
-    };
-}
 
 export const tracks = [
     // Nature
@@ -35,7 +23,7 @@ export const tracks = [
     { title: "Brown Noise", url: "resources/soundscapes/brown-noise-loop.opus", mime: OGG_OPUS_MIME },
     { title: "Pink Noise", url: "resources/soundscapes/pink-noise-loop.opus", mime: OGG_OPUS_MIME },
     { title: "White Noise", url: "resources/soundscapes/white-noise-loop.opus", mime: OGG_OPUS_MIME },
-].map(withCastSource);
+];
 
 // URL-safe identifier derived from the title ("Rain & Thunder" → "rain-thunder").
 // Used by the ?track= query param and the manifest app shortcuts.

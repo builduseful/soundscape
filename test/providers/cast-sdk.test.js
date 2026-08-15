@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { CastSdkController, isCastSdkCapable } from "../src/js/cast-sdk.js";
+import { CastSdkController, isCastSdkCapable } from "../../src/js/remote-playback/providers/cast-sdk.js";
+// The platform-API fake, shared with the app-level tests. This file kept a copy
+// of its own until the two started to matter separately — see the fakes note in
+// the remote playback README for which fake answers which question.
+import { createFakeCastSdk } from "../helpers/remote-transport-fakes.js";
 
 const originalConsoleWarn = console.warn;
 
@@ -9,204 +13,8 @@ afterEach(() => {
     console.warn = originalConsoleWarn;
 });
 
-// Stands in for the SDK the gstatic script installs. Only the members the
-// controller actually touches: enough to prove the load request, the session
-// request and the media it hands the receiver, without any network.
-function createFakeSdk() {
-    const state = {
-        options: null,
-        sessionRequests: 0,
-        sessionError: null,
-        loads: [],
-        castState: "NOT_CONNECTED",
-        listeners: new Map(),
-        playerListeners: new Map(),
-        pendingTimers: [],
-        // What the receiver is holding, which outlives the page: this is what a
-        // rejoined session finds already loaded.
-        receiverMedia: null,
-        loadShouldFail: false,
-        volumeCommits: 0,
-    };
 
-    const emit = (map, type) => {
-        for (const handler of map.get(type) ?? []) handler({ type });
-    };
-
-    const session = {
-        loadMedia(request) {
-            state.loads.push(request);
-            state.receiverMedia = request.media;
-
-            return state.loadShouldFail ? Promise.reject(new Error("load failed")) : Promise.resolve();
-        },
-        getMediaSession: () => (state.receiverMedia ? { media: state.receiverMedia } : null),
-    };
-
-    const player = { isPaused: true, isConnected: false, playerState: "PLAYING", volumeLevel: 1 };
-    const store = new Map();
-
-    const scope = {
-        isSecureContext: true,
-        PresentationRequest: function PresentationRequest() {},
-        navigator: { userAgentData: { brands: [{ brand: "Chromium" }, { brand: "Google Chrome" }] } },
-        location: { href: "https://soundscape.test/index.html" },
-        setTimeout: (fn) => {
-            state.pendingTimers.push(fn);
-            return state.pendingTimers.length;
-        },
-        clearTimeout: (id) => {
-            if (id) state.pendingTimers[id - 1] = null;
-        },
-        localStorage: {
-            getItem: (key) => store.get(key) ?? null,
-            setItem: (key, value) => store.set(key, value),
-            removeItem: (key) => store.delete(key),
-        },
-        cast: {
-            framework: {
-                CastState: {
-                    NO_DEVICES_AVAILABLE: "NO_DEVICES_AVAILABLE",
-                    NOT_CONNECTED: "NOT_CONNECTED",
-                    CONNECTING: "CONNECTING",
-                    CONNECTED: "CONNECTED",
-                },
-                CastContextEventType: { CAST_STATE_CHANGED: "caststatechanged" },
-                RemotePlayerEventType: {
-                    IS_PAUSED_CHANGED: "ispausedchanged",
-                    IS_CONNECTED_CHANGED: "isconnectedchanged",
-                    VOLUME_LEVEL_CHANGED: "volumelevelchanged",
-                    PLAYER_STATE_CHANGED: "playerstatechanged",
-                },
-                CastContext: {
-                    getInstance: () => ({
-                        setOptions(options) {
-                            state.options = options;
-                        },
-                        getCastState: () => state.castState,
-                        getCurrentSession: () => (state.castState === "CONNECTED" ? session : null),
-                        requestSession() {
-                            state.sessionRequests += 1;
-                            return state.sessionError
-                                ? Promise.reject(state.sessionError)
-                                : Promise.resolve();
-                        },
-                        addEventListener(type, handler) {
-                            state.listeners.set(type, [...(state.listeners.get(type) ?? []), handler]);
-                        },
-                        removeEventListener(type, handler) {
-                            state.listeners.set(
-                                type,
-                                (state.listeners.get(type) ?? []).filter((c) => c !== handler),
-                            );
-                        },
-                    }),
-                },
-                RemotePlayer: function RemotePlayer() {
-                    return player;
-                },
-                RemotePlayerController: function RemotePlayerController() {
-                    return {
-                        playOrPause() {
-                            player.isPaused = !player.isPaused;
-                        },
-                        // The real controller reads the level off the player
-                        // rather than taking an argument, so the fake counts
-                        // commits to prove the two-step was completed.
-                        setVolumeLevel() {
-                            state.volumeCommits += 1;
-                        },
-                        addEventListener(type, handler) {
-                            state.playerListeners.set(type, [
-                                ...(state.playerListeners.get(type) ?? []),
-                                handler,
-                            ]);
-                        },
-                        removeEventListener(type, handler) {
-                            state.playerListeners.set(
-                                type,
-                                (state.playerListeners.get(type) ?? []).filter((c) => c !== handler),
-                            );
-                        },
-                    };
-                },
-            },
-        },
-        chrome: {
-            cast: {
-                AutoJoinPolicy: { ORIGIN_SCOPED: "origin_scoped" },
-                Image: function Image(url) {
-                    this.url = url;
-                },
-                media: {
-                    DEFAULT_MEDIA_RECEIVER_APP_ID: "CC1AD845",
-                    StreamType: { BUFFERED: "BUFFERED" },
-                    PlayerState: {
-                        IDLE: "IDLE",
-                        PLAYING: "PLAYING",
-                        PAUSED: "PAUSED",
-                        BUFFERING: "BUFFERING",
-                    },
-                    RepeatMode: { OFF: "REPEAT_OFF", SINGLE: "REPEAT_SINGLE" },
-                    QueueData: function QueueData() {
-                        this.items = null;
-                        this.repeatMode = null;
-                    },
-                    QueueItem: function QueueItem(media) {
-                        this.media = media;
-                    },
-                    MediaInfo: function MediaInfo(contentId, contentType) {
-                        this.contentId = contentId;
-                        this.contentType = contentType;
-                    },
-                    MusicTrackMediaMetadata: function MusicTrackMediaMetadata() {
-                        this.title = "";
-                    },
-                    LoadRequest: function LoadRequest(media) {
-                        this.media = media;
-                    },
-                },
-            },
-        },
-    };
-
-    return {
-        scope,
-        state,
-        player,
-        setCastState(next) {
-            state.castState = next;
-            player.isConnected = next === "CONNECTED";
-
-            // Ending a session stops the receiver and it forgets the media. A
-            // rejoin is the other case entirely — the page goes away, the
-            // session does not — which is why the rejoin tests below never pass
-            // through this state.
-            if (next === "NOT_CONNECTED") state.receiverMedia = null;
-
-            emit(state.listeners, "caststatechanged");
-        },
-        emitPlayerPaused() {
-            emit(state.playerListeners, "ispausedchanged");
-        },
-        setVolumeLevel(next) {
-            player.volumeLevel = next;
-            emit(state.playerListeners, "volumelevelchanged");
-        },
-        setPlayerState(next) {
-            player.playerState = next;
-            emit(state.playerListeners, "playerstatechanged");
-        },
-        runTimers() {
-            const due = state.pendingTimers.splice(0);
-
-            for (const fn of due) fn?.();
-        },
-        store,
-    };
-}
-
-function createController({ sdk = createFakeSdk(), ...overrides } = {}) {
+function createController({ sdk = createFakeCastSdk(), ...overrides } = {}) {
     let loads = 0;
     const controller = new CastSdkController({
         scope: sdk.scope,
@@ -220,7 +28,7 @@ function createController({ sdk = createFakeSdk(), ...overrides } = {}) {
     return { sdk, controller, sdkLoads: () => loads };
 }
 
-const TRACK = { title: "Rain", url: "resources/rain.opus", castUrl: "resources/rain.m4a" };
+const TRACK = { title: "Rain", url: "resources/rain.opus" };
 
 // start() reaches the rejoin through a chain of promises, none of which the
 // caller is handed.
@@ -237,7 +45,7 @@ test("cast support is detected without loading the SDK", () => {
         isCastSdkCapable({ PresentationRequest() {}, isSecureContext: true, navigator: chromeBrands }),
         true,
     );
-    // Safari and Firefox: no Presentation API, so they fall through to cast.js.
+    // Safari and Firefox: no Presentation API, so they fall through to providers/media-element.js.
     assert.equal(isCastSdkCapable({ isSecureContext: true, navigator: chromeBrands }), false);
     // The SDK needs a secure context, so an http origin gets no cast button.
     assert.equal(
@@ -391,8 +199,8 @@ test("the receiver is given enough metadata to name and picture the app", async 
 // soundscape this page never chose — changed from another device, or from the
 // speaker. Reopening should show what is actually playing.
 test("rejoining adopts the soundscape the receiver is actually on", async () => {
-    const other = { title: "Fireplace", url: "resources/fire.opus", castUrl: "resources/fire.m4a" };
-    const sdk = createFakeSdk();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const sdk = createFakeCastSdk();
     const adopted = [];
 
     // A previous page left the receiver on the second soundscape.
@@ -424,7 +232,7 @@ test("rejoining adopts the soundscape the receiver is actually on", async () => 
 });
 
 test("a receiver holding something unrecognised is not adopted", async () => {
-    const sdk = createFakeSdk();
+    const sdk = createFakeCastSdk();
     const adopted = [];
 
     sdk.state.receiverMedia = { contentId: "https://elsewhere.test/podcast.m4a" };
@@ -517,7 +325,7 @@ test("a pause at the receiver reaches the app", async () => {
 
 test("a track change while casting reloads the receiver", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus", castUrl: "resources/fire.m4a" };
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -530,6 +338,134 @@ test("a track change while casting reloads the receiver", async () => {
 
     assert.equal(sdk.state.loads.length, 2);
     assert.match(sdk.state.loads.at(-1).media.contentId, /fire\.m4a$/);
+});
+
+// One press, one load. A track change reaches the receiver through three
+// callers for a single skip — the app keeps the transport current, startTrack
+// sets it again, and play() asks a third time because `loadedUrl` is not written
+// until the receiver answers. Each one is a full load, and a real receiver
+// re-fetches the file for every one of them.
+test("a track change loads the receiver exactly once", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    assert.equal(sdk.state.loads.length, 1);
+
+    // Exactly what script.js does for one press of next.
+    controller.setTrack(other);
+    await controller.startTrack(other, { wasPlaying: true });
+    await settle();
+
+    assert.equal(sdk.state.loads.length, 2, "the receiver was told to load more than once");
+    assert.match(sdk.state.loads.at(-1).media.contentId, /fire\.m4a$/);
+});
+
+// The other half of the same guard. Deduplicating by refusing the later callers
+// meant the awaited path — startTrack → play — resolved before the receiver had
+// answered, so a receiver that could not play the file failed silently: the app
+// would report success, write the new soundscape into the OS media UI, and leave
+// the title naming something the room was not playing. The later caller now
+// shares the in-flight request instead, so one press is still one load and the
+// failure reaches whoever asked for it.
+test("a load the receiver rejects is reported to the caller, not swallowed", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    assert.equal(sdk.state.loads.length, 1);
+
+    sdk.state.loadShouldFail = true;
+
+    // Exactly what script.js does for one press of next.
+    controller.setTrack(other);
+    await assert.rejects(
+        () => controller.startTrack(other, { wasPlaying: true }),
+        /load failed/,
+    );
+
+    assert.equal(sdk.state.loads.length, 2, "the failure must not cost the guard its one load");
+    assert.equal(
+        controller.holdsTrack(other),
+        false,
+        "a rejected load must not be recorded as the track the receiver holds",
+    );
+    assert.equal(
+        controller.holdsTrack(TRACK),
+        true,
+        "the receiver is still on the soundscape it was playing",
+    );
+});
+
+// A second request for a track already in flight must not reach the receiver
+// again — the point of the guard — while still resolving with the first one.
+test("a repeated request for the in-flight track shares it rather than reloading", async () => {
+    const { sdk, controller } = createController();
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+
+    const first = controller.loadTrack(TRACK);
+    const second = controller.loadTrack(TRACK);
+
+    assert.equal(sdk.state.loads.length, 1, "the receiver was asked twice");
+
+    await Promise.all([first, second]);
+
+    assert.equal(controller.holdsTrack(TRACK), true);
+});
+
+// A pause pressed on the speaker itself is the one thing that clears the intent
+// from outside the app. Without it the handback reads the room as still
+// listening, and ending a cast that was paused starts the soundscape here.
+test("a pause on the device clears the intent the handback reads", async () => {
+    const { sdk, controller } = createController();
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    assert.equal(controller.isPlaybackRequested(), true);
+
+    sdk.player.isPaused = true;
+    sdk.setPlayerState("PAUSED");
+    sdk.emitPlayerPaused();
+
+    assert.equal(controller.isPlaybackRequested(), false, "the device's pause left the intent raised");
+
+    // And the room is handed back exactly what it was doing: still paused.
+    sdk.setCastState("NOT_CONNECTED");
+
+    assert.equal(controller.isPlaybackRequested(), false);
+});
+
+// The narrow half of the rule above: only a receiver *sitting* paused says the
+// room stopped. One that is buffering, or between queue items, is a receiver in
+// the middle of something, and clearing the intent there would disarm the idle
+// safety net for the session it exists to watch.
+test("a receiver that is only buffering is not read as a pause", async () => {
+    const { sdk, controller } = createController();
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    sdk.player.isPaused = true;
+    sdk.setPlayerState("BUFFERING");
+    sdk.emitPlayerPaused();
+
+    assert.equal(controller.isPlaybackRequested(), true, "a buffering receiver cleared the intent");
 });
 
 // Nothing is connected, so there is no receiver to tell.
@@ -616,7 +552,7 @@ test("the receiver is told to repeat the soundscape indefinitely", async () => {
 // Queue support belongs to the receiver build. An older one should lose the
 // looping, not the playback.
 test("a receiver without queue support still gets the track", async () => {
-    const sdk = createFakeSdk();
+    const sdk = createFakeCastSdk();
 
     delete sdk.scope.chrome.cast.media.QueueData;
 
@@ -668,7 +604,7 @@ test("a receiver idling after a deliberate pause is left alone", async () => {
 // behind the SDK's own ORIGIN_SCOPED rejoin can never run — and reopening the
 // app shows "idle" beside a speaker that is still playing.
 test("a session running at the last close is rejoined on the next open", async () => {
-    const sdk = createFakeSdk();
+    const sdk = createFakeCastSdk();
 
     await createController({ sdk }).controller.prompt();
     sdk.setCastState("CONNECTED");
@@ -690,7 +626,7 @@ test("a session running at the last close is rejoined on the next open", async (
 // play() reloads it — dropping a speaker minutes into a soundscape back to the
 // start, every single time the app is reopened.
 test("reopening the app onto a live session does not restart the soundscape", async () => {
-    const sdk = createFakeSdk();
+    const sdk = createFakeCastSdk();
     const first = createController({ sdk });
 
     await first.controller.prompt();
@@ -721,7 +657,7 @@ test("reopening the app onto a live session does not restart the soundscape", as
 // that rejoins it never pressed anything. Left false, the idle safety net would
 // sit disarmed for exactly the session it exists to watch.
 test("a rejoined session that is playing counts as playback being wanted", async () => {
-    const sdk = createFakeSdk();
+    const sdk = createFakeCastSdk();
     const { controller } = createController({ sdk });
 
     // What the previous page left behind when it was closed mid-cast.
@@ -792,7 +728,7 @@ test("a receiver that gets going again is left alone and forgiven", async () => 
 });
 
 test("someone who was not casting contacts Google on neither visit", async () => {
-    const sdk = createFakeSdk();
+    const sdk = createFakeCastSdk();
     const { controller, sdkLoads } = createController({ sdk });
 
     controller.start();
@@ -826,4 +762,33 @@ test("a browser with no cast framework is reported as unreachable", async () => 
     assert.equal(controller.isTransportReady(), true, "nothing is known before a press");
     assert.equal(await controller.prompt(), false);
     assert.equal(controller.isTransportReady(), false);
+});
+
+// A failed skip sends the app back to the soundscape that is still playing, and
+// that rollback must be a no-op on the receiver. `setTrack` has no "already
+// loaded" check of its own, so without one in `loadTrack` the rollback re-fetches
+// the file and restarts the room from zero — punishing the listener for a
+// failure they did not cause. Latent until the failure above became reportable.
+test("the rollback after a failed skip does not restart the playing track", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+    assert.equal(sdk.state.loads.length, 1);
+
+    sdk.state.loadShouldFail = true;
+    controller.setTrack(other);
+    await assert.rejects(() => controller.startTrack(other, { wasPlaying: true }));
+    const afterFailure = sdk.state.loads.length;
+
+    // What changeTrack's catch does: put the app back on the track that is playing.
+    sdk.state.loadShouldFail = false;
+    controller.setTrack(TRACK);
+    await settle();
+
+    assert.equal(sdk.state.loads.length, afterFailure,
+        "the receiver was told to load a track it is already playing");
 });

@@ -7,7 +7,11 @@
 .opencode/
 .playwright/
 .playwright-cli/
-.temp/
+# Anchored with **/ on purpose: a bare `.temp/` matches only the build context
+# root, and agent scratch has landed under src/ before (a browser profile left
+# in resources/soundscapes/, tens of megabytes of it) where it would otherwise
+# be copied into the image and served.
+**/.temp/
 .vs/
 opencode.json
 

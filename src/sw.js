@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.14.0";
+const VERSION = "1.14.6";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -17,13 +17,18 @@ const APP_SHELL_ASSETS = [
     "./manifest.webmanifest",
     "./js/script.js",
     "./js/audio-player.js",
-    "./js/cast.js",
-    "./js/cast-sdk.js",
+    "./js/playback-output.js",
+    "./js/remote-playback/index.js",
+    "./js/remote-playback/messages.js",
+    "./js/remote-playback/track-source.js",
+    "./js/remote-playback/providers/media-element.js",
+    "./js/remote-playback/providers/cast-sdk.js",
     "./js/media-session.js",
     "./js/pwa.js",
     "./js/theme-utils.js",
     "./js/tracks.js",
     "./js/components/app-menu.js",
+    "./js/remote-playback/control.js",
     "./js/components/theme-selector.js",
     "./js/components/volume-control.js",
 ];
@@ -81,14 +86,23 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    // Cast twins are the one asset the worker deliberately does not touch.
-    // Handling them would mean reading each one whole whatever was asked for:
-    // cacheIfOk buffers the body, and handleRangeRequest upgrades a range miss to
-    // a full fetch. The cast element asks for ranges — it never wants the whole
-    // file up front — so every one of those partial reads would become a megabyte.
-    // Left alone, the browser gets exactly the bytes it asked for and its own HTTP
-    // cache handles the repeat.
-    if (isCastAudio(request)) {
+    // The one place remote playback reaches into the service worker, and a
+    // deliberate exception rather than an oversight: everything else about the
+    // feature is confined to js/remote-playback/, but this worker cannot import
+    // from it. It must stay a classic worker with VERSION hardcoded, because the
+    // browser gates its update on this file's own bytes changing — so the suffix
+    // is checked here by hand.
+    //
+    // Not a caching preference. Handling these would mean reading each one whole
+    // whatever was asked for: cacheIfOk buffers the body, and handleRangeRequest
+    // upgrades a range miss to a full fetch. The transport element asks for
+    // ranges — it never wants the whole file up front — so every one of those
+    // partial reads would become a megabyte. Left alone, the browser gets exactly
+    // the bytes it asked for and its own HTTP cache handles the repeat.
+    //
+    // The consequence to accept: casting needs the network. That is true of the
+    // Chrome Android path regardless, since there the receiver does the fetching.
+    if (isRemoteAudio(request)) {
         return;
     }
 
@@ -102,7 +116,7 @@ self.addEventListener("fetch", (event) => {
 
 // The .m4a twins that cast targets play. Their .opus originals — the files this
 // app actually decodes — are unaffected.
-function isCastAudio(request) {
+function isRemoteAudio(request) {
     return new URL(request.url).pathname.endsWith(".m4a");
 }
 

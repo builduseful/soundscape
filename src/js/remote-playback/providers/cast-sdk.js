@@ -2,8 +2,8 @@
  * Casting to Chromecast and Google/Nest speakers via the Google Cast SDK.
  *
  * This exists because the standards-track answer does not work. The Remote
- * Playback API in cast.js is designed for exactly this job — "a page with a
- * media element initiate and control playback of that media on a connected
+ * Playback API in providers/media-element.js is designed for exactly this job —
+ * "a page with a media element initiate and control playback of that media on a
  * remote device" — and it was the correct first choice. In practice its picker
  * never opened: measured on Chrome/Windows, Chrome/Android and Samsung
  * Internet, `remote.prompt()` was refused every time. Chrome only offers
@@ -30,13 +30,16 @@
  *
  * So: the SDK, with Google's stock Default Media Receiver, which needs no
  * registration, no account and no fee. Safari keeps the Remote Playback and
- * AirPlay path in cast.js, which is the one platform where that API is
- * properly honoured.
+ * AirPlay path in providers/media-element.js, which is the one platform where
+ * that API is properly honoured.
  *
  * The script is fetched from gstatic.com and cannot be precached, which is why
  * nothing loads it until the cast button is actually pressed. A visitor who
  * never casts never contacts Google, and the app stays fully usable offline.
  */
+
+import { REMOTE_FAILURE_MESSAGE } from "../messages.js";
+import { remoteUrlFor } from "../track-source.js";
 
 const SDK_URL = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
 
@@ -88,16 +91,17 @@ const MAX_CONSECUTIVE_IDLE_RESTARTS = 3;
  * on: the Presentation API, which Chrome exposes only in a secure context.
  *
  * Deliberately false in Safari and Firefox. Neither ships the Presentation API,
- * so both fall through to cast.js — Safari to AirPlay, Firefox to no cast
- * button at all, which is correct in both cases.
+ * so both fall through to providers/media-element.js — Safari to AirPlay, Firefox
+ * to no cast button at all, which is correct in both cases.
  *
  * The Presentation API and secure-context checks alone are not enough: every
  * Chromium browser exposes them, but Google's cast framework only ever comes
  * up in actual Chrome — Samsung Internet passes both checks and then the SDK
  * fails to load. Rather than show the button and report that failure after a
- * press, capability is narrowed here with the same brand signal cast.js uses
- * to exclude Samsung from the Remote Playback backend, so the browsers that
- * cannot cast get no button at all instead of one that explains itself.
+ * press, capability is narrowed here with the same brand signal that
+ * providers/media-element.js uses to exclude Samsung from the Remote Playback
+ * backend, so the browsers that cannot cast get no button at all instead of one
+ * that explains itself.
  */
 export function isCastSdkCapable(scope = globalThis) {
     return (
@@ -210,6 +214,14 @@ export class CastSdkController {
         // What the receiver was actually given, which is not always the app's
         // current track — nothing is loaded until a cast is running.
         this.loadedUrl = null;
+        // What it is *being* given right now. `loadedUrl` cannot answer that:
+        // it is only written once the receiver replies, so every caller asking
+        // "does it already hold this?" during the round trip gets "no" and asks
+        // for it again. See loadTrack.
+        this.pendingLoadUrl = null;
+        // The in-flight request itself, shared with any caller that asks for the
+        // same track while it is running. See loadTrack.
+        this.pendingLoad = null;
         this.playbackRequested = false;
         this.promptPending = false;
         this.sdkReady = null;
@@ -313,6 +325,12 @@ export class CastSdkController {
         }
     }
 
+    // Every subscription initialise() takes out is released here, and the two
+    // lists have to stay in step. VOLUME_LEVEL_CHANGED was missing from this one
+    // for a while and nothing noticed, because nothing calls stopWatching in the
+    // app yet — the controller lives as long as the page. That stops being true
+    // the moment a provider can be detached, which is what the shared output
+    // contract's teardown case now pins.
     stopWatching() {
         const events = this.scope.cast?.framework;
 
@@ -329,6 +347,10 @@ export class CastSdkController {
         this.playerController?.removeEventListener(
             events.RemotePlayerEventType.IS_CONNECTED_CHANGED,
             this.handleCastStateChange,
+        );
+        this.playerController?.removeEventListener(
+            events.RemotePlayerEventType.VOLUME_LEVEL_CHANGED,
+            this.handleVolumeChange,
         );
         this.playerController?.removeEventListener(
             events.RemotePlayerEventType.PLAYER_STATE_CHANGED,
@@ -376,7 +398,7 @@ export class CastSdkController {
 
         // The receiver has its own remote and the person holding it is not this
         // page, so its pause is the app's only word that the room went quiet —
-        // the same reasoning as the cast element's play/pause in cast.js.
+        // the same reasoning as the transport element's play/pause in providers/media-element.js.
         this.playerController.addEventListener(
             cast.framework.RemotePlayerEventType.IS_PAUSED_CHANGED,
             this.handlePlaybackChange,
@@ -429,6 +451,33 @@ export class CastSdkController {
         return this.playbackRequested;
     }
 
+    // PlaybackOutput. Coincides with the above on any remote — see the same
+    // member in providers/media-element.js for why that is honest rather than duplicated.
+    wantsPlayback() {
+        return this.playbackRequested;
+    }
+
+    // PlaybackOutput. Against what the receiver was actually given, which on a
+    // rejoin is whatever it has been playing all along rather than whatever this
+    // page last chose.
+    holdsTrack(track) {
+        return Boolean(track) && this.loadedUrl === remoteUrlFor(track);
+    }
+
+    // PlaybackOutput. The receiver owns the position and the page cannot read
+    // it; see the same member in providers/media-element.js.
+    canReportPosition() {
+        return false;
+    }
+
+    getMediaSessionPositionState() {
+        return null;
+    }
+
+    failureMessage() {
+        return REMOTE_FAILURE_MESSAGE;
+    }
+
     // Unlike the Remote Playback path, this transport has a volume API of its
     // own — `RemotePlayerController.setVolumeLevel` — so the slider can drive
     // the speaker instead of being switched off with an explanation.
@@ -458,6 +507,15 @@ export class CastSdkController {
 
     getTrackUrl() {
         return this.loadedUrl;
+    }
+
+    // PlaybackOutput. setTrack already loads the receiver when one is connected
+    // and playing, so the only thing left is the case it deliberately skips: a
+    // connected receiver that is paused, which a track change should start.
+    async startTrack(track, { wasPlaying = true } = {}) {
+        this.setTrack(track);
+
+        if (wasPlaying) await this.play();
     }
 
     // Remembered unconditionally, loaded only while a cast is running: with
@@ -503,7 +561,7 @@ export class CastSdkController {
 
         if (!this.track) return false;
 
-        if (this.track.castUrl !== this.loadedUrl) {
+        if (remoteUrlFor(this.track) !== this.loadedUrl) {
             await this.loadTrack(this.track);
 
             return true;
@@ -524,8 +582,8 @@ export class CastSdkController {
 
     // The receiver fetches the file itself, so it needs an absolute URL — a
     // page-relative one means nothing on the other side of the network.
-    absoluteCastUrl(track) {
-        return new URL(track.castUrl, this.scope.location?.href ?? SDK_URL).href;
+    absoluteRemoteUrl(track) {
+        return new URL(remoteUrlFor(track), this.scope.location?.href ?? SDK_URL).href;
     }
 
     absoluteUrl(path) {
@@ -564,13 +622,49 @@ export class CastSdkController {
         return metadata;
     }
 
-    async loadTrack(track) {
+    // One press, one load. A single track change reaches here three times: the
+    // app keeps the transport current for any provider, `startTrack` sets the
+    // track again on the way to playing it, and `play()` asks a third time
+    // because `loadedUrl` still holds the previous soundscape while the first
+    // request is in flight. Each one is a full load on the receiver, which
+    // re-fetches the file — measured as three loads per skip against a fake
+    // receiver, and audible on a real one as a soundscape that restarts twice
+    // before it settles.
+    //
+    // The guard has to be the *pending* URL rather than the loaded one for the
+    // same reason the duplicates exist: only the pending URL is true from the
+    // moment the request is made rather than from when it is answered.
+    //
+    // A later caller is handed the in-flight promise rather than refused. Still
+    // one `loadMedia` per press — but refusing outright meant the awaited path
+    // (startTrack → play) resolved before the receiver had answered, so a failed
+    // load reached nobody and the title named a soundscape the room was not
+    // playing. Sharing it keeps the one load and lets every caller hear how it
+    // went.
+    loadTrack(track) {
         const session = this.context?.getCurrentSession?.();
 
-        if (!session || !track) return false;
+        if (!session || !track) return Promise.resolve(false);
 
+        const url = remoteUrlFor(track);
+
+        // Already on the receiver: loading it again is a full re-fetch that
+        // restarts the soundscape. `play()` checks this, `setTrack` does not —
+        // and the app calls that to put itself back on the playing track after a
+        // failed skip. The idle-restart path clears `loadedUrl` to get past this.
+        if (url === this.loadedUrl) return Promise.resolve(false);
+
+        if (this.pendingLoadUrl === url) return this.pendingLoad;
+
+        this.pendingLoadUrl = url;
+        this.pendingLoad = this.sendLoad(session, track, url);
+
+        return this.pendingLoad;
+    }
+
+    async sendLoad(session, track, url) {
         const { chrome } = this.scope;
-        const mediaInfo = new chrome.cast.media.MediaInfo(this.absoluteCastUrl(track), CAST_MIME);
+        const mediaInfo = new chrome.cast.media.MediaInfo(this.absoluteRemoteUrl(track), CAST_MIME);
 
         mediaInfo.streamType = chrome.cast.media.StreamType.BUFFERED;
 
@@ -581,8 +675,17 @@ export class CastSdkController {
         request.autoplay = true;
         applyRepeat(chrome, request, mediaInfo);
 
-        await session.loadMedia(request);
-        this.loadedUrl = track.castUrl;
+        try {
+            await session.loadMedia(request);
+            this.loadedUrl = url;
+        } finally {
+            // Only if this request is still the current one: a newer track has
+            // already claimed the slot and must keep it.
+            if (this.pendingLoadUrl === url) {
+                this.pendingLoadUrl = null;
+                this.pendingLoad = null;
+            }
+        }
 
         return true;
     }
@@ -599,6 +702,8 @@ export class CastSdkController {
         // holds the track.
         if (!connected) {
             this.loadedUrl = null;
+            this.pendingLoadUrl = null;
+            this.pendingLoad = null;
             this.cancelIdleRestart();
             this.idleRestarts = 0;
         }
@@ -634,12 +739,12 @@ export class CastSdkController {
         if (!contentId) return;
 
         const playing = this.tracks.find(
-            (candidate) => this.absoluteCastUrl(candidate) === contentId,
-        ) ?? (this.track && this.absoluteCastUrl(this.track) === contentId ? this.track : null);
+            (candidate) => this.absoluteRemoteUrl(candidate) === contentId,
+        ) ?? (this.track && this.absoluteRemoteUrl(this.track) === contentId ? this.track : null);
 
         if (!playing) return;
 
-        this.loadedUrl = playing.castUrl;
+        this.loadedUrl = remoteUrlFor(playing);
 
         if (playing === this.track) return;
 
@@ -650,6 +755,15 @@ export class CastSdkController {
     cancelIdleRestart() {
         this.scope.clearTimeout?.(this.idleRestartTimer);
         this.idleRestartTimer = 0;
+    }
+
+    // Sitting paused, as opposed to merely not producing sound. BUFFERING and
+    // IDLE are receivers in the middle of something, and neither is somebody
+    // reaching for pause.
+    isReceiverPaused() {
+        const { PlayerState } = this.scope.chrome?.cast?.media ?? {};
+
+        return Boolean(PlayerState) && this.player?.playerState === PlayerState.PAUSED;
     }
 
     isReceiverIdle() {
@@ -720,13 +834,32 @@ export class CastSdkController {
     handlePlaybackChange = () => {
         if (!this.isConnected()) return;
 
-        // A receiver that is playing *is* a request for playback, whoever made
-        // it. On a rejoin nothing was pressed in this page's lifetime, so the
-        // flag starts false while the room is full of sound — which would leave
-        // the idle safety net disarmed for a session it is meant to be watching.
-        // Only ever raised here: a pause has already cleared the flag by the
-        // time its event arrives, and must not be undone.
-        if (this.player?.isPaused === false) this.playbackRequested = true;
+        // The receiver's settled state *is* the playback intent, whoever set it.
+        // Raising it matters on a rejoin: nothing was pressed in this page's
+        // lifetime, so the flag starts false while the room is full of sound,
+        // which would leave the idle safety net disarmed for a session it is
+        // meant to be watching.
+        //
+        // Clearing it matters when the pause came from the device itself — the
+        // speaker's own remote, or the Home app. The app's pause clears the flag
+        // before this event arrives, so mirroring is a no-op there; a device's
+        // pause has nothing else that ever clears it, and leaving it raised told
+        // the handback the room was still listening. Ending a cast that had been
+        // paused on the device then started the soundscape on this machine
+        // instead of leaving it quiet.
+        //
+        // Safe to mirror here, and deliberately not done on the media element
+        // path: there a track change fires a `pause` of its own for a cast that
+        // is not stopping. This transport reports the receiver's state rather
+        // than an element's — and the clear is narrowed further to a *settled*
+        // PAUSED, so a receiver merely buffering or between items is never
+        // mistaken for one somebody stopped. Only a receiver that is sitting
+        // paused says the room is no longer listening.
+        if (this.player?.isPaused === false) {
+            this.playbackRequested = true;
+        } else if (this.isReceiverPaused()) {
+            this.playbackRequested = false;
+        }
 
         this.onPlaybackChange?.();
     };

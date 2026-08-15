@@ -1,3 +1,7 @@
+// The platform-API fake for Chrome's Cast SDK. Shared with the provider's own
+// tests rather than copied — see the fakes note in the remote playback README.
+import { createFakeCastSdk } from "./remote-transport-fakes.js";
+
 const originalAudioContext = globalThis.AudioContext;
 const originalCustomElements = globalThis.customElements;
 const originalDocument = globalThis.document;
@@ -13,6 +17,12 @@ const originalClearInterval = globalThis.clearInterval;
 const originalSetInterval = globalThis.setInterval;
 const originalClearTimeout = globalThis.clearTimeout;
 const originalSetTimeout = globalThis.setTimeout;
+// Restored by deletion rather than reassignment, because none of these exist in
+// Node to begin with. Leaving even one behind would hand the *next* test a
+// browser that looks like Chrome, and the registry would silently give it the
+// Cast SDK instead of whichever provider that test meant to exercise — a failure
+// that would land in an unrelated file.
+const CAST_SDK_GLOBALS = ["PresentationRequest", "isSecureContext", "__castSdkLoad", "cast", "chrome"];
 
 class FakeElement {
     constructor() {
@@ -108,6 +118,60 @@ class FakeElement {
     }
 }
 
+/**
+ * Stands in for <remote-playback>, and deliberately implements none of it.
+ *
+ * customElements.define is a no-op here, so nothing would upgrade the real class
+ * anyway — but the more important reason is that these tests are about the app.
+ * What they need to know is what the app *told* the control and what it handed
+ * it, not how a button looks. A fake that reproduced the glyph states and the
+ * busy pulse would be a second implementation, and every test written against it
+ * would prove something about this file rather than about the component.
+ *
+ * So this records, and forwards nothing. The control's own behaviour — the
+ * pulse, the announcements, the wording — is tested against the real class in
+ * remote-playback-control.test.js, with a DOM stand-in instead of a facade
+ * stand-in.
+ */
+class FakeRemotePlaybackUi extends FakeElement {
+    constructor() {
+        super();
+        this.facade = null;
+        this.attached = false;
+        this.removed = false;
+        this.connection = { connected: false, connecting: false };
+    }
+
+    attach(facade) {
+        this.facade = facade;
+        this.attached = true;
+    }
+
+    detach() {
+        this.facade = null;
+        this.removed = true;
+    }
+
+    setConnection(connection) {
+        this.connection = connection;
+    }
+
+    /** The name the control would show. Derived, so a test cannot drift from it. */
+    get state() {
+        if (this.connection.connected) return "connected";
+
+        return this.connection.connecting ? "connecting" : "idle";
+    }
+
+    /**
+     * A press, reduced to the only part of it the app is responsible for.
+     * Everything the control wraps around this call is the control's own.
+     */
+    press() {
+        return this.facade.prompt();
+    }
+}
+
 class FakeAudioElement extends FakeElement {
     constructor() {
         super();
@@ -193,7 +257,7 @@ class FakeAudioElement extends FakeElement {
 export const FAKE_TRACK_SECONDS = 30;
 export const FAKE_TRACK_LOOP_SECONDS = (48000 * FAKE_TRACK_SECONDS - 480) / 48000;
 
-// Stands in for a Remote Playback API implementation on the cast element. It is
+// Stands in for a Remote Playback API implementation on the transport element. It is
 // opt-in because the default environment should look like a machine with no
 // cast devices on the network — which is what most of the suite assumes.
 function createFakeRemotePlayback() {
@@ -205,7 +269,7 @@ function createFakeRemotePlayback() {
         promptShouldReject: null,
 
         // Present but never expected to run. The backend feature-detects on this
-        // method without calling it — see its comment in cast.js for why it probes
+        // method without calling it — see its comment in providers/media-element.js for why it probes
         // one it does not use — so the fake has to carry it to be selected at all.
         // Counted so a test can prove no scan was started.
         watchAvailabilityCalls: 0,
@@ -258,6 +322,7 @@ function createFakeRemotePlayback() {
 
 export function installAppTestEnvironment({
     castDevices = false,
+    castSdk = false,
     fetch = defaultFetch,
     launchQueue,
     matchMediaMatches = false,
@@ -272,12 +337,16 @@ export function installAppTestEnvironment({
     const currentTitle = new FakeElement();
     const incomingTitle = new FakeElement();
     const audioElement = new FakeAudioElement();
-    const castAudioElement = new FakeAudioElement();
+    const remoteTransportElement = new FakeAudioElement();
     const castRemote = castDevices ? createFakeRemotePlayback() : null;
+    // The other provider: `castDevices` gives the app AirPlay's path, this gives
+    // it Chrome's. With both on the registry takes the SDK first and the element
+    // path is never reached — which is what a real Chrome does.
+    const castSdkFake = castSdk ? createFakeCastSdk() : null;
     const documentHandlers = new Map();
 
     if (castRemote) {
-        castAudioElement.remote = castRemote;
+        remoteTransportElement.remote = castRemote;
     }
     const intervals = new Map();
     const timeouts = new Map();
@@ -303,13 +372,11 @@ export function installAppTestEnvironment({
         "playbackError",
         "trackLoading",
         "trackLoadingLabel",
-        "castButton",
-        "castStatus",
     ]) {
         elements.set(id, new FakeElement());
     }
 
-    elements.get("castButton").hidden = true;
+    elements.set("remotePlaybackUi", new FakeRemotePlaybackUi());
 
     // Mirrors the `hidden` attribute on the real elements so tests can assert
     // whether a playback failure — or a slow load — is actually surfaced.
@@ -318,7 +385,7 @@ export function installAppTestEnvironment({
 
     elements.set("title", title);
     elements.set("audioElement", audioElement);
-    elements.set("castAudioElement", castAudioElement);
+    elements.set("remoteTransportElement", remoteTransportElement);
 
     globalThis.HTMLElement = FakeElement;
     globalThis.Element = FakeElement;
@@ -370,9 +437,23 @@ export function installAppTestEnvironment({
     globalThis.MediaMetadata = function FakeMediaMetadata(metadata) {
         Object.assign(this, metadata);
     };
+    if (castSdkFake) {
+        // What `isCastSdkCapable` reads, and nothing more. The brand below is
+        // the part that decides it: Samsung Internet passes the other two.
+        globalThis.PresentationRequest = function PresentationRequest() {};
+        globalThis.isSecureContext = true;
+        // The gstatic handshake, already answered, so nothing loads a script.
+        globalThis.__castSdkLoad = Promise.resolve();
+        globalThis.cast = castSdkFake.scope.cast;
+        globalThis.chrome = castSdkFake.scope.chrome;
+    }
+
     Object.defineProperty(globalThis, "navigator", {
         configurable: true,
         value: {
+            ...(castSdkFake
+                ? { userAgentData: { brands: [{ brand: "Chromium" }, { brand: "Google Chrome" }] } }
+                : {}),
             mediaSession: {
                 metadata: undefined,
                 playbackState: "none",
@@ -560,8 +641,9 @@ export function installAppTestEnvironment({
     return {
         audioContexts,
         audioElement,
-        castAudioElement,
+        remoteTransportElement,
         castRemote,
+        castSdk: castSdkFake,
         elements,
         intervals,
         timeouts,
@@ -619,6 +701,9 @@ export function restoreAppTestEnvironment() {
     globalThis.setInterval = originalSetInterval;
     globalThis.clearTimeout = originalClearTimeout;
     globalThis.setTimeout = originalSetTimeout;
+
+    for (const name of CAST_SDK_GLOBALS) delete globalThis[name];
+
     Object.defineProperty(globalThis, "navigator", {
         configurable: true,
         value: originalNavigator,
