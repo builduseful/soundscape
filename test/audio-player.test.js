@@ -440,6 +440,47 @@ test("applyLoopCrossfade computes loopEnd from the source sample rate", () => {
     assert.equal(buffer.length, length);
 });
 
+test("applyLoopCrossfade clamps the overlap to half the buffer length", () => {
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const sampleRate = 48000;
+    const length = 1000;
+    const source = fakeContext.createBuffer(1, length, sampleRate);
+    fillWithNoise(source.getChannelData(0), 5);
+    const original = Float32Array.from(source.getChannelData(0));
+
+    // A huge crossfade would ask for an overlap longer than the file; the join
+    // must stay centred so "no step at the wrap" still holds.
+    const crossfadeMs = 100000;
+    const overlap = overlapSamplesFor(length, sampleRate, crossfadeMs);
+    const { buffer, loopEnd } = applyLoopCrossfade(source, fakeContext, crossfadeMs);
+
+    assert.equal(overlap, Math.floor(length / 2));
+    assert.equal(Math.round(loopEnd * sampleRate), length - overlap);
+    // The blend touches only the first `overlap` samples; the rest is source.
+    assert.equal(buffer.getChannelData(0)[overlap], original[overlap]);
+});
+
+test("applyLoopCrossfade enforces a minimum one-sample overlap", () => {
+    const fakeContext = createFakeAudioContextForCrossfade();
+    const sampleRate = 48000;
+    const length = 1000;
+    const source = fakeContext.createBuffer(1, length, sampleRate);
+    fillWithNoise(source.getChannelData(0), 9);
+    const original = Float32Array.from(source.getChannelData(0));
+
+    // A sub-sample crossfade rounds to zero, which would be no crossfade at all.
+    const crossfadeMs = 0.005;
+    const overlap = overlapSamplesFor(length, sampleRate, crossfadeMs);
+    const { buffer, loopEnd } = applyLoopCrossfade(source, fakeContext, crossfadeMs);
+
+    assert.equal(overlap, 1);
+    assert.equal(Math.round(loopEnd * sampleRate), length - 1);
+    // The single blended sample takes the value of the sample it crossfades
+    // from (the wrap point), proving the blend still ran over the join.
+    assert.equal(buffer.getChannelData(0)[0], original[length - 1]);
+    assert.equal(buffer.getChannelData(0)[1], original[1]);
+});
+
 test("loadBuffer returns a crossfaded loop window and caches it", async () => {
     const contexts = installAudioContext();
     installFetch();

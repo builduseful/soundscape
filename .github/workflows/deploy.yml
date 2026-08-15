@@ -16,6 +16,9 @@ jobs:
   # checkout with no node_modules present.
   test:
     runs-on: ubuntu-latest
+    # A hung suite is not waiting on anything a superseding push will fix, so
+    # cancel-in-progress alone would burn runner minutes; this is the backstop.
+    timeout-minutes: 10
     # Per branch, and superseded runs are dropped: pushing again to a pull
     # request makes the previous commit's result irrelevant. Safe on trunk too —
     # a cancelled test job takes its own deploy with it (deploy `needs` it), so
@@ -55,6 +58,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    # Same backstop as the test job: a blocked deploy should fail loudly rather
+    # than occupy a Pages slot forever.
+    timeout-minutes: 10
     # Scoped to this job rather than the workflow, so the test job above runs
     # with read-only access and cannot touch Pages.
     permissions:

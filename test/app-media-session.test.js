@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 
 import {
@@ -124,11 +125,40 @@ test("restores saved track, volume, and theme before the first play", async () =
     assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
     assert.equal(navigator.mediaSession.playbackState, "none");
 
+    // The AudioContext must come from the playback flow (a user gesture), not
+    // boot — otherwise the browser's autoplay policy may reject the resume.
+    assert.equal(audioContexts.length, 0);
+
     await mediaActions.play();
 
     assert.equal(audioElement.src, tracks[1].url);
     assert.equal(audioContexts[0].gains[1].gain.value, 0.42);
     assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[1].url);
+
+    await mediaActions.pause();
+});
+
+test("only the local element is ever routed through the audio graph", async () => {
+    const { audioContexts, audioElement, mediaActions, remoteTransportElement } = await startAppTestEnvironment({
+        castDevices: true,
+    });
+
+    // Neither element may cross into the other's job: the long-lived media
+    // element goes through createMediaElementSource (silent, zero-gain) so the
+    // platform sees playback; the remote transport must never do, or audio
+    // would play in two places at once.
+    await mediaActions.play();
+
+    const context = audioContexts[0];
+    assert.ok(Array.isArray(context.mediaElementSources), "harness should record graph sources");
+    assert.ok(
+        context.mediaElementSources.includes(audioElement),
+        "the local audio element should be the only source in the graph",
+    );
+    assert.ok(
+        !context.mediaElementSources.includes(remoteTransportElement),
+        "the cast transport element must never cross into the local audio graph",
+    );
 
     await mediaActions.pause();
 });
@@ -450,9 +480,16 @@ async function startFailingPlay(mediaActions, audioContexts) {
     return context;
 }
 
-// Kept in step with src/js/script.js; component-contract.test.js pins that value
-// against the title change animation it has to outlast.
-const LOADING_INDICATOR_DELAY_MS = 450;
+// Read from source rather than re-declared, so the timer a test filters on
+// cannot drift from the one the app arms; component-contract.test.js pins the
+// value against the title change animation it has to outlast.
+const LOADING_INDICATOR_DELAY_MS = Number(
+    /LOADING_INDICATOR_DELAY_MS = (\d+)/u.exec(
+        readFileSync(new URL("../src/js/script.js", import.meta.url), "utf8"),
+    )?.[1],
+);
+
+assert.ok(Number.isFinite(LOADING_INDICATOR_DELAY_MS), "script.js should define LOADING_INDICATOR_DELAY_MS.");
 
 // Audio the app has never fetched can take seconds to arrive on a slow
 // connection. The title switches immediately, so without this the listener is

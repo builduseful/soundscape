@@ -214,14 +214,14 @@ export class CastSdkController {
         // What the receiver was actually given, which is not always the app's
         // current track — nothing is loaded until a cast is running.
         this.loadedUrl = null;
-        // What it is *being* given right now. `loadedUrl` cannot answer that:
-        // it is only written once the receiver replies, so every caller asking
-        // "does it already hold this?" during the round trip gets "no" and asks
-        // for it again. See loadTrack.
-        this.pendingLoadUrl = null;
-        // The in-flight request itself, shared with any caller that asks for the
-        // same track while it is running. See loadTrack.
+        // The soundscape the receiver is being moved *to*, held from the moment
+        // it is asked for rather than from the moment it answers, and the run
+        // carrying it there — shared with every caller that asks meanwhile.
+        // `loadedUrl` cannot stand in for this: it names the track being left
+        // for the whole round trip. See loadTrack.
+        this.pendingTrack = null;
         this.pendingLoad = null;
+        this.loadRunId = 0;
         this.playbackRequested = false;
         this.promptPending = false;
         this.sdkReady = null;
@@ -561,11 +561,12 @@ export class CastSdkController {
 
         if (!this.track) return false;
 
-        if (remoteUrlFor(this.track) !== this.loadedUrl) {
-            await this.loadTrack(this.track);
-
-            return true;
-        }
+        // Whether this soundscape needs loading is `loadTrack`'s question, and
+        // asking it here as well is how the two answers came apart: a load
+        // already under way is what starts the sound, so the answer to play is
+        // to wait for it rather than to press play at a receiver still fetching.
+        // Only a receiver that already holds the track needs the play verb.
+        if (await this.loadTrack(this.track)) return true;
 
         if (this.player?.isPaused) this.playerController?.playOrPause();
 
@@ -622,47 +623,137 @@ export class CastSdkController {
         return metadata;
     }
 
-    // One press, one load. A single track change reaches here three times: the
-    // app keeps the transport current for any provider, `startTrack` sets the
-    // track again on the way to playing it, and `play()` asks a third time
-    // because `loadedUrl` still holds the previous soundscape while the first
-    // request is in flight. Each one is a full load on the receiver, which
-    // re-fetches the file — measured as three loads per skip against a fake
-    // receiver, and audible on a real one as a soundscape that restarts twice
-    // before it settles.
+    // Where the receiver is, or is on its way to. Every "does it already hold
+    // this?" question is asked against this rather than `loadedUrl`, because for
+    // the length of a round trip the two disagree — and that window is where a
+    // person pressing skip twice lives. Derived rather than stored, so it cannot
+    // drift from the request it describes.
+    targetUrl() {
+        return this.pendingTrack ? remoteUrlFor(this.pendingTrack) : this.loadedUrl;
+    }
+
+    // One press, one load, and never two open at once. A single track change
+    // reaches here three times — the app keeps the transport current, then
+    // `startTrack` sets it again, then `play()` asks — and each is a full load
+    // that a real receiver answers by re-fetching the file, so a skip restarted
+    // the soundscape twice before it settled.
     //
-    // The guard has to be the *pending* URL rather than the loaded one for the
-    // same reason the duplicates exist: only the pending URL is true from the
-    // moment the request is made rather than from when it is answered.
+    // Requests are therefore coalesced rather than run in parallel: one
+    // `loadMedia` open at a time, `pendingTrack` a slot holding only the newest
+    // destination, and anything superseded while still queued never sent. Both
+    // of this feature's skip bugs came of asking `loadedUrl` where this asks
+    // `targetUrl()`; the README records what each of them did to the room.
     //
-    // A later caller is handed the in-flight promise rather than refused. Still
-    // one `loadMedia` per press — but refusing outright meant the awaited path
-    // (startTrack → play) resolved before the receiver had answered, so a failed
-    // load reached nobody and the title named a soundscape the room was not
-    // playing. Sharing it keeps the one load and lets every caller hear how it
-    // went.
+    // A later caller is handed the same run rather than refused. Refusing meant
+    // the awaited path (startTrack → play) resolved before the receiver had
+    // answered, so a failed load reached nobody and the title named a soundscape
+    // the room was not playing.
     loadTrack(track) {
         const session = this.context?.getCurrentSession?.();
 
         if (!session || !track) return Promise.resolve(false);
 
-        const url = remoteUrlFor(track);
+        // Already where it is going: either a request for it is open, and the
+        // caller waits on that, or the receiver genuinely holds it and loading
+        // again would be a re-fetch that restarts the soundscape. The
+        // idle-restart path clears `loadedUrl` to get past this.
+        if (remoteUrlFor(track) === this.targetUrl()) {
+            return this.pendingLoad ?? Promise.resolve(false);
+        }
 
-        // Already on the receiver: loading it again is a full re-fetch that
-        // restarts the soundscape. `play()` checks this, `setTrack` does not —
-        // and the app calls that to put itself back on the playing track after a
-        // failed skip. The idle-restart path clears `loadedUrl` to get past this.
-        if (url === this.loadedUrl) return Promise.resolve(false);
-
-        if (this.pendingLoadUrl === url) return this.pendingLoad;
-
-        this.pendingLoadUrl = url;
-        this.pendingLoad = this.sendLoad(session, track, url);
+        this.pendingTrack = track;
+        this.pendingLoad ??= this.drainLoads();
 
         return this.pendingLoad;
     }
 
-    async sendLoad(session, track, url) {
+    // Sends whatever the slot holds, one `loadMedia` at a time, until the
+    // receiver is where the app wants it. A loop rather than a chain of promises
+    // because the destination can change while a request is open: whatever the
+    // slot says when the receiver answers is what goes next, and every request
+    // it overtook was replaced before it cost the room anything.
+    //
+    // Answers whether the receiver was asked at all, which is what tells `play()`
+    // that a load — every one of which carries autoplay — is already starting the
+    // soundscape for it.
+    async drainLoads() {
+        const runId = ++this.loadRunId;
+
+        try {
+            while (this.pendingTrack) {
+                const track = this.pendingTrack;
+                // Re-read every lap: a session can end while a request is open,
+                // and there is nothing to load into once it has.
+                const session = this.context?.getCurrentSession?.();
+
+                if (!session) {
+                    // Emptied on the way out, or the slot names a destination no
+                    // run is heading for: `targetUrl()` would go on reporting the
+                    // receiver as en route to a track nothing will ever send, and
+                    // every later request for it would read as already under way.
+                    // The disconnect handler clears it too, but only once the
+                    // state change arrives — this is the same session ending, seen
+                    // first.
+                    if (this.loadRunId === runId) this.pendingTrack = null;
+
+                    return false;
+                }
+
+                let failure = null;
+
+                try {
+                    await this.sendLoad(session, track);
+                } catch (error) {
+                    failure = error;
+                }
+
+                // A disconnect voids every run open on the session it ended, so
+                // this one may be a ghost by now: holding the answer to a
+                // question about a session that has gone, which the SDK can take
+                // until well after the reconnect to give. It must not record what
+                // it loaded — the next rejoin reads `loadedUrl` to decide whether
+                // the room is already playing what it wants — nor resend it over
+                // whatever the live run is doing, nor report a failure nobody is
+                // waiting on. Checked after the request rather than only before
+                // it, because that is where the whole disconnect fits.
+                if (this.loadRunId !== runId) return false;
+
+                if (failure) {
+                    // A request nobody is waiting on any more: the destination
+                    // moved while it was open, and the load that replaced it is
+                    // the one whose outcome matters. Passing this on would report
+                    // an abandoned soundscape's failure against the current one.
+                    if (this.pendingTrack !== track) continue;
+
+                    // Emptied before the failure is passed on, or the retry that
+                    // follows reads as a request already under way and never
+                    // reaches the receiver.
+                    this.pendingTrack = null;
+
+                    throw failure;
+                }
+
+                // Recorded here rather than in `sendLoad` so that it is behind
+                // the ownership check above: a receiver's answer is only news
+                // about what the app holds if the app still holds the question.
+                this.loadedUrl = remoteUrlFor(track);
+
+                // Left alone if a newer request has claimed the slot: that is
+                // the next lap's work, not a leftover of this one.
+                if (this.pendingTrack === track) this.pendingTrack = null;
+            }
+
+            return true;
+        } finally {
+            // Only if this run still owns the slot. A disconnect empties it so a
+            // session dying mid-request cannot leave every later caller waiting
+            // on a promise the SDK may never settle — and the reconnect after it
+            // can start a new run while this one is still unwinding.
+            if (this.loadRunId === runId) this.pendingLoad = null;
+        }
+    }
+
+    async sendLoad(session, track) {
         const { chrome } = this.scope;
         const mediaInfo = new chrome.cast.media.MediaInfo(this.absoluteRemoteUrl(track), CAST_MIME);
 
@@ -675,17 +766,9 @@ export class CastSdkController {
         request.autoplay = true;
         applyRepeat(chrome, request, mediaInfo);
 
-        try {
-            await session.loadMedia(request);
-            this.loadedUrl = url;
-        } finally {
-            // Only if this request is still the current one: a newer track has
-            // already claimed the slot and must keep it.
-            if (this.pendingLoadUrl === url) {
-                this.pendingLoadUrl = null;
-                this.pendingLoad = null;
-            }
-        }
+        // Just the request. What the receiver now holds is `drainLoads`'s to
+        // record, because only it knows whether this answer is still wanted.
+        await session.loadMedia(request);
 
         return true;
     }
@@ -702,8 +785,12 @@ export class CastSdkController {
         // holds the track.
         if (!connected) {
             this.loadedUrl = null;
-            this.pendingLoadUrl = null;
+            this.pendingTrack = null;
             this.pendingLoad = null;
+            // Voids any run still open on the session that has just gone, so
+            // whatever the SDK eventually answers it with cannot be mistaken for
+            // news about the next one. See drainLoads.
+            this.loadRunId += 1;
             this.cancelIdleRestart();
             this.idleRestarts = 0;
         }
@@ -815,8 +902,12 @@ export class CastSdkController {
             if (!this.isConnected() || !this.playbackRequested || !this.isReceiverIdle()) return;
 
             this.idleRestarts += 1;
-            // Cleared so loadTrack is not mistaken for a no-op by anything that
-            // reads it while this is in flight.
+            // Cleared so `loadTrack` reads the receiver as holding nothing and
+            // sends the restart, rather than answering that it is already there.
+            // Only half of what `targetUrl()` reports: a load still open takes
+            // precedence, and rightly — that request *is* a restart, and a second
+            // one beside it would be the double-load this feature spent two bugs
+            // learning not to send.
             this.loadedUrl = null;
 
             void this.loadTrack(this.track).catch((error) => {

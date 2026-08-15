@@ -123,15 +123,41 @@ rules themselves, and the evidence you cannot get from reading the code.
 
   The contract suite deliberately pins neither as universal: the *rule* is
   shared, the evidence each transport can offer for it is not.
-- **One press, one `loadMedia`.** A single track change reaches
-  `CastSdkController.loadTrack` three times — the app keeps the transport
-  current, `startTrack` sets it again, and `play()` asks a third time because
-  `loadedUrl` is not written until the receiver answers. Each is a full load and
-  a real receiver re-fetches the file for every one, so a skip restarted the
-  soundscape twice before settling. `pendingLoadUrl` records the request
-  *synchronously*, which is the thing `loadedUrl` cannot do. The media element
-  path has never needed it: `applyElementSource` compares and assigns in the same
+- **One press, one `loadMedia`, and never two open at once.** A single track
+  change reaches `CastSdkController.loadTrack` three times — the app keeps the
+  transport current, `startTrack` sets it again, and `play()` asks a third time.
+  Each is a full load and a real receiver re-fetches the file for every one, so a
+  skip restarted the soundscape twice before settling. The media element path has
+  never needed any of this: `applyElementSource` compares and assigns in the same
   turn.
+  - **Ask `targetUrl()` — where the receiver is *going* — never `loadedUrl`.**
+    `loadedUrl` is written when the receiver answers, so for the length of a
+    round trip it names the track being *left*, and that window is where a person
+    pressing skip twice lives. Both skip bugs this feature has had were that one
+    mistake from opposite sides: asking `loadedUrl` meant *next then previous*
+    read as "already loaded" and sent nothing, leaving the room on the soundscape
+    the app had navigated away from under a title naming the other one; and
+    `sendLoad` writing `loadedUrl` unconditionally meant two skips the same way
+    round opened two `loadMedia` calls, which a receiver may answer in either
+    order, so the older landing last recorded a track the room had left and the
+    next press of play re-loaded it over what was playing. Both were invisible
+    from the app's side: every skip had gone exactly to plan.
+  - Loads are therefore **coalesced, not parallel**. `drainLoads` keeps one
+    request open, `pendingTrack` is a slot holding only the newest destination,
+    and anything superseded while still queued is never sent — so a run of
+    presses costs the room one restart plus whatever was already in flight.
+    `loadedUrl` is written only on success, by the one open request, which is
+    what makes it trustworthy.
+  - The slot holds the **track**, and `targetUrl()` derives the URL from it. Two
+    fields for one destination is the same second-copy-going-stale that the
+    bullets above are made of.
+  - A superseded load's failure is reported to nobody: its caller has been
+    navigated away from (the app discards it by generation anyway), and the newer
+    caller must not be handed a failure belonging to a soundscape it never asked
+    for, nor lose its own load to it. A failure that is *not* superseded empties
+    the slot before it propagates, or the retry that follows reads as a request
+    already under way and never reaches the device.
+    `providers/cast-sdk.test.js` pins each of these.
 - Cast plays the `.m4a` twin, never the `.opus` original. Safari could not decode
   Ogg Opus at all before 18.4, and desktop remoting only carries Opus if the sink
   advertises it — AAC in MP4 is the one format every path accepts, and one shared

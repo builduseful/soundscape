@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Rasterizes the SVG icon sources to the PNG sizes the app ships, via
-// Playwright (shared devDependency with capture-screenshots.mjs).
+// Playwright (shared devDependency with capture-screenshots.mjs). Skips the
+// write when the freshly rendered PNG is byte-identical to the existing one, so
+// routine runs don't churn a binary diff — run this after any change to either
+// icon SVG source.
 //
 // Usage: npm install && npx playwright install chromium   # one-time
 //        npm run icons
@@ -25,6 +28,14 @@ const ICONS = [
     { source: "maskable-icon.svg", output: "apple-touch-icon.png", size: 180 },
     { source: "maskable-icon.svg", output: "maskable-icon-512.png", size: 512 },
 ];
+
+async function readFileIfExists(filePath) {
+    try {
+        return await readFile(filePath);
+    } catch {
+        return null;
+    }
+}
 
 async function exportIcon(browser, { source, output, size }) {
     const svg = await readFile(path.join(iconDir, source), "utf8");
@@ -62,8 +73,16 @@ async function exportIcon(browser, { source, output, size }) {
     try {
         await page.setContent(html);
         const buffer = await page.screenshot({ omitBackground: true });
-        await writeFile(path.join(iconDir, output), buffer);
-        console.log(`Exported ${path.join("src/resources/icons", output)} (${size}x${size})`);
+        const outputPath = path.join(iconDir, output);
+        const existing = await readFileIfExists(outputPath);
+
+        if (existing && existing.equals(buffer)) {
+            console.log(`unchanged: ${path.join("src/resources/icons", output)}`);
+            return;
+        }
+
+        await writeFile(outputPath, buffer);
+        console.log(`${existing ? "updated" : "created"}: ${path.join("src/resources/icons", output)} (${size}x${size})`);
     } finally {
         await page.close();
     }

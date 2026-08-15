@@ -518,6 +518,9 @@ export function installAppTestEnvironment({
         eventHandlers = new Map();
         decodeAudioDataCalls = 0;
         decodeAudioDataShouldFail = false;
+        // Which elements have been put through the graph. The "audio in two
+        // places at once" invariant is that only the local element ever is.
+        mediaElementSources = [];
 
         constructor() {
             audioContexts.push(this);
@@ -531,8 +534,11 @@ export function installAppTestEnvironment({
             await this.eventHandlers.get(type)?.();
         }
 
-        createMediaElementSource() {
+        createMediaElementSource(sourceElement) {
+            this.mediaElementSources.push(sourceElement);
+
             return {
+                sourceElement,
                 connect(node) {
                     return node;
                 },

@@ -424,6 +424,250 @@ test("a repeated request for the in-flight track shares it rather than reloading
     assert.equal(controller.holdsTrack(TRACK), true);
 });
 
+// Skipping back to the soundscape the receiver is *leaving*. `loadedUrl` still
+// names it for the whole round trip, so a guard asked against that answered
+// "already loaded" and sent nothing — the receiver finished the load it was
+// making and the room played the track the app had just navigated away from,
+// with the title on screen naming the other one. Nothing corrected it, because
+// from the app's side the skip had gone to plan.
+test("skipping back to the current track while a load is open still reaches the receiver", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    // A receiver that takes its time, which is the only kind there is.
+    sdk.state.holdLoads = true;
+
+    // Next, then previous before the first one has been answered.
+    const next = controller.startTrack(other, { wasPlaying: true });
+    await settle();
+    const back = controller.startTrack(TRACK, { wasPlaying: true });
+    await settle();
+
+    sdk.state.holdLoads = false;
+    await sdk.settleLoads();
+    await Promise.all([next, back]);
+    await settle();
+
+    assert.match(
+        sdk.state.receiverMedia.contentId,
+        /rain\.m4a$/,
+        "the room is playing the soundscape the app navigated away from",
+    );
+    assert.equal(controller.holdsTrack(TRACK), true);
+});
+
+// Two loads open at once is a race with the receiver as referee: it may answer
+// them in either order, and the older one landing last wrote its soundscape into
+// `loadedUrl` — so the app believed the room was on a track it had left, and the
+// next press of play re-loaded it over the top of what was playing.
+test("a second skip waits for the first rather than opening a load beside it", async () => {
+    const { sdk, controller } = createController();
+    const fire = { title: "Fireplace", url: "resources/fire.opus" };
+    const road = { title: "Open road", url: "resources/road.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    sdk.state.holdLoads = true;
+
+    const first = controller.startTrack(fire, { wasPlaying: true });
+    await settle();
+    const second = controller.startTrack(road, { wasPlaying: true });
+    await settle();
+
+    assert.equal(sdk.heldLoadCount(), 1, "two loads were open on the receiver at once");
+
+    sdk.state.holdLoads = false;
+    await sdk.settleLoads();
+    await Promise.all([first, second]);
+    await settle();
+
+    assert.equal(controller.getTrackUrl(), "resources/road.m4a");
+    assert.match(sdk.state.receiverMedia.contentId, /road\.m4a$/);
+});
+
+// The queue is a slot, not a backlog: only the newest destination is ever sent,
+// so a run of presses costs the room one restart rather than one per press.
+test("a destination superseded before it is sent never reaches the receiver", async () => {
+    const { sdk, controller } = createController();
+    const fire = { title: "Fireplace", url: "resources/fire.opus" };
+    const road = { title: "Open road", url: "resources/road.opus" };
+    const thunder = { title: "Thunder", url: "resources/thunder.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    sdk.state.holdLoads = true;
+
+    const skips = [
+        controller.startTrack(fire, { wasPlaying: true }),
+        controller.startTrack(road, { wasPlaying: true }),
+        controller.startTrack(thunder, { wasPlaying: true }),
+    ];
+
+    await settle();
+    sdk.state.holdLoads = false;
+    await sdk.settleLoads();
+    await Promise.all(skips);
+    await settle();
+
+    // Rain (the first play), fire (already sent when the rest arrived), and
+    // thunder. Road was replaced while still queued and cost nothing.
+    assert.deepEqual(
+        sdk.state.loads.map(({ media }) => media.contentId.split("/").at(-1)),
+        ["rain.m4a", "fire.m4a", "thunder.m4a"],
+    );
+    assert.equal(controller.holdsTrack(thunder), true);
+});
+
+// The failure of a soundscape the app has already navigated away from is not
+// the current skip's news. Passing it on would report the abandoned track's
+// error against the one the room is about to play — and, worse, abandon the
+// load that was queued behind it.
+test("a load that fails after being superseded does not take the newer skip down with it", async () => {
+    const { sdk, controller } = createController();
+    const fire = { title: "Fireplace", url: "resources/fire.opus" };
+    const road = { title: "Open road", url: "resources/road.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    sdk.state.holdLoads = true;
+    sdk.state.loadShouldFail = true;
+
+    const first = controller.startTrack(fire, { wasPlaying: true });
+    await settle();
+
+    // The skip that replaces it, queued behind a load that is about to fail.
+    const second = controller.startTrack(road, { wasPlaying: true });
+    await settle();
+
+    // The fire load answers, with a failure; the road load behind it goes out
+    // and is held in its turn.
+    await sdk.settleLoads();
+
+    sdk.state.loadShouldFail = false;
+    sdk.state.holdLoads = false;
+    await sdk.settleLoads();
+
+    // Neither caller is told the abandoned load failed. The superseded one is
+    // past caring — the app discards a skip it has already navigated away from
+    // by generation — and telling the newer one would report a failure against a
+    // soundscape it never asked for.
+    await first;
+    await second;
+
+    assert.equal(controller.holdsTrack(road), true, "the queued skip was abandoned with the failed one");
+    assert.match(sdk.state.receiverMedia.contentId, /road\.m4a$/);
+});
+
+// A session can end with a request still open on it, and the SDK answers that
+// request whenever it gets round to it — after the disconnect, and after the
+// reconnect behind it. The run holding it is a ghost by then, and everything it
+// would go on to do is wrong: recording what it loaded (a track the live session
+// is not on, and one that stops the next rejoin adopting what the room is
+// actually playing), or resending it over the top of what the live run is doing.
+test("a run abandoned by a disconnect stops rather than finishing into a new session", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    // A skip the receiver has not answered yet.
+    sdk.state.holdLoads = true;
+    const abandoned = controller.startTrack(other, { wasPlaying: true });
+    await settle();
+
+    // The session ends underneath it, and another one replaces it.
+    sdk.setCastState("NOT_CONNECTED");
+    await settle();
+    sdk.setCastState("CONNECTED");
+    await settle();
+
+    const loadsBefore = sdk.state.loads.length;
+
+    // Now the dead session's request finally answers.
+    sdk.state.holdLoads = false;
+    await sdk.settleLoads();
+    await abandoned;
+    await settle();
+
+    assert.equal(sdk.state.loads.length, loadsBefore, "the ghost run sent a request of its own");
+    assert.equal(
+        controller.getTrackUrl(),
+        null,
+        "the ghost run recorded a load against a session that had gone",
+    );
+});
+
+// The other half: the live run must be unaffected by the ghost unwinding, and
+// the slot it owns must survive it.
+test("a new session after a disconnect still loads normally", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    sdk.state.holdLoads = true;
+    const abandoned = controller.startTrack(other, { wasPlaying: true });
+    await settle();
+
+    sdk.setCastState("NOT_CONNECTED");
+    await settle();
+    sdk.setCastState("CONNECTED");
+    await settle();
+
+    sdk.state.holdLoads = false;
+    await controller.play();
+    await sdk.settleLoads();
+    await abandoned;
+    await settle();
+
+    assert.equal(controller.holdsTrack(other), true);
+    assert.match(sdk.state.receiverMedia.contentId, /fire\.m4a$/);
+});
+
+// A load the receiver refuses has to leave the slot empty, or the retry that
+// follows reads as a request already under way and never reaches the device.
+test("a failed load does not leave a destination nobody is heading for", async () => {
+    const { sdk, controller } = createController();
+    const other = { title: "Fireplace", url: "resources/fire.opus" };
+
+    console.warn = () => {};
+
+    await controller.prompt();
+    controller.setTrack(TRACK);
+    sdk.setCastState("CONNECTED");
+    await controller.play();
+
+    sdk.state.loadShouldFail = true;
+    await assert.rejects(() => controller.startTrack(other, { wasPlaying: true }), /load failed/);
+
+    sdk.state.loadShouldFail = false;
+    await controller.startTrack(other, { wasPlaying: true });
+    await settle();
+
+    assert.equal(sdk.state.loads.length, 3, "the retry never reached the receiver");
+    assert.equal(controller.holdsTrack(other), true);
+});
+
 // A pause pressed on the speaker itself is the one thing that clears the intent
 // from outside the app. Without it the handback reads the room as still
 // listening, and ending a cast that was paused starts the soundscape here.
