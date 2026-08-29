@@ -3,7 +3,7 @@ import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
-import { tracks } from "../src/js/tracks.js";
+import { tracks, trackSlug } from "../src/js/tracks.js";
 
 const SOUNDSCAPES_DIR = new URL("../src/resources/soundscapes/", import.meta.url);
 const OGG_OPUS_MIME = "audio/ogg; codecs=opus";
@@ -23,6 +23,25 @@ test("track catalog points at existing unique Opus resources", async () => {
         titles.add(track.title);
         urls.add(track.url);
         await access(new URL(`../src/${track.url}`, import.meta.url));
+    }
+});
+
+// Slugs are the catalog's addressing scheme: ?track= links and the manifest's
+// app shortcuts name a soundscape by slug, and getTrackIndexFromUrl resolves one
+// with findIndex — first match wins, silently. Unique titles are not enough,
+// because trackSlug strips punctuation: "Rain & Thunder" and "Rain Thunder" are
+// two distinct titles that both become "rain-thunder", and the second would be
+// unreachable by link or shortcut with nothing to say so.
+test("every track has a distinct, non-empty slug", () => {
+    const slugs = new Set();
+
+    for (const track of tracks) {
+        const slug = trackSlug(track);
+
+        assert.notEqual(slug, "", `Track "${track.title}" has an empty slug`);
+        assert.equal(slugs.has(slug), false, `Duplicate track slug: ${slug}`);
+
+        slugs.add(slug);
     }
 });
 
