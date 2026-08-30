@@ -263,6 +263,83 @@ export class AudioPlayer {
 
         const { buffer, loopStart, loopEnd } = loopWindow;
         const previousSource = this.activeSource;
+        const isTrackChange = this.currentTrackId !== track.id;
+        const startsPlaying = this.playbackRequested;
+
+        // Identity settles before the element starts below, rather than after
+        // the sound does. That element's own play event asks the app whether
+        // this player already holds the track, and a "no" is answered by
+        // loading the track — so identity arriving late lets a first press race
+        // itself.
+        //
+        // Advancing it early is a claim about a source that has not started
+        // yet, so it is kept undoable: the bail-out below puts it back. Held
+        // rather than re-read because by then the answer may be a third
+        // request's.
+        const supersededTrackId = this.currentTrackId;
+        const supersededTrackUrl = this.currentTrackUrl;
+
+        this.currentTrackId = track.id;
+        this.currentTrackUrl = source.url;
+
+        // The browser-visible surface starts *before* anything audible, and the
+        // order is the whole point rather than a tidy-up.
+        //
+        // Starting a media element is what activates the system audio session on
+        // iOS, and that activation briefly interrupts an AudioContext that is
+        // already running. Started after the buffer, it is heard on an iPad as
+        // the soundscape starting, cutting out, and starting again — the media
+        // element's play event then finding the context stopped and the app
+        // resuming it. Started first, the same interruption lands in silence and
+        // the buffer begins once, into a session that is already up.
+        //
+        // Desktop browsers do not do this, which is why the ordering survived
+        // this long: before the AAC fallback existed, Safari could not load the
+        // element's source at all, so on iOS it never started.
+        if (shouldLoadMediaElement) {
+            this.audioElement.src = source.url;
+            this.audioElement.load?.();
+        }
+
+        this.audioElement.currentTime = 0;
+        this.audioElement.loop = loop;
+
+        // Kept rather than rethrown here: a failure to start the browser surface
+        // must still leave the new track installed as the active source, exactly
+        // as it did when play() was the last statement in this method. Throwing
+        // from here instead would strand the *previous* track's source under the
+        // new track's identity, and the next press would resume the wrong sound.
+        let startFailure;
+
+        if (startsPlaying) {
+            try {
+                await this.play();
+            } catch (error) {
+                startFailure = error;
+            }
+
+            // play() awaits the element and the context, so a skip can land
+            // inside it. The same rule as every other guard here: a superseded
+            // request must not start a source.
+            if (requestId !== this.playbackRequestId) {
+                // Give identity back, because this request's claim to it never
+                // became audible. Only if it is still this request's to give:
+                // a newer one that has already reached its own assignment owns
+                // it now, and must not be overwritten by a request that lost.
+                //
+                // Left standing, identity would name a track over the previous
+                // track's still-playing source — and the next press, seeing the
+                // player already "holding" it, would resume that source under
+                // the wrong title rather than load the right one.
+                if (this.currentTrackId === track.id) {
+                    this.currentTrackId = supersededTrackId;
+                    this.currentTrackUrl = supersededTrackUrl;
+                }
+
+                return false;
+            }
+        }
+
         const nextSource = this.audioContext.createBufferSource();
         nextSource.buffer = buffer;
         nextSource.loop = loop;
@@ -270,8 +347,11 @@ export class AudioPlayer {
         nextSource.loopEnd = loopEnd;
         nextSource.connect(this.currentTrackGainNode);
 
+        // Read after play(), so the crossfade curves and the source start are
+        // scheduled from where the context's clock actually is once it is
+        // running, not from before it resumed.
         const now = this.audioContext.currentTime;
-        const shouldCrossfade = previousSource && this.currentTrackId !== track.id && this.playbackRequested;
+        const shouldCrossfade = previousSource && isTrackChange && startsPlaying;
 
         if (shouldCrossfade) {
             // End any previous crossfade that is still fading out so the
@@ -332,27 +412,17 @@ export class AudioPlayer {
         this.activeBuffer = buffer;
         this.activeLoopEnd = loopEnd;
         this.activeSourceStartedAt = now;
-        this.currentTrackId = track.id;
-        this.currentTrackUrl = source.url;
         // If the AudioContext is still suspended, the source start is scheduled but
         // cannot run until resume(). Mark it so the statechange handler can snap the
         // start time to the real playback start.
         this.activeSourceQueued = this.audioContext.state !== "running";
 
-        if (shouldLoadMediaElement) {
-            this.audioElement.src = source.url;
-            this.audioElement.load?.();
-        }
-
-        this.audioElement.currentTime = 0;
-        this.audioElement.loop = loop;
-
-        if (!this.playbackRequested) {
+        if (!startsPlaying) {
             await this.refreshPausedBrowserPlaybackSurface();
-            return true;
         }
 
-        await this.play();
+        if (startFailure) throw startFailure;
+
         return true;
     }
 

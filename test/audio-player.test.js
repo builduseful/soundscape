@@ -984,15 +984,49 @@ test("playTrack snaps the source start time when the context resumes after a sus
     const audioElement = createAudioElement();
     const player = createPlayer(audioElement);
 
-    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
+    // Loaded paused, which is the case that still starts a source against a
+    // suspended context. The playing path resumes before it reads the clock, so
+    // the time it captures is already the time playback begins.
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true, false, true);
+
     // Simulate the gap between source.start() and the actual resume event. In a
     // real browser the AudioContext clock keeps advancing while the context is
     // suspended, so the currentTime captured at start() is stale by the time
     // playback actually begins.
     contexts[0].currentTime = 12.5;
+    contexts[0].state = "running";
     contexts[0].dispatch("statechange");
 
     assert.equal(player.getCurrentPosition(), 0);
+});
+
+// Ordering, not decoration. Starting a media element is what activates the
+// system audio session on iOS, and that activation interrupts an AudioContext
+// that is already running: on an iPad the soundscape started, cut out, and
+// started again. Nothing audible may begin before the element has.
+test("playTrack starts the browser-visible element before any audible source", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const audioElement = createAudioElement();
+    let startedSourcesWhenElementPlayed;
+
+    const elementPlay = audioElement.play.bind(audioElement);
+    audioElement.play = async () => {
+        startedSourcesWhenElementPlayed ??= contexts[0].bufferSources
+            .filter((source) => source.startCalls.length > 0).length;
+        await elementPlay();
+    };
+
+    const player = createPlayer(audioElement);
+
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
+
+    assert.equal(startedSourcesWhenElementPlayed, 0, "the element must start into silence");
+    assert.equal(audioElement.src, "/quiet.opus", "the element must carry the track it started for");
+    assert.ok(
+        contexts[0].bufferSources.some((source) => source.startCalls.length > 0),
+        "the audible source must still start",
+    );
 });
 
 test("playTrack leaves the source start time alone when the context is already running", async () => {
@@ -1089,6 +1123,50 @@ async function until(condition, turns = 50) {
 
     throw new Error("Timed out waiting for the expected state");
 }
+
+// Identity is advanced before the media element starts, so that the element's
+// own play event finds the track already held. That claim is about a source
+// which has not started yet, and a request that loses the race must take it
+// back — otherwise the player reports holding a soundscape that is not the one
+// audible, and the next press resumes the previous track under the new title.
+test("a superseded request gives back the identity it claimed", async () => {
+    const contexts = installAudioContext({ initialState: "running" });
+    installFetch();
+    const audioElement = createAudioElement();
+    const player = createPlayer(audioElement);
+
+    await player.playTrack({ id: "first", url: "/first.opus" }, true);
+    assert.ok(player.holdsTrack({ id: "first" }), "the first track should be held");
+
+    // Park the next request precisely inside play(), which is the window the
+    // early identity claim is exposed in.
+    let releaseResume;
+    contexts[0].resume = async () => {
+        await new Promise((resolve) => {
+            releaseResume = resolve;
+        });
+    };
+
+    const parked = player.playTrack({ id: "second", url: "/second.opus" }, true);
+    await until(() => releaseResume !== undefined);
+
+    // Supersede it with a request that never reaches its own identity
+    // assignment, so nothing else will set identity after the bail-out.
+    globalThis.fetch = async () => ({ ok: false, status: 404, statusText: "Not Found" });
+    const superseding = player.playTrack({ id: "third", url: "/third.opus" }, true);
+
+    await assert.rejects(superseding, /Could not load audio/);
+
+    releaseResume();
+    assert.equal(await parked, false, "the parked request must report itself superseded");
+
+    assert.ok(
+        player.holdsTrack({ id: "first" }),
+        "identity must name the track whose source is actually playing",
+    );
+    assert.ok(!player.holdsTrack({ id: "second" }), "the superseded track must not be held");
+    assert.equal(player.getTrackUrl(), "/first.opus");
+});
 
 // The retry is a second load, so it needs the same stale guard as the first.
 // Without one, skipping during a fallback attempt turns a superseded request

@@ -227,3 +227,13 @@ someone's room. Fakes cover everything except the manual checklist in the README
 - Do not run `git commit`, `git push`, `git reset`, `git rebase`, or any other git mutations unless explicitly asked.
 - Preserve the existing git staging state: keep staged files staged and unstaged files unstaged.
 - Do not stage or unstage files on the agent's own initiative.
+
+## Nothing Machine-Specific in the Repo
+
+- **Never commit anything true only on one machine** — absolute paths,
+  usernames, emails, secrets, or the container engine a particular person uses.
+  Paths are relative to the repo root; per-person settings go in the gitignored
+  `.config.md`, and the docs use a placeholder like `<container-engine>`.
+- **Binaries carry metadata too** — encoders copy tags from their input, so a
+  master tagged with someone's name ships that name in `src/`. Encode with
+  `-map_metadata -1`.
