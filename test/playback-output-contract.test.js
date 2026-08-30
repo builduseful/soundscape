@@ -51,12 +51,12 @@ afterEach(() => {
     console.warn = originalConsoleWarn;
 });
 
-// Deliberately no remote URL on the track: a fixture carrying one would let a
-// provider read it instead of deriving the twin through remoteUrlFor(), and
-// still pass.
+// Deliberately no URL of any kind on the track: a fixture carrying one would let
+// an output read it instead of deriving its own source from the id, and still
+// pass. A catalog entry carries no URL either, which is the point.
 const TRACK = {
+    id: "rain",
     title: "Rain",
-    url: "resources/soundscapes/rain.opus",
 };
 
 // ---------------------------------------------------------------------------
@@ -212,10 +212,12 @@ function createCallbackSpy() {
 const outputs = [
     {
         name: "AudioPlayer (local)",
-        // The local player compares `track.url`; the remotes compare the twin
-        // remoteUrlFor() derives. That difference is precisely what `holdsTrack`
-        // exists to hide, which is why no driver below declares which field it
-        // reads — a spec that knew would be a spec that had stopped hiding it.
+        // The local player compares `track.id`; the remotes compare the twin
+        // remoteUrlFor() derives from that same id. Both answer for the same
+        // soundscape, and neither answer is a field the caller may read — which
+        // is precisely what `holdsTrack` exists to hide, and why no driver below
+        // declares which one it uses. A spec that knew would be a spec that had
+        // stopped hiding it.
         create: () => new AudioPlayer(createFakeMediaElement()),
     },
     {

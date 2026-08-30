@@ -98,7 +98,7 @@ function createRemote() {
     };
 }
 
-const track = { title: "Rain", url: "resources/soundscapes/rain.opus" };
+const track = { id: "rain", title: "Rain" };
 
 test("no backend is selected on a browser that cannot cast", () => {
     const controller = new MediaElementController(createElement());

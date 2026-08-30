@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.14.8";
+const VERSION = "1.17.1";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -17,6 +17,7 @@ const APP_SHELL_ASSETS = [
     "./manifest.webmanifest",
     "./js/script.js",
     "./js/audio-player.js",
+    "./js/local-source.js",
     "./js/playback-output.js",
     "./js/remote-playback/index.js",
     "./js/remote-playback/messages.js",
@@ -90,8 +91,8 @@ self.addEventListener("fetch", (event) => {
     // deliberate exception rather than an oversight: everything else about the
     // feature is confined to js/remote-playback/, but this worker cannot import
     // from it. It must stay a classic worker with VERSION hardcoded, because the
-    // browser gates its update on this file's own bytes changing — so the suffix
-    // is checked here by hand.
+    // browser gates its update on this file's own bytes changing — so the cast
+    // directory is named here by hand.
     //
     // Not a caching preference. Handling these would mean reading each one whole
     // whatever was asked for: cacheIfOk buffers the body, and handleRangeRequest
@@ -102,7 +103,7 @@ self.addEventListener("fetch", (event) => {
     //
     // The consequence to accept: casting needs the network. That is true of the
     // Chrome Android path regardless, since there the receiver does the fetching.
-    if (isRemoteAudio(request)) {
+    if (isRemotePlaybackAsset(request)) {
         return;
     }
 
@@ -114,10 +115,20 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(tryCacheThenFetch(request));
 });
 
-// The .m4a twins that cast targets play. Their .opus originals — the files this
-// app actually decodes — are unaffected.
-function isRemoteAudio(request) {
-    return new URL(request.url).pathname.endsWith(".m4a");
+// The cast twins, identified by the directory they live in rather than by their
+// extension. Extension is the wrong test now that a local fallback may also be
+// .m4a: the two are different products — different loop treatment, different
+// consumer — and only the cast one may skip the worker. A local file that
+// bypassed it would silently lose offline playback.
+//
+// Matched relative to the worker's own scope, not as an absolute path, so this
+// keeps working if the app is ever served from a subdirectory. `registration`
+// is available to a service worker at module scope.
+function isRemotePlaybackAsset(request) {
+    const scopePath = new URL(registration.scope).pathname;
+    const { pathname } = new URL(request.url);
+
+    return pathname.startsWith(`${scopePath}resources/soundscapes/cast/`);
 }
 
 // Cache-first navigation, matched against the page that was actually asked

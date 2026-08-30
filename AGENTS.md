@@ -33,7 +33,8 @@ soundscape/
 │   │   ├── media-session.js          # Media Session API integration (metadata, actions)
 │   │   ├── pwa.js                    # Service worker registration + Launch Queue consumer
 │   │   ├── theme-utils.js            # Light/dark/system theme helpers
-│   │   ├── tracks.js                 # Track catalog and metadata (knows nothing about remote playback)
+│   │   ├── tracks.js                 # Track catalog: id + title only, no file paths
+│   │   ├── local-source.js           # Which local file this browser plays for a track
 │   │   ├── remote-playback/          # Chromecast/AirPlay plugin — detachable; READ ITS README.md
 │   │   │   └── README.md             # Invariants, platform evidence, testing, device checklist
 │   │   └── components/
@@ -43,7 +44,10 @@ soundscape/
 │   └── resources/
 │       ├── icons/                    # PWA/favicon icons (png + svg)
 │       ├── screenshots/              # manifest.webmanifest install screenshots (git-tracked PNGs)
-│       └── soundscapes/              # Ambience loops: .opus (local playback) + .m4a twins (cast)
+│       └── soundscapes/              # Ambience loops, by output role
+│           ├── opus/                 # Local primary: one loop period, <track-id>.opus
+│           ├── aac/                  # Local fallback (older Safari/iOS): one loop period, <track-id>.m4a
+│           └── cast/                 # Remote playback: repeated ~120s programme, <track-id>.m4a
 ├── test/                             # Unit tests (dependency-free)
 │   ├── playback-output-contract.test.js   # One spec, run against every PlaybackOutput incl. AudioPlayer
 │   ├── *remote-playback*, providers/ # The plugin's own tests — see its README
@@ -51,7 +55,7 @@ soundscape/
 ├── scripts/
 │   ├── export-icons.mjs              # Icon PNG export from SVG sources
 │   ├── capture-screenshots.mjs       # Manifest install-screenshot capture
-│   ├── build-cast-audio.mjs          # AAC cast twins with the loop crossfade baked in (needs ffmpeg)
+│   ├── build-audio.mjs               # All three audio roles from masters/ (needs ffmpeg)
 │   └── send-media-key.ps1            # OS-level media key injection for testing
 ├── .github/
 │   └── workflows/
@@ -60,6 +64,8 @@ soundscape/
 ├── .dockerignore                     # Excludes unnecessary files from the build
 ├── package.json                      # Scripts and metadata
 ├── package-lock.json                 # Locks the scripts/ devDependencies (playwright); npm test itself has none
+├── masters/                          # Build inputs: gitignored audio + tracked provenance records
+│   └── README.md                     # What a master must be, and how to supply one
 ├── .config.md                        # Per-developer configuration (gitignored)
 ├── AGENTS.md
 ├── CLAUDE.md                         # Includes AGENTS.md; keep the guidance itself in AGENTS.md
@@ -97,6 +103,17 @@ soundscape/
   - It waits out `LOADING_INDICATOR_DELAY_MS` before showing, so a cached track — which decodes in milliseconds — never flashes one. That delay must also outlast the title change animation, because the `<h1>`'s accessible text only settles when the animation ends; `component-contract.test.js` pins the two together across `script.js` and `style.css`.
   - Skipping again mid-load hands the state to the newer request without reporting a stop, so the indicator never blinks between tracks and the delay is not re-armed.
   - It and `#playbackError` are mutually exclusive. They are the app's only two status messages, they sit in the same strip under the title, and a failure notice under a live loading bar is both a contradiction and (with reduced motion, where the bar becomes text) an overlap.
+- **A track names no file.** A catalog entry is an id and a title; `local-source.js`
+  chooses the local encoding for *this browser* and `remote-playback/track-source.js`
+  names the cast twin. Local playback prefers Ogg Opus and falls back to AAC for
+  Safari/iOS before 18.4, which cannot read the Ogg container. The choice is made
+  once per page and may step down exactly once, on a confirmed decode failure —
+  safe only because identity is the track id and the buffer cache is keyed by
+  resolved URL. Force the fallback with `?codec=aac`.
+- **The local AAC fallback and the cast twin are both `.m4a` and are not
+  interchangeable.** The local one is a single loop period the app crossfades at
+  runtime; the cast one has the crossfade baked in and repeats to ~120s. The
+  service worker tells them apart by directory, never by extension.
 - `AudioPlayer` is one implementation of `PlaybackOutput`, not the only one. Anything the app does to "the thing that is playing" goes through `activeOutput()` in `script.js`; only three paths are entitled to reach for the local player by name (its media element's own `play`/`pause` events, visibility, and the volume the app may persist), and they say so via `isRemoteActive()`.
 - Treat Media Session and Audio Session APIs as progressive enhancements. When available, keep metadata, playback state, actions, and decoded-buffer position state in sync; when unavailable, playback should still work.
 - **Neither `<audio>` element may cross into the other's job.** `#audioElement` goes through `createMediaElementSource`, so it is unusable as a cast transport and carries `disableremoteplayback` / `x-webkit-airplay="deny"` — a browser offering it as a cast source would hand the user a route the app knows nothing about while the decoded buffer kept playing locally. `#remoteTransportElement` is the cast transport and must never be passed to `createMediaElementSource`. Both halves prevent the same thing: audio in two places at once.
@@ -192,8 +209,9 @@ someone's room. Fakes cover everything except the manual checklist in the README
 
 ## Manifest Screenshots and Icons
 
-- `npm run cast-audio` follows the same host-only, skip-when-unchanged contract
-  as these, but needs `ffmpeg`; see the remote playback README.
+- `npm run audio` follows the same host-only, skip-when-unchanged contract as
+  these, but needs `ffmpeg`, and reads `masters/` — see `masters/README.md`. It
+  builds all three roles; `-- --opus`, `-- --aac`, `-- --cast` narrow it.
 - `npm run screenshots` and `npm run icons` regenerate `src/resources/screenshots/*.png` and `src/resources/icons/*.png` via Playwright (see each script's header for how). Host-only — not part of `npm test` or the Docker image. Re-run after a change that affects the home page's appearance or either icon SVG; both skip writing when the output is unchanged.
 - **Keep what the script produces; never revert it.** Stale is the only failure
   mode here, and the byte-identical skip means a routine run costs nothing.

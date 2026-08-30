@@ -1,3 +1,5 @@
+import { createLocalSourceResolver } from "./local-source.js";
+
 const FADE_DURATION_SECONDS = 0.25;
 const TRACK_CROSSFADE_SECONDS = 0.25;
 const LOOP_CROSSFADE_MS = 10;
@@ -49,11 +51,28 @@ export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOO
 }
 
 export class AudioPlayer {
-    constructor(audioElement, { onStateChange, onLoadingChange } = {}) {
+    /**
+     * `resolveSource` answers which local file to play for a track, as
+     * `{ url, mime }`. It is injected rather than imported outright so a test
+     * can hand this player a fixture file without inventing a catalog entry for
+     * it, and so the codec probe has one place to live.
+     */
+    constructor(
+        audioElement,
+        { onStateChange, onLoadingChange, resolveSource = createLocalSourceResolver(audioElement) } = {},
+    ) {
+        this.resolveSource = resolveSource;
+        this.codecDowngraded = false;
         this.audioElement = audioElement;
         this.audioElement.preload = "auto";
         this.audioElement.loop = true;
         this.audioContext = undefined; // Leave as undefined until a user gesture starts playback.
+        // Identity and fetch state are two different things, and only the first
+        // is stable: `currentTrackId` names the soundscape, `currentTrackUrl`
+        // names the file this browser resolved for it. Codec selection can give
+        // two browsers different URLs for one track, so every identity question
+        // — holdsTrack, hasTrack, handover — must ask the id.
+        this.currentTrackId = undefined;
         this.currentTrackUrl = undefined;
         this.mediaElementSourceNode = undefined;
         this.currentTrackGainNode = undefined;
@@ -88,19 +107,21 @@ export class AudioPlayer {
     }
 
     hasTrack() {
-        return this.currentTrackUrl !== undefined;
+        return this.currentTrackId !== undefined;
     }
 
+    // The file this player resolved, for diagnostics. Not identity, and not a
+    // PlaybackOutput member — that is holdsTrack's job, below.
     getTrackUrl() {
         return this.currentTrackUrl;
     }
 
     // Whether this output holds the given soundscape. A PlaybackOutput member,
     // and the reason getTrackUrl() is not one: the caller would otherwise have
-    // to know that the local player compares `track.url` while a remote compares
-    // the AAC twin it derives from it — remote knowledge sitting in the core.
+    // to know that the local player names a local file while a remote names the
+    // AAC twin it derives — remote knowledge sitting in the core.
     holdsTrack(track) {
-        return Boolean(track) && this.currentTrackUrl === track.url;
+        return Boolean(track) && this.currentTrackId === track.id;
     }
 
     isPlaybackRequested() {
@@ -181,10 +202,16 @@ export class AudioPlayer {
      * Media Session, hardware controls, audio focus, and preload/source state.
      */
     async playTrack(track, loop, resetContext = false, startPaused = false) {
-        this.assertTrackSupported(track);
+        let source = this.resolveSource(track);
+
+        if (!source) {
+            throw new Error(`No local source for track: ${track?.id}`);
+        }
+
+        this.assertSourceSupported(source);
         this.ensureAudioGraph();
         const requestId = ++this.playbackRequestId;
-        const shouldLoadMediaElement = resetContext || this.currentTrackUrl !== track.url;
+        const shouldLoadMediaElement = resetContext || this.currentTrackId !== track.id;
         this.playbackRequested = !startPaused;
 
         let loopWindow;
@@ -192,13 +219,31 @@ export class AudioPlayer {
         this.beginLoading(requestId);
 
         try {
-            loopWindow = await this.loadBuffer(track.url);
+            loopWindow = await this.loadBuffer(source.url);
         } catch (error) {
             if (requestId !== this.playbackRequestId) {
                 return false;
             }
 
-            throw error;
+            const fallback = this.sourceAfterDecodeFailure(error, track);
+
+            if (!fallback) throw error;
+
+            source = fallback;
+
+            try {
+                loopWindow = await this.loadBuffer(source.url);
+            } catch (retryError) {
+                // The same guard as above, and needed for the same reason: a
+                // skip during the retry leaves this request superseded, and a
+                // superseded request must resolve quietly rather than raise a
+                // playback error for a track the listener has already left.
+                if (requestId !== this.playbackRequestId) {
+                    return false;
+                }
+
+                throw retryError;
+            }
         } finally {
             this.endLoading(requestId);
         }
@@ -226,7 +271,7 @@ export class AudioPlayer {
         nextSource.connect(this.currentTrackGainNode);
 
         const now = this.audioContext.currentTime;
-        const shouldCrossfade = previousSource && this.currentTrackUrl !== track.url && this.playbackRequested;
+        const shouldCrossfade = previousSource && this.currentTrackId !== track.id && this.playbackRequested;
 
         if (shouldCrossfade) {
             // End any previous crossfade that is still fading out so the
@@ -287,14 +332,15 @@ export class AudioPlayer {
         this.activeBuffer = buffer;
         this.activeLoopEnd = loopEnd;
         this.activeSourceStartedAt = now;
-        this.currentTrackUrl = track.url;
+        this.currentTrackId = track.id;
+        this.currentTrackUrl = source.url;
         // If the AudioContext is still suspended, the source start is scheduled but
         // cannot run until resume(). Mark it so the statechange handler can snap the
         // start time to the real playback start.
         this.activeSourceQueued = this.audioContext.state !== "running";
 
         if (shouldLoadMediaElement) {
-            this.audioElement.src = track.url;
+            this.audioElement.src = source.url;
             this.audioElement.load?.();
         }
 
@@ -342,6 +388,25 @@ export class AudioPlayer {
         }
     }
 
+    /**
+     * The one place a resolved source may change under an active track.
+     *
+     * Deliberately narrow. Only a *decode* failure downgrades: a fetch error, an
+     * HTTP status or a cancelled request says nothing about whether this browser
+     * can decode the format, and re-fetching the same bytes in a different
+     * container would turn one network problem into two. And only once per page,
+     * so a genuinely broken file cannot make every track change re-attempt every
+     * encoding.
+     */
+    sourceAfterDecodeFailure(error, track) {
+        if (!error?.isDecodeFailure || this.codecDowngraded) return null;
+        if (!this.resolveSource.downgrade?.()) return null;
+
+        this.codecDowngraded = true;
+
+        return this.resolveSource(track);
+    }
+
     async loadBuffer(url) {
         if (this.bufferCache.has(url)) return this.bufferCache.get(url);
 
@@ -370,7 +435,18 @@ export class AudioPlayer {
         }
 
         const arrayBuffer = await response.arrayBuffer();
-        return this.audioContext.decodeAudioData(arrayBuffer);
+
+        try {
+            return await this.audioContext.decodeAudioData(arrayBuffer);
+        } catch (error) {
+            // Marked rather than inspected by message: "this browser cannot
+            // decode this format" and "the file did not arrive" need different
+            // answers, and only the decoder can tell them apart.
+            throw Object.assign(new Error(`Could not decode audio: ${url}`), {
+                isDecodeFailure: true,
+                cause: error,
+            });
+        }
     }
 
     ensureAudioGraph() {
@@ -527,24 +603,24 @@ export class AudioPlayer {
         }
     }
 
-    assertTrackSupported(track) {
-        if (!track.mime || this.supportsTrack(track)) return;
+    assertSourceSupported(source) {
+        if (!source.mime || this.supportsSource(source)) return;
 
         // canPlayType() describes HTMLMediaElement support, but the audible path
         // is decodeAudioData(), which accepts codecs some browsers decline to
         // report on the media element. A conservative "" must not mute the whole
         // app before a single byte is fetched, so warn and let the decode decide.
-        console.warn(`The media element reports no support for ${track.mime}. Attempting to decode anyway.`);
+        console.warn(`The media element reports no support for ${source.mime}. Attempting to decode anyway.`);
     }
 
-    supportsTrack(track) {
-        if (!track.mime) return true;
+    supportsSource(source) {
+        if (!source.mime) return true;
 
         // This is intentionally only a MIME/container/codec gate. The real
         // playback path still proves the file by fetching and decoding it into
         // an AudioBuffer; MediaCapabilities.decodingInfo() needs bitrate,
         // channels, and sample rate, which we do not need for this early check.
         return typeof this.audioElement.canPlayType !== "function"
-            || this.audioElement.canPlayType(track.mime) !== "";
+            || this.audioElement.canPlayType(source.mime) !== "";
     }
 }

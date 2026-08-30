@@ -431,6 +431,10 @@ export function installAppTestEnvironment({
             if (this.shouldFail) throw new Error("Storage failed");
             storage.set(key, String(value));
         },
+        removeItem(key) {
+            if (this.shouldFail) throw new Error("Storage failed");
+            storage.delete(key);
+        },
     };
     globalThis.launchQueue = launchQueue;
     globalThis.matchMedia = () => ({ matches: matchMediaMatches });

@@ -163,7 +163,9 @@ rules themselves, and the evidence you cannot get from reading the code.
   advertises it — AAC in MP4 is the one format every path accepts, and one shared
   format keeps a single code path for every backend rather than per-platform
   codec selection. `remote-playback/track-source.js` derives the twin's name from
-  `track.url`, so the two can never drift, and it lives there rather than in
+  the track *id* — never from the local file, which is itself chosen per browser
+  and on a fallback would name a file that does not exist — and it lives there
+  rather than in
   `tracks.js` so the catalog carries no remote-only fact — delete the plugin and
   `tracks.js` is untouched. `remote-playback-assets.test.js` checks every twin
   exists on disk, has no orphans, and is never the `.opus` original.
@@ -284,12 +286,16 @@ rules themselves, and the evidence you cannot get from reading the code.
   shows up as a missing button, since the button no longer depends on discovery;
   it would show up as a picker that lists nothing.
 - Cast twins are the one asset the service worker does not handle — neither
-  precached nor cached at runtime. It is not a caching preference: `cacheIfOk`
+  precached nor cached at runtime. They are identified by their directory
+  (`resources/soundscapes/cast/`), not their extension: a local fallback may
+  also be `.m4a`, and that one must stay cacheable or offline playback
+  disappears for exactly the browsers needing the fallback. It is not a caching preference: `cacheIfOk`
   buffers the whole body and `handleRangeRequest` upgrades a range miss to a full
   fetch, so every partial read the transport element makes would become a whole
   megabyte. Passing them through leaves the browser fetching the bytes it
-  actually asked for. `test/pwa.test.js` already excludes everything under
-  `resources/soundscapes/`. The consequence to accept: casting needs the network,
+  actually asked for. `test/pwa.test.js` excludes everything under
+  `resources/soundscapes/` from the precache, and separately proves the
+  exemption admits `cast/` and refuses both local variants. The consequence to accept: casting needs the network,
   which is true of the Android path regardless, since there the receiver does the
   fetching.
 - **`playCurrentTrack` checks the track generation before `finishTrackChange`, for
@@ -381,7 +387,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   that posture meant "never intervene again", the first restart would disarm the
   watchdog for the session and leave the app showing playing into a silent room —
   the exact failure it exists to catch. `providers/media-element.test.js` pins the retry.
-- `npm run cast-audio` rebuilds the AAC twins (needs `ffmpeg`/`ffprobe` on PATH;
+- `npm run audio -- --cast` rebuilds the AAC twins (needs `ffmpeg`/`ffprobe` on PATH;
   host-only, not in `npm test` or the Docker image). It imports the app's own
   `applyLoopCrossfade`, trims to the loop period, and writes that period
   repeatedly until the file passes `REPEAT_TO_SECONDS` (two minutes). Repetition

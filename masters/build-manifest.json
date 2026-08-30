@@ -1,0 +1,519 @@
+{
+    "cast/rain": {
+        "id": "rain",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/rain.m4a",
+        "outputSha256": "8360edfcab8b80824e59d293d2f3deff33a9dd2fba6c32d249d3231e177aadec",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/rain.opus",
+            "sha256": "79f0e99517c5558f3d3d1338ddadf274ed99732f2b9f247962ea2da6c8af0bc6",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 26.354,
+            "edgeFadeMs": 40,
+            "repeats": 9,
+            "loopSeconds": 14.72
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/garden-rain": {
+        "id": "garden-rain",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/garden-rain.m4a",
+        "outputSha256": "b95cfcd396898082d03bbb73dee3d6e1565dd7cf4d6d31da33d2fa51febfbcd3",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/garden-rain.opus",
+            "sha256": "feeb4985aa6cf100f95ebd5b14da4001054ebf02f6d90f92c7870d8541367a5d",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 24.771,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 25.387
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/heavy-rain": {
+        "id": "heavy-rain",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/heavy-rain.m4a",
+        "outputSha256": "8d15881f8737e46e5d50ee21f0b6f1cd8702b51282e94659c72768e6bb3d32e4",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/heavy-rain.opus",
+            "sha256": "cd7225158752a828a35fab2ecaf26ed377e7048e8e8ec38240fa5c06a2aa1fb2",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 12.458,
+            "edgeFadeMs": 40,
+            "repeats": 6,
+            "loopSeconds": 21.205
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/rain-thunder": {
+        "id": "rain-thunder",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/rain-thunder.m4a",
+        "outputSha256": "7809823225484deb386935cb7fe2f98114f01c66f2052558e4b4bb4b64c24ed1",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/rain-thunder.opus",
+            "sha256": "b10bdaba4f6b81e920075f0ebeaf6a43995855c01cd1668b9d97c3a3c5b69d16",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 16.771,
+            "edgeFadeMs": 40,
+            "repeats": 2,
+            "loopSeconds": 61.568
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/heavy-thunderstorm": {
+        "id": "heavy-thunderstorm",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/heavy-thunderstorm.m4a",
+        "outputSha256": "3b4847766c069032f4f4e77eebb935b9de5cac0de9814932fdb8154fd3bb37c5",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/heavy-thunderstorm.opus",
+            "sha256": "6283410cae5f8817c7fa6d7927f92690260c6c4f3f1ff0e2720546b391d84157",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 26.917,
+            "edgeFadeMs": 40,
+            "repeats": 2,
+            "loopSeconds": 66.475
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/fireplace": {
+        "id": "fireplace",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/fireplace.m4a",
+        "outputSha256": "cac9da4c27ce3787ec734c22c9ac6c9ad03a7415c486ed693ad8c55595e136d5",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/fireplace.opus",
+            "sha256": "6045a1908615bf2a20f018aad039ecc9099fa5dd4b40969ee06a702e2f8c1b60",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 17.208,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 25.557
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/deep-fireplace": {
+        "id": "deep-fireplace",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/deep-fireplace.m4a",
+        "outputSha256": "5ae48b57688c738e9206bc4167c3f4f12a6b09731a7df6d8d6dffdf3ccc622a1",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/deep-fireplace.opus",
+            "sha256": "7b9c3eb4389f2a49c52d53bb46f440c12ba2464d9c19c9abbdfe733ee826991d",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 24.021,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 27.2
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/the-open-road": {
+        "id": "the-open-road",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/the-open-road.m4a",
+        "outputSha256": "5fa1f76f4a765df01107eb8ab83a55798ceb1538e05fac6e6e4104228a180483",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/the-open-road.opus",
+            "sha256": "72098a154e70a9228ee87216f7b15d6b15f1a19f39afefb2ce00b1410de8dafa",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 26.667,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 29.973
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/brown-noise": {
+        "id": "brown-noise",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/brown-noise.m4a",
+        "outputSha256": "be9817a41994ef31ff139cdca5d6d80636da6839694ce97fb43f32f6a1b5175b",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/brown-noise.opus",
+            "sha256": "a0ba6401c5c5cf737c94f4c8de0b6fca82a47249e8aeb068565bae38582eb762",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 26.667,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 29.973
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/pink-noise": {
+        "id": "pink-noise",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/pink-noise.m4a",
+        "outputSha256": "34524ea39fbccbde43fef5e8aced3fd278639d6a0091fae1cf61942b3497a1e8",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/pink-noise.opus",
+            "sha256": "9ae6cf48a0af7d87872e8d9ab9bc7ceab1e53c15f20ff11ed95d94033d4ed7e2",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 26.667,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 29.973
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "cast/white-noise": {
+        "id": "white-noise",
+        "role": "cast",
+        "output": "resources/soundscapes/cast/white-noise.m4a",
+        "outputSha256": "5a5dc245eb69b74e2a821235065f7c3074c040b6dcc146f9ba7a1558a1159726",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/white-noise.opus",
+            "sha256": "93864dd4536b3b0d48cf120c0e8af804a170cb45d0e0d0a93682ccd47413ac1a",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "64k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfadeMs": 26.667,
+            "edgeFadeMs": 40,
+            "repeats": 5,
+            "loopSeconds": 29.973
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/rain": {
+        "id": "rain",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/rain.m4a",
+        "outputSha256": "b7ffe29f365735cf707d4f31aae789cfc08f346b2e61bb75fb8fcfeb78c598d8",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/rain.opus",
+            "sha256": "79f0e99517c5558f3d3d1338ddadf274ed99732f2b9f247962ea2da6c8af0bc6",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 707584,
+            "trimmedSamples": 241
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/garden-rain": {
+        "id": "garden-rain",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/garden-rain.m4a",
+        "outputSha256": "0219676d870af59ccc724dfe227fb52aaf564c96418bdf01f42ac08f2e6acb64",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/garden-rain.opus",
+            "sha256": "feeb4985aa6cf100f95ebd5b14da4001054ebf02f6d90f92c7870d8541367a5d",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1219584,
+            "trimmedSamples": 165
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/heavy-rain": {
+        "id": "heavy-rain",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/heavy-rain.m4a",
+        "outputSha256": "043d9a6e01a52192d84f75ec04f92b7a76411d316527b872922bc38ab11c272f",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/heavy-rain.opus",
+            "sha256": "cd7225158752a828a35fab2ecaf26ed377e7048e8e8ec38240fa5c06a2aa1fb2",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1017856,
+            "trimmedSamples": 598
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/rain-thunder": {
+        "id": "rain-thunder",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/rain-thunder.m4a",
+        "outputSha256": "db006c838dfa59ee263f0c17dbf7a86acb06ff5791abb71f6108c8532813797d",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/rain-thunder.opus",
+            "sha256": "b10bdaba4f6b81e920075f0ebeaf6a43995855c01cd1668b9d97c3a3c5b69d16",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 2955264,
+            "trimmedSamples": 805
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/heavy-thunderstorm": {
+        "id": "heavy-thunderstorm",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/heavy-thunderstorm.m4a",
+        "outputSha256": "a4664dd7fb86c2d90a742db93597b151ff16d19d3cdb4609b5e0c4e34e234365",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/heavy-thunderstorm.opus",
+            "sha256": "6283410cae5f8817c7fa6d7927f92690260c6c4f3f1ff0e2720546b391d84157",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 3191808,
+            "trimmedSamples": 268
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/fireplace": {
+        "id": "fireplace",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/fireplace.m4a",
+        "outputSha256": "19fe894aefbb6fd9c4fb17c37e951193bf3e45e4e8efdc08a8b9a1621e8b482e",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/fireplace.opus",
+            "sha256": "6045a1908615bf2a20f018aad039ecc9099fa5dd4b40969ee06a702e2f8c1b60",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1226752,
+            "trimmedSamples": 826
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/deep-fireplace": {
+        "id": "deep-fireplace",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/deep-fireplace.m4a",
+        "outputSha256": "b6699926153ac1971cdf9014c52d97a672b3b17d42631f789aaec20ca0e698fe",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/deep-fireplace.opus",
+            "sha256": "7b9c3eb4389f2a49c52d53bb46f440c12ba2464d9c19c9abbdfe733ee826991d",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1306624,
+            "trimmedSamples": 129
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/the-open-road": {
+        "id": "the-open-road",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/the-open-road.m4a",
+        "outputSha256": "b9c5bab190d9273b21d9d831c59a08a06d049dceda554dc3509694e8fb55eabf",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/the-open-road.opus",
+            "sha256": "72098a154e70a9228ee87216f7b15d6b15f1a19f39afefb2ce00b1410de8dafa",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1439744,
+            "trimmedSamples": 256
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/brown-noise": {
+        "id": "brown-noise",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/brown-noise.m4a",
+        "outputSha256": "63c1d93d1d62e19aff9784452a8db2362dac33e16a92780dd7c4e433b05d92d0",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/brown-noise.opus",
+            "sha256": "a0ba6401c5c5cf737c94f4c8de0b6fca82a47249e8aeb068565bae38582eb762",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1439744,
+            "trimmedSamples": 256
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/pink-noise": {
+        "id": "pink-noise",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/pink-noise.m4a",
+        "outputSha256": "8ba38ed2f1048d6705a7e986710f1fdef4b786e4b4bd90d7959964ac8ac1845c",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/pink-noise.opus",
+            "sha256": "9ae6cf48a0af7d87872e8d9ab9bc7ceab1e53c15f20ff11ed95d94033d4ed7e2",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1439744,
+            "trimmedSamples": 256
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    },
+    "aac/white-noise": {
+        "id": "white-noise",
+        "role": "aac",
+        "output": "resources/soundscapes/aac/white-noise.m4a",
+        "outputSha256": "9a13325c2a244deb8c806b9d9a312f5638c8b9968fe432dc6be02a3e78aaf260",
+        "input": {
+            "provenance": "opus-decoded-placeholder",
+            "file": "resources/soundscapes/opus/white-noise.opus",
+            "sha256": "93864dd4536b3b0d48cf120c0e8af804a170cb45d0e0d0a93682ccd47413ac1a",
+            "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
+        },
+        "transform": {
+            "codec": "aac",
+            "bitrate": "80k",
+            "sampleRate": 48000,
+            "channels": 1,
+            "loopCrossfade": "runtime",
+            "frameAlignedSamples": 1439744,
+            "trimmedSamples": 256
+        },
+        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "builtAt": "2026-08-30"
+    }
+}

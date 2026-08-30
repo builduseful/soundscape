@@ -2,31 +2,34 @@
 // the AAC twins cast targets play are derived in
 // js/remote-playback/track-source.js, so deleting that directory leaves this
 // file exactly as it is.
-const OGG_OPUS_MIME = "audio/ogg; codecs=opus";
-
+//
+// `id` is the track's immutable identity: the ?track= value, the manifest
+// shortcut target, the saved preference, and — once the resources are
+// restructured — the resource basename. It is deliberately not derived from
+// `title`, because titles are editorial text that must stay renameable without
+// breaking saved preferences, shared links or app shortcuts.
+//
+// A catalog entry is an id and a title, and nothing else. It names a soundscape;
+// it does not name a file. Which file to play is a question about the consumer —
+// this browser, or a cast receiver — and belongs to js/local-source.js and
+// js/remote-playback/track-source.js respectively.
 export const tracks = [
     // Nature
-    { title: "Rain", url: "resources/soundscapes/rain_loopable.opus", mime: OGG_OPUS_MIME },
-    { title: "Garden Rain", url: "resources/soundscapes/rain_garden_loopable.opus", mime: OGG_OPUS_MIME },
-    { title: "Heavy Rain", url: "resources/soundscapes/rain-from-room-loop-smallest.opus", mime: OGG_OPUS_MIME },
-    { title: "Rain & Thunder", url: "resources/soundscapes/rain_thunder_storm_loopable.opus", mime: OGG_OPUS_MIME },
-    { title: "Heavy Thunderstorm", url: "resources/soundscapes/rain-and-thunder-loop.opus", mime: OGG_OPUS_MIME },
+    { id: "rain", title: "Rain" },
+    { id: "garden-rain", title: "Garden Rain" },
+    { id: "heavy-rain", title: "Heavy Rain" },
+    { id: "rain-thunder", title: "Rain & Thunder" },
+    { id: "heavy-thunderstorm", title: "Heavy Thunderstorm" },
 
     // Cozy
-    { title: "Fireplace", url: "resources/soundscapes/fireplace_crackle_loopable.opus", mime: OGG_OPUS_MIME },
-    { title: "Deep Fireplace", url: "resources/soundscapes/fireplace_low_rumble_loopable.opus", mime: OGG_OPUS_MIME },
+    { id: "fireplace", title: "Fireplace" },
+    { id: "deep-fireplace", title: "Deep Fireplace" },
 
     // Ambient
-    { title: "The Open Road", url: "resources/soundscapes/open-road-loop.opus", mime: OGG_OPUS_MIME },
+    { id: "the-open-road", title: "The Open Road" },
 
     // Noises
-    { title: "Brown Noise", url: "resources/soundscapes/brown-noise-loop.opus", mime: OGG_OPUS_MIME },
-    { title: "Pink Noise", url: "resources/soundscapes/pink-noise-loop.opus", mime: OGG_OPUS_MIME },
-    { title: "White Noise", url: "resources/soundscapes/white-noise-loop.opus", mime: OGG_OPUS_MIME },
+    { id: "brown-noise", title: "Brown Noise" },
+    { id: "pink-noise", title: "Pink Noise" },
+    { id: "white-noise", title: "White Noise" },
 ];
-
-// URL-safe identifier derived from the title ("Rain & Thunder" → "rain-thunder").
-// Used by the ?track= query param and the manifest app shortcuts.
-export function trackSlug(track) {
-    return track.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}

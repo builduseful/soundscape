@@ -1,6 +1,6 @@
 {
   "name": "soundscape",
-  "version": "1.14.8",
+  "version": "1.17.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "cast-audio": "node scripts/build-cast-audio.mjs",
+    "audio": "node scripts/build-audio.mjs",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "icons": "node scripts/export-icons.mjs"
   },

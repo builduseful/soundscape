@@ -3,6 +3,7 @@ import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
+import { localSourceFor } from "../src/js/local-source.js";
 import { remoteUrlFor } from "../src/js/remote-playback/track-source.js";
 import { tracks } from "../src/js/tracks.js";
 
@@ -16,7 +17,7 @@ import { tracks } from "../src/js/tracks.js";
  * take this file with it and leave tracks.test.js alone.
  */
 
-const SOUNDSCAPES_DIR = new URL("../src/resources/soundscapes/", import.meta.url);
+const CAST_DIR = new URL("../src/resources/soundscapes/cast/", import.meta.url);
 
 // A receiver decodes the file itself and AirPlay cannot decode Opus, so a track
 // without its AAC twin is a track that silently fails to cast — and nothing in a
@@ -25,14 +26,13 @@ test("every track ships an AAC twin for remote targets", async () => {
     for (const track of tracks) {
         const remoteUrl = remoteUrlFor(track);
 
-        assert.equal(remoteUrl, track.url.replace(/\.opus$/u, ".m4a"));
-        assert.match(remoteUrl, /^resources\/soundscapes\/.+\.m4a$/);
+        assert.equal(remoteUrl, `resources/soundscapes/cast/${track.id}.m4a`);
         await access(new URL(`../src/${remoteUrl}`, import.meta.url));
     }
 });
 
 test("cast audio has no orphans left behind by a renamed soundscape", async () => {
-    const castFiles = (await readdir(SOUNDSCAPES_DIR))
+    const castFiles = (await readdir(CAST_DIR))
         .filter((fileName) => fileName.endsWith(".m4a"))
         .sort();
     const catalogCastFiles = tracks
@@ -62,10 +62,19 @@ test("no twin is small enough to be refused as too short to remote", async () =>
 // Nothing may hand a receiver the Opus original: Safari could not decode Ogg
 // Opus at all before 18.4, and desktop remoting only carries Opus if the sink
 // advertises it.
+//
+// The cast/ directory check is the half that survives a local fallback. Once a
+// local .m4a exists, "not the local file" stops being a statement about the
+// extension and becomes one about the directory: the two are different products
+// — one loop period against a repeated programme with the crossfade baked in —
+// and a receiver handed the local twin would seek audibly on every wrap.
 test("remoteUrlFor never answers with the local source", () => {
     for (const track of tracks) {
-        assert.notEqual(remoteUrlFor(track), track.url);
-        assert.doesNotMatch(remoteUrlFor(track), /\.opus$/u);
+        const remoteUrl = remoteUrlFor(track);
+
+        assert.notEqual(remoteUrl, localSourceFor(track).url);
+        assert.doesNotMatch(remoteUrl, /\.opus$/u);
+        assert.ok(remoteUrl.startsWith("resources/soundscapes/cast/"));
     }
 });
 
@@ -73,4 +82,5 @@ test("remoteUrlFor answers null rather than guessing when there is no track", ()
     assert.equal(remoteUrlFor(null), null);
     assert.equal(remoteUrlFor(undefined), null);
     assert.equal(remoteUrlFor({}), null);
+    assert.equal(remoteUrlFor({ title: "Rain" }), null);
 });

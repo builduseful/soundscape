@@ -7,7 +7,8 @@ import {
     restoreAppTestEnvironment,
     startAppTestEnvironment,
 } from "./helpers/app-test-harness.js";
-import { tracks, trackSlug } from "../src/js/tracks.js";
+import { localSourceFor } from "../src/js/local-source.js";
+import { tracks } from "../src/js/tracks.js";
 
 const originalConsoleWarn = console.warn;
 
@@ -110,7 +111,7 @@ test("media session action handlers are refreshed after track changes", async ()
 test("restores saved track, volume, and theme before the first play", async () => {
     const { audioContexts, audioElement, elements, mediaActions, navigator, storage } = await startAppTestEnvironment({
         storageEntries: {
-            "soundscape.currentTrackUrl": tracks[1].url,
+            "soundscape.currentTrackId": tracks[1].id,
             "soundscape.themePreference": "dark",
             "soundscape.volume": "0.42",
         },
@@ -131,9 +132,9 @@ test("restores saved track, volume, and theme before the first play", async () =
 
     await mediaActions.play();
 
-    assert.equal(audioElement.src, tracks[1].url);
+    assert.equal(audioElement.src, localSourceFor(tracks[1]).url);
     assert.equal(audioContexts[0].gains[1].gain.value, 0.42);
-    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[1].url);
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[1].id);
 
     await mediaActions.pause();
 });
@@ -163,10 +164,39 @@ test("only the local element is ever routed through the audio graph", async () =
     await mediaActions.pause();
 });
 
+// Before 1.15.0 the selected soundscape was saved as a resource URL under a
+// different key. That key is deliberately not migrated: this app has one user,
+// and a one-time reset to the first soundscape is a smaller cost than carrying a
+// translation table forever.
+//
+// What must not happen is the app breaking for someone who happens to have an
+// old install — a stuck title, a missing file, or a preference that can never be
+// written again. So the requirement under test is narrow and permanent: an
+// unreadable preference costs the listener their selection once, and everything
+// works from there.
+test("an install from before ids starts cleanly instead of breaking", async () => {
+    const { elements, mediaActions, audioElement, navigator, storage } = await startAppTestEnvironment({
+        storageEntries: { "soundscape.currentTrackUrl": "resources/soundscapes/open-road-loop.opus" },
+    });
+
+    assert.equal(getTitleParts(elements).current.textContent, tracks[0].title);
+
+    await mediaActions.play();
+
+    assert.equal(navigator.mediaSession.playbackState, "playing");
+    assert.equal(audioElement.src, localSourceFor(tracks[0]).url);
+
+    // The new key is written on first play, so the reset happens once and never
+    // again. The stale key is simply ignored; nothing reads it any more.
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[0].id);
+
+    await mediaActions.pause();
+});
+
 test("invalid saved preferences fall back to safe defaults", async () => {
     const { elements, navigator } = await startAppTestEnvironment({
         storageEntries: {
-            "soundscape.currentTrackUrl": "resources/soundscapes/missing.opus",
+            "soundscape.currentTrackId": "no-such-soundscape",
             "soundscape.themePreference": "sepia",
             "soundscape.volume": "loud",
         },
@@ -428,14 +458,14 @@ test("app handles track load failures gracefully", async () => {
     await assert.doesNotReject(() => mediaActions.next());
 
     assert.equal(context.decodeAudioDataCalls, 2);
-    assert.equal(audioElement.src, tracks[0].url);
+    assert.equal(audioElement.src, localSourceFor(tracks[0]).url);
     assert.equal(audioElement.playCalls, 1);
     assert.equal(current.textContent, tracks[0].title);
     assert.equal(incoming.textContent, "");
     assert.equal(title.classList.contains("is-changing"), false);
     assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
     assert.equal(navigator.mediaSession.playbackState, "playing");
-    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[0].url);
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[0].id);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0][0], /Could not change soundscape track/);
 
@@ -708,7 +738,7 @@ test("media play failures after a track switch keep the switched track selected"
 
     const { current, incoming, title } = getTitleParts(elements);
 
-    assert.equal(audioElement.src, tracks[1].url);
+    assert.equal(audioElement.src, localSourceFor(tracks[1]).url);
     assert.equal(audioElement.playCalls, 2);
     assert.equal(current.textContent, tracks[1].title);
     assert.equal(incoming.textContent, "");
@@ -716,7 +746,7 @@ test("media play failures after a track switch keep the switched track selected"
     assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
     assert.equal(navigator.mediaSession.playbackState, "paused");
     assert.equal(elements.get("playPauseButton").getAttribute("aria-label"), "Play");
-    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[1].url);
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[1].id);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0][0], /Could not start soundscape track/);
 });
@@ -763,7 +793,7 @@ test("concurrent track switches do not cause title/state reversion on intermedia
     assert.equal(incoming.textContent, "");
     assert.equal(title.classList.contains("is-changing"), false);
     assert.equal(navigator.mediaSession.metadata.title, tracks[2].title);
-    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[2].url);
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[2].id);
 });
 
 
@@ -814,13 +844,13 @@ test("app shortcut launches switch tracks in a running instance", async () => {
     assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
     assert.equal(audioElement.playCalls, 1);
 
-    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${trackSlug(tracks[2])}` });
+    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${tracks[2].id}` });
     await waitFor(() => navigator.mediaSession.metadata.title === tracks[2].title);
 
-    assert.equal(audioElement.src, tracks[2].url);
+    assert.equal(audioElement.src, localSourceFor(tracks[2]).url);
     assert.equal(navigator.mediaSession.playbackState, "playing");
     assert.equal(audioElement.playCalls, 2);
-    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[2].url);
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[2].id);
 
     await mediaActions.pause();
 });
@@ -841,12 +871,12 @@ test("an app shortcut starts playback even when it also changes track", async ()
 
     assert.equal(navigator.mediaSession.playbackState, "none", "nothing playing yet");
 
-    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${trackSlug(tracks[3])}` });
+    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${tracks[3].id}` });
     await waitFor(() => navigator.mediaSession.playbackState === "playing");
 
     assert.equal(navigator.mediaSession.metadata.title, tracks[3].title);
-    assert.equal(audioElement.src, tracks[3].url);
-    assert.equal(storage.get("soundscape.currentTrackUrl"), tracks[3].url);
+    assert.equal(audioElement.src, localSourceFor(tracks[3]).url);
+    assert.equal(storage.get("soundscape.currentTrackId"), tracks[3].id);
 });
 
 test("app shortcut launches ignore unknown slugs and the current track", async () => {
@@ -863,13 +893,13 @@ test("app shortcut launches ignore unknown slugs and the current track", async (
     assert.equal(audioElement.playCalls, 1);
 
     launchConsumer({ targetURL: "https://soundscape.localhost/?track=does-not-exist" });
-    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${trackSlug(tracks[0])}` });
+    launchConsumer({ targetURL: `https://soundscape.localhost/?track=${tracks[0].id}` });
     launchConsumer({});
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
     assert.equal(navigator.mediaSession.playbackState, "playing");
-    assert.equal(audioElement.src, tracks[0].url);
+    assert.equal(audioElement.src, localSourceFor(tracks[0]).url);
     assert.equal(audioElement.playCalls, 1);
 
     await mediaActions.pause();

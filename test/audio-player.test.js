@@ -28,6 +28,18 @@ afterEach(() => {
     console.warn = originalConsoleWarn;
 });
 
+// These tests hand the player fixture files (`/loop.ogg`) rather than catalog
+// tracks, so they inject a resolver that plays whatever URL the fixture names.
+// The production resolver derives the URL from the track id and would send every
+// one of them to the same nonexistent file — which would test the resolver, not
+// the player. `local-source.test.js` covers the real derivation.
+function createPlayer(audioElement, options = {}) {
+    return new AudioPlayer(audioElement, {
+        resolveSource: (track) => ({ url: track.url, mime: track.mime }),
+        ...options,
+    });
+}
+
 function createAudioElement() {
     return {
         paused: true,
@@ -485,9 +497,9 @@ test("loadBuffer returns a crossfaded loop window and caches it", async () => {
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/loop.ogg" }, true);
+    await player.playTrack({ id: "loop", url: "/loop.ogg" }, true);
 
     const firstWindow = await player.loadBuffer("/loop.ogg");
     const secondWindow = await player.loadBuffer("/loop.ogg");
@@ -503,9 +515,9 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
     const contexts = installAudioContext();
     const fetchCalls = installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/sound.ogg" }, true);
+    await player.playTrack({ id: "sound", url: "/sound.ogg" }, true);
 
     assert.equal(player.hasContext(), true);
     assert.equal(player.hasTrack(), true);
@@ -544,10 +556,10 @@ test("playTrack reuses the media element audio graph when replacing tracks", asy
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/first.ogg" }, true);
-    await player.playTrack({ url: "/second.ogg" }, false, true);
+    await player.playTrack({ id: "first", url: "/first.ogg" }, true);
+    await player.playTrack({ id: "second", url: "/second.ogg" }, false, true);
 
     assert.equal(contexts.length, 1);
     assert.equal(contexts[0].mediaSources.length, 1);
@@ -562,10 +574,10 @@ test("playTrack reuses decoded buffers when replaying the same track", async () 
     const contexts = installAudioContext();
     const fetchCalls = installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/loop.ogg" }, true);
-    await player.playTrack({ url: "/loop.ogg" }, true);
+    await player.playTrack({ id: "loop", url: "/loop.ogg" }, true);
+    await player.playTrack({ id: "loop", url: "/loop.ogg" }, true);
 
     assert.equal(audioElement.loadCalls, 1);
     assert.deepEqual(fetchCalls, ["/loop.ogg"]);
@@ -579,10 +591,10 @@ test("playTrack reuses an in-flight buffer load for duplicate track requests", a
     const contexts = installAudioContext();
     const requests = installDeferredFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    const firstPlay = player.playTrack({ url: "/loop.ogg" }, true);
-    const secondPlay = player.playTrack({ url: "/loop.ogg" }, true);
+    const firstPlay = player.playTrack({ id: "loop", url: "/loop.ogg" }, true);
+    const secondPlay = player.playTrack({ id: "loop", url: "/loop.ogg" }, true);
 
     assert.equal(requests.length, 1);
     requests[0].resolveWithBytes(8);
@@ -597,7 +609,7 @@ test("playTrack retries a buffer load after a failed response", async () => {
     const contexts = installAudioContext();
     const fetchCalls = [];
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
     globalThis.fetch = async (url) => {
         fetchCalls.push(url);
@@ -615,10 +627,10 @@ test("playTrack retries a buffer load after a failed response", async () => {
     };
 
     await assert.rejects(
-        () => player.playTrack({ url: "/retry.ogg" }, true),
+        () => player.playTrack({ id: "retry", url: "/retry.ogg" }, true),
         /Could not load audio: 503 Service Unavailable/,
     );
-    await player.playTrack({ url: "/retry.ogg" }, true);
+    await player.playTrack({ id: "retry", url: "/retry.ogg" }, true);
 
     assert.deepEqual(fetchCalls, ["/retry.ogg", "/retry.ogg"]);
     assert.equal(contexts[0].decodedBuffers.length, 1);
@@ -628,10 +640,10 @@ test("playTrack ignores stale buffer loads when a newer track is requested", asy
     const contexts = installAudioContext();
     const requests = installDeferredFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    const firstPlay = player.playTrack({ url: "/slow.ogg" }, true);
-    const secondPlay = player.playTrack({ url: "/fast.ogg" }, true);
+    const firstPlay = player.playTrack({ id: "slow", url: "/slow.ogg" }, true);
+    const secondPlay = player.playTrack({ id: "fast", url: "/fast.ogg" }, true);
 
     requests[1].resolveWithBytes(16);
 
@@ -649,14 +661,14 @@ test("playTrack keeps the current buffer source active while a replacement track
     const contexts = installAudioContext();
     const requests = installDeferredFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    const firstPlay = player.playTrack({ id: "first", url: "/first.ogg" }, true);
     requests[0].resolveWithBytes(8);
     assert.equal(await firstPlay, true);
 
     const firstSource = contexts[0].bufferSources[0];
-    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+    const secondPlay = player.playTrack({ id: "second", url: "/second.ogg" }, true);
 
     assert.equal(firstSource.stopCalls, 0);
     assert.equal(audioElement.src, "/first.ogg");
@@ -674,12 +686,12 @@ test("playTrack crossfades between two different playing tracks with equal-power
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/first.ogg" }, true);
+    await player.playTrack({ id: "first", url: "/first.ogg" }, true);
     const firstSource = contexts[0].bufferSources[0];
 
-    await player.playTrack({ url: "/second.ogg" }, true);
+    await player.playTrack({ id: "second", url: "/second.ogg" }, true);
 
     const context = contexts[0];
     const currentGainNode = context.gains[1];
@@ -704,7 +716,7 @@ test("playTrack keeps the current track active if a replacement track fails to l
     const contexts = installAudioContext();
     const fetchCalls = [];
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
     globalThis.fetch = async (url) => {
         fetchCalls.push(url);
@@ -721,11 +733,11 @@ test("playTrack keeps the current track active if a replacement track fails to l
         };
     };
 
-    await player.playTrack({ url: "/first.ogg" }, true);
+    await player.playTrack({ id: "first", url: "/first.ogg" }, true);
     const firstSource = contexts[0].bufferSources[0];
 
     await assert.rejects(
-        () => player.playTrack({ url: "/broken.ogg" }, true),
+        () => player.playTrack({ id: "broken", url: "/broken.ogg" }, true),
         /Could not load audio: 404 Not Found/,
     );
 
@@ -742,13 +754,13 @@ test("playTrack respects a pause while a replacement track is still loading", as
     const contexts = installAudioContext();
     const requests = installDeferredFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    const firstPlay = player.playTrack({ id: "first", url: "/first.ogg" }, true);
     requests[0].resolveWithBytes(8);
     assert.equal(await firstPlay, true);
 
-    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+    const secondPlay = player.playTrack({ id: "second", url: "/second.ogg" }, true);
     await player.pause();
     requests[1].resolveWithBytes(16);
 
@@ -765,11 +777,11 @@ test("playTrack reports loading for as long as the new track's audio is still ar
     const requests = installDeferredFetch();
     const audioElement = createAudioElement();
     const loadingChanges = [];
-    const player = new AudioPlayer(audioElement, {
+    const player = createPlayer(audioElement, {
         onLoadingChange: (isLoading) => loadingChanges.push(isLoading),
     });
 
-    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
+    const firstPlay = player.playTrack({ id: "first", url: "/first.ogg" }, true);
     assert.equal(player.isLoading(), true);
     assert.deepEqual(loadingChanges, [true]);
 
@@ -784,7 +796,7 @@ test("playTrack reports loading for as long as the new track's audio is still ar
     assert.equal(player.isLoading(), false);
     assert.deepEqual(loadingChanges, [true, false]);
 
-    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+    const secondPlay = player.playTrack({ id: "second", url: "/second.ogg" }, true);
     assert.equal(player.isLoading(), true);
 
     requests[1].resolveWithBytes(16);
@@ -799,12 +811,12 @@ test("playTrack keeps reporting loading when a second track change supersedes th
     installAudioContext();
     const requests = installDeferredFetch();
     const loadingChanges = [];
-    const player = new AudioPlayer(createAudioElement(), {
+    const player = createPlayer(createAudioElement(), {
         onLoadingChange: (isLoading) => loadingChanges.push(isLoading),
     });
 
-    const firstPlay = player.playTrack({ url: "/first.ogg" }, true);
-    const secondPlay = player.playTrack({ url: "/second.ogg" }, true);
+    const firstPlay = player.playTrack({ id: "first", url: "/first.ogg" }, true);
+    const secondPlay = player.playTrack({ id: "second", url: "/second.ogg" }, true);
 
     // Resolving the superseded request must not clear the indicator.
     requests[0].resolveWithBytes(8);
@@ -821,14 +833,14 @@ test("playTrack keeps reporting loading when a second track change supersedes th
 test("playTrack stops reporting loading when the audio fails to arrive", async () => {
     installAudioContext();
     const loadingChanges = [];
-    const player = new AudioPlayer(createAudioElement(), {
+    const player = createPlayer(createAudioElement(), {
         onLoadingChange: (isLoading) => loadingChanges.push(isLoading),
     });
 
     globalThis.fetch = async () => ({ ok: false, status: 504, statusText: "Offline" });
 
     await assert.rejects(
-        () => player.playTrack({ url: "/missing.ogg" }, true),
+        () => player.playTrack({ id: "missing", url: "/missing.ogg" }, true),
         /Could not load audio: 504 Offline/,
     );
 
@@ -840,9 +852,9 @@ test("playTrack refreshes the browser playback surface when replacing a paused t
     const contexts = installAudioContext({ initialState: "running" });
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/quiet.ogg" }, true, true, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.ogg" }, true, true, true);
 
     assert.equal(player.hasTrack(), true);
     assert.equal(player.isPlaying(), false);
@@ -867,9 +879,9 @@ test("pauseForHandover pauses without the element's own event reading as intent"
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/quiet.ogg" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.ogg" }, true);
     assert.equal(player.isBrowserPlaybackSyncSuppressed(), false);
 
     const parked = player.pauseForHandover();
@@ -901,10 +913,10 @@ test("playTrack applies the latest volume to the gain node", async () => {
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
     player.updateVolume(0.35);
 
-    await player.playTrack({ url: "/quiet.ogg" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.ogg" }, true);
 
     assert.equal(contexts[0].gains[1].gain.value, 0.35);
 });
@@ -913,9 +925,9 @@ test("getMediaSessionPositionState reports decoded buffer loop position", async 
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/quiet.opus" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
     contexts[0].currentTime += 7;
 
     // Duration is the looping period, which the crossfade trims below the
@@ -939,9 +951,9 @@ test("getMediaSessionPositionState wraps long-running loop position", async () =
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/quiet.opus" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
     contexts[0].currentTime += 37;
 
     // 37 s into a loop whose period is just under 30 s wraps into the second pass.
@@ -954,13 +966,13 @@ test("AudioContext state changes notify the app shell", async () => {
     installFetch();
     const audioElement = createAudioElement();
     let stateChangeCount = 0;
-    const player = new AudioPlayer(audioElement, {
+    const player = createPlayer(audioElement, {
         onStateChange() {
             stateChangeCount += 1;
         },
     });
 
-    await player.playTrack({ url: "/quiet.opus" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
     contexts[0].dispatch("statechange");
 
     assert.equal(stateChangeCount, 1);
@@ -970,9 +982,9 @@ test("playTrack snaps the source start time when the context resumes after a sus
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/quiet.opus" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
     // Simulate the gap between source.start() and the actual resume event. In a
     // real browser the AudioContext clock keeps advancing while the context is
     // suspended, so the currentTime captured at start() is stale by the time
@@ -987,9 +999,9 @@ test("playTrack leaves the source start time alone when the context is already r
     const contexts = installAudioContext({ initialState: "running" });
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/quiet.opus" }, true);
+    await player.playTrack({ id: "quiet", url: "/quiet.opus" }, true);
     contexts[0].currentTime += 4;
     contexts[0].dispatch("statechange");
 
@@ -998,13 +1010,170 @@ test("playTrack leaves the source start time alone when the context is already r
     assert.equal(player.getCurrentPosition(), 4);
 });
 
+// A browser that cannot decode Opus should not play nothing. The retry is
+// deliberately narrow — see sourceAfterDecodeFailure — so these pin all three
+// halves of it: it happens on a decode failure, it does not happen on any other
+// failure, and it happens at most once.
+function installFailingDecode(failures) {
+    const original = globalThis.AudioContext.prototype.decodeAudioData;
+    let attempts = 0;
+
+    globalThis.AudioContext.prototype.decodeAudioData = async function decodeAudioData(arrayBuffer) {
+        attempts += 1;
+
+        if (attempts <= failures) throw new Error("The format is not supported");
+
+        return original.call(this, arrayBuffer);
+    };
+
+    return () => {
+        globalThis.AudioContext.prototype.decodeAudioData = original;
+    };
+}
+
+function createSwitchableResolver(codecs) {
+    let index = 0;
+    const resolve = (track) => ({ url: `/${codecs[index]}/${track.id}`, mime: codecs[index] });
+
+    resolve.codec = () => codecs[index];
+    resolve.downgrade = () => {
+        if (index >= codecs.length - 1) return false;
+        index += 1;
+
+        return true;
+    };
+
+    return resolve;
+}
+
+test("a decode failure falls back to the next local codec", async () => {
+    installAudioContext();
+    const fetched = installFetch();
+    const restoreDecode = installFailingDecode(1);
+    const resolveSource = createSwitchableResolver(["opus", "aac"]);
+    const audioElement = createAudioElement();
+    const player = createPlayer(audioElement, { resolveSource });
+
+    console.warn = () => {};
+
+    try {
+        await player.playTrack({ id: "rain" }, true);
+    } finally {
+        restoreDecode();
+    }
+
+    assert.deepEqual(fetched, ["/opus/rain", "/aac/rain"]);
+    assert.equal(player.getTrackUrl(), "/aac/rain");
+
+    // The media element has to follow the downgrade, not just the decoded
+    // buffer. It is the app's whole platform surface — OS media controls,
+    // hardware keys, audio focus, autoplay policy — and `shouldLoadMediaElement`
+    // is keyed on the track id, which a downgrade does *not* change. Left
+    // behind, it would sit on a file this browser has just proved it cannot
+    // decode, while the audible buffer played something else.
+    assert.equal(audioElement.src, "/aac/rain");
+    assert.equal(audioElement.paused, false, "the silent element must still be playing");
+
+    // The track never changed — only the file did. Identity has to survive that,
+    // or the handover and the media session would disagree with the player.
+    assert.equal(player.holdsTrack({ id: "rain" }), true);
+});
+
+// Waits for an asynchronous chain to reach a state, rather than assuming how
+// many microtask turns it takes to get there.
+async function until(condition, turns = 50) {
+    for (let turn = 0; turn < turns; turn++) {
+        if (condition()) return;
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    throw new Error("Timed out waiting for the expected state");
+}
+
+// The retry is a second load, so it needs the same stale guard as the first.
+// Without one, skipping during a fallback attempt turns a superseded request
+// into a playback error for a soundscape the listener has already left.
+test("a failed retry stays quiet when it has already been superseded", async () => {
+    installAudioContext();
+    const requests = installDeferredFetch();
+    const restoreDecode = installFailingDecode(2);
+    const resolveSource = createSwitchableResolver(["opus", "aac"]);
+    const player = createPlayer(createAudioElement(), { resolveSource });
+
+    console.warn = () => {};
+
+    try {
+        const firstPlay = player.playTrack({ id: "rain" }, true);
+
+        // Fails to decode, downgrades, and opens the fallback fetch. That chain
+        // crosses several awaits, so wait for the effect rather than guessing a
+        // number of microtask turns.
+        requests[0].resolveWithBytes(8);
+        await until(() => requests.length === 2);
+
+        assert.equal(requests.length, 2, "the fallback load should be in flight");
+        assert.equal(requests[1].url, "/aac/rain");
+
+        // A skip lands while that fallback is still loading.
+        const secondPlay = player.playTrack({ id: "fireplace" }, true);
+
+        requests[1].resolveWithBytes(8);
+
+        assert.equal(await firstPlay, false, "a superseded retry resolves quietly");
+
+        requests[2].resolveWithBytes(8);
+        assert.equal(await secondPlay, true);
+    } finally {
+        restoreDecode();
+    }
+
+    assert.equal(player.holdsTrack({ id: "fireplace" }), true);
+});
+
+test("a fetch failure never changes codec", async () => {
+    installAudioContext();
+    globalThis.fetch = async () => ({ ok: false, status: 503, statusText: "Service Unavailable" });
+
+    const resolveSource = createSwitchableResolver(["opus", "aac"]);
+    const player = createPlayer(createAudioElement(), { resolveSource });
+
+    await assert.rejects(() => player.playTrack({ id: "rain" }, true), /Could not load audio: 503/u);
+
+    // Re-fetching identical bytes in a different container answers a question
+    // nobody asked: the network failed, not the decoder.
+    assert.equal(resolveSource.codec(), "opus");
+});
+
+test("a decode failure downgrades at most once per page", async () => {
+    installAudioContext();
+    installFetch();
+    const restoreDecode = installFailingDecode(2);
+    const resolveSource = createSwitchableResolver(["opus", "aac"]);
+    const player = createPlayer(createAudioElement(), { resolveSource });
+
+    console.warn = () => {};
+
+    try {
+        await assert.rejects(
+            () => player.playTrack({ id: "rain" }, true),
+            /Could not decode audio: \/aac\/rain/u,
+            "the second failure is reported rather than retried",
+        );
+    } finally {
+        restoreDecode();
+    }
+
+    assert.equal(resolveSource.codec(), "aac");
+});
+
 test("playTrack accepts supported MIME types before loading the track", async () => {
     installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
     await player.playTrack({
+        id: "rain",
         url: "/rain.opus",
         mime: "audio/ogg; codecs=opus",
     }, true);
@@ -1019,12 +1188,12 @@ test("playTrack still attempts a track the media element reports as unsupported"
     audioElement.canPlayType = () => "";
     const warnings = [];
     console.warn = (...args) => warnings.push(args.map(String).join(" "));
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
     // canPlayType() describes the media element, but the audible path is
     // decodeAudioData(). A conservative "" must not mute the app before a byte
     // is fetched — warn and let the decode be the real verdict.
-    await player.playTrack({ url: "/rain.opus", mime: "audio/ogg; codecs=opus" }, true);
+    await player.playTrack({ id: "rain", url: "/rain.opus", mime: "audio/ogg; codecs=opus" }, true);
 
     assert.equal(contexts.length, 1);
     assert.equal(audioElement.src, "/rain.opus");
@@ -1037,9 +1206,9 @@ test("play and pause keep a loaded track's audio context and media element in sy
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/sound.ogg" }, true);
+    await player.playTrack({ id: "sound", url: "/sound.ogg" }, true);
     assert.equal(player.isPlaybackRequested(), true);
     await player.pause();
     assert.equal(player.state, "suspended");
@@ -1060,9 +1229,9 @@ test("pause wins if it happens while play is resuming the audio context", async 
     const contexts = installAudioContext();
     installFetch();
     const audioElement = createAudioElement();
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    await player.playTrack({ url: "/sound.ogg" }, true);
+    await player.playTrack({ id: "sound", url: "/sound.ogg" }, true);
     await player.pause();
 
     let resolveResume;
@@ -1093,10 +1262,10 @@ test("play suspends the audio context again if the media element cannot play", a
         this.paused = false;
         throw new Error("Media element rejected playback");
     };
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
     await assert.rejects(
-        () => player.playTrack({ url: "/sound.ogg" }, true),
+        () => player.playTrack({ id: "sound", url: "/sound.ogg" }, true),
         /Media element rejected playback/,
     );
 
@@ -1106,7 +1275,7 @@ test("play suspends the audio context again if the media element cannot play", a
     assert.equal(contexts[0].suspendCalls, 1);
 });
 
-test("supportsTrack intentionally checks only the MIME type", () => {
+test("supportsSource intentionally checks only the MIME type", () => {
     const audioElement = createAudioElement();
     const checkedTypes = [];
     audioElement.canPlayType = (type) => {
@@ -1114,41 +1283,41 @@ test("supportsTrack intentionally checks only the MIME type", () => {
         return "probably";
     };
 
-    const player = new AudioPlayer(audioElement);
-    const result = player.supportsTrack({ url: "/rain.opus", mime: "audio/ogg; codecs=opus" });
+    const player = createPlayer(audioElement);
+    const result = player.supportsSource({ id: "rain", url: "/rain.opus", mime: "audio/ogg; codecs=opus" });
 
     assert.equal(result, true);
     assert.deepEqual(checkedTypes, ["audio/ogg; codecs=opus"]);
 });
 
-test("supportsTrack accepts tracks without a declared MIME type", () => {
+test("supportsSource accepts a source without a declared MIME type", () => {
     const audioElement = createAudioElement();
     audioElement.canPlayType = () => {
         throw new Error("canPlayType should not be called without a MIME type");
     };
 
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
-    assert.equal(player.supportsTrack({ url: "/legacy.ogg" }), true);
+    assert.equal(player.supportsSource({ id: "legacy", url: "/legacy.ogg" }), true);
 });
 
 test("isPlaying returns false if the audio element is paused even if the context is running", async () => {
     installAudioContext({ initialState: "running" });
     const audioElement = createAudioElement();
     audioElement.paused = true;
-    const player = new AudioPlayer(audioElement);
+    const player = createPlayer(audioElement);
 
     assert.equal(player.isPlaying(), false);
 });
 
 test("pause is a no-op before the audio graph exists", async () => {
-    const player = new AudioPlayer(createAudioElement());
+    const player = createPlayer(createAudioElement());
 
     await assert.doesNotReject(() => player.pause());
 });
 
 test("updateVolume fades from the current gain value", () => {
-    const player = new AudioPlayer(createAudioElement());
+    const player = createPlayer(createAudioElement());
     const calls = [];
     player.audioContext = { currentTime: 5 };
     player.currentTrackGainNode = {
@@ -1176,7 +1345,7 @@ test("updateVolume fades from the current gain value", () => {
 });
 
 test("updateVolume is a no-op before the gain node exists", () => {
-    const player = new AudioPlayer(createAudioElement());
+    const player = createPlayer(createAudioElement());
 
     assert.doesNotThrow(() => player.updateVolume(0.5));
 });

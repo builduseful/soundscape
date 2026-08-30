@@ -1,0 +1,68 @@
+{
+    "rain": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "ab8ca534eefa2757f91f164865b731cbd17f58d6d37a6d9f57c630a7bbdf4098",
+        "decodedFrom": "resources/soundscapes/opus/rain.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "garden-rain": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "a90dd535f10f6edaa2bc728560627d77094773d895cdd6653975ef780d90428d",
+        "decodedFrom": "resources/soundscapes/opus/garden-rain.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "heavy-rain": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "46167c8f3e54476765f0907137ecdeda491d1a3203f069d80fdb0c15b1b894ce",
+        "decodedFrom": "resources/soundscapes/opus/heavy-rain.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "rain-thunder": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "b7672279c259ef336f6fcfde2af3ff3ae09a699848e7d23b3610d4d24d93552e",
+        "decodedFrom": "resources/soundscapes/opus/rain-thunder.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "heavy-thunderstorm": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "f105d17997e4ba5aa650d120499752b84ff5d3510d62df566b2b215131c93555",
+        "decodedFrom": "resources/soundscapes/opus/heavy-thunderstorm.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "fireplace": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "c4a901b4c592edaaa60a9e4a4ad90e0fc85dcf826c026523ca69486c44b53423",
+        "decodedFrom": "resources/soundscapes/opus/fireplace.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "deep-fireplace": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "a97aee5d17b7c5e467b7e8108ad2ae38cf3d264c09169c542b9577ad281895df",
+        "decodedFrom": "resources/soundscapes/opus/deep-fireplace.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "the-open-road": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "533c37d703c5c55e4909559efb01b139f5f023ae412c3e283ee51346283f15b3",
+        "decodedFrom": "resources/soundscapes/opus/the-open-road.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "brown-noise": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "53358df98fcc8e98aedfcad184b0285096fcb9db59d2b551eeca9706bf2cb828",
+        "decodedFrom": "resources/soundscapes/opus/brown-noise.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "pink-noise": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "db20a04c4f3c27195d40ebf8cdb6fee2b93fc1bc8ff31b225067c2695b5b1ab8",
+        "decodedFrom": "resources/soundscapes/opus/pink-noise.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    },
+    "white-noise": {
+        "kind": "opus-decoded-placeholder",
+        "sha256": "f066a14cee1bc02e0fdb20d5860393aa6c043e6ad087ac510a1840641bfcacf4",
+        "decodedFrom": "resources/soundscapes/opus/white-noise.opus",
+        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+    }
+}

@@ -7,6 +7,7 @@
 // perfect loop points are a hard product requirement for these short files.
 
 import { AudioPlayer } from "./audio-player.js";
+import { createLocalSourceResolver } from "./local-source.js";
 import { createRemotePlayback } from "./remote-playback/index.js";
 // The control is a custom element like the three imported below, and the only
 // one that does not live in js/components/ — it belongs to remote playback and
@@ -31,8 +32,8 @@ import {
     normalizeThemePreference,
     saveThemePreference,
 } from "./theme-utils.js";
-import { tracks, trackSlug } from "./tracks.js";
-const VERSION = "1.14.8";
+import { tracks } from "./tracks.js";
+const VERSION = "1.17.1";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -41,7 +42,7 @@ const KEY_SPACE = " ";
 const KEY_ARROW_RIGHT = "ArrowRight";
 const KEY_ARROW_LEFT = "ArrowLeft";
 const SAVED_VOLUME_KEY = "soundscape.volume";
-const SAVED_TRACK_URL_KEY = "soundscape.currentTrackUrl";
+const SAVED_TRACK_ID_KEY = "soundscape.currentTrackId";
 const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
 const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
 const LOADING_LABEL = "Loading soundscape";
@@ -95,6 +96,7 @@ let remoteTransitionId = 0;
 const localOutput = new AudioPlayer(audioElement, {
     onStateChange: () => syncPlaybackState(isOutputPlaying()),
     onLoadingChange: syncLoadingIndicator,
+    resolveSource: createLocalSourceResolver(audioElement, { override: readCodecOverride() }),
 });
 
 // The remote output, or null on a browser with no way to reach another device —
@@ -344,6 +346,23 @@ function stripTrackParamFromUrl() {
     globalThis.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+// `?codec=aac` forces the local fallback for a session.
+//
+// Without it the fallback is unreachable by hand on every browser this project
+// is developed in: the probe picks Opus, correctly, and the AAC path is only
+// ever taken by browsers nobody here is sitting in front of. A flag that cannot
+// be exercised is a flag that is not really tested.
+//
+// Read once, at construction, exactly like the probe it overrides — so it
+// cannot change a resolved source under an active track.
+function readCodecOverride() {
+    try {
+        return new URL(globalThis.location?.href ?? "").searchParams.get("codec") ?? undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 function getTrackIndexFromUrl(url) {
     if (typeof url !== "string" || url.length === 0) return -1;
 
@@ -352,7 +371,7 @@ function getTrackIndexFromUrl(url) {
 
     if (!requestedSlug) return -1;
 
-    return tracks.findIndex((track) => trackSlug(track) === requestedSlug);
+    return tracks.findIndex((track) => track.id === requestedSlug);
 }
 
 // With launch_handler "focus-existing", clicking an app shortcut while the app
@@ -369,15 +388,21 @@ function initLaunchQueue() {
     });
 }
 
+// An unknown or absent value falls back to the first soundscape, which is also
+// what an install from before ids does: its preference was a resource URL under
+// a different key, and nothing reads that any more. That costs such a listener
+// their selected soundscape once, on one load, and then the new key is written
+// and it never happens again. Deliberately not migrated — the app is not widely
+// enough used for a one-time reset to be worth carrying translation code for.
 function getSavedTrackIndex() {
-    const savedTrackUrl = loadPreference(SAVED_TRACK_URL_KEY);
-    const savedTrackIndex = tracks.findIndex((track) => track.url === savedTrackUrl);
+    const savedTrackId = loadPreference(SAVED_TRACK_ID_KEY);
+    const savedTrackIndex = tracks.findIndex((track) => track.id === savedTrackId);
 
     return savedTrackIndex === -1 ? 0 : savedTrackIndex;
 }
 
 function saveCurrentTrack() {
-    savePreference(SAVED_TRACK_URL_KEY, getCurrentTrack().url);
+    savePreference(SAVED_TRACK_ID_KEY, getCurrentTrack().id);
 }
 
 // --- Title display --------------------------------------------------------

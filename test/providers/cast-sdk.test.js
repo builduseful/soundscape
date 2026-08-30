@@ -28,7 +28,7 @@ function createController({ sdk = createFakeCastSdk(), ...overrides } = {}) {
     return { sdk, controller, sdkLoads: () => loads };
 }
 
-const TRACK = { title: "Rain", url: "resources/rain.opus" };
+const TRACK = { id: "rain", title: "Rain" };
 
 // start() reaches the rejoin through a chain of promises, none of which the
 // caller is handed.
@@ -169,7 +169,7 @@ test("the receiver is handed an absolute URL to the AAC twin", async () => {
 
     const [request] = sdk.state.loads;
 
-    assert.equal(request.media.contentId, "https://soundscape.test/resources/rain.m4a");
+    assert.equal(request.media.contentId, "https://soundscape.test/resources/soundscapes/cast/rain.m4a");
     assert.equal(request.media.contentType, "audio/mp4");
     assert.equal(request.media.metadata.title, "Rain");
     assert.equal(request.autoplay, true);
@@ -199,7 +199,7 @@ test("the receiver is given enough metadata to name and picture the app", async 
 // soundscape this page never chose — changed from another device, or from the
 // speaker. Reopening should show what is actually playing.
 test("rejoining adopts the soundscape the receiver is actually on", async () => {
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
     const sdk = createFakeCastSdk();
     const adopted = [];
 
@@ -223,7 +223,7 @@ test("rejoining adopts the soundscape the receiver is actually on", async () => 
     await settle();
 
     assert.deepEqual(adopted, [other]);
-    assert.equal(reopened.controller.getTrackUrl(), "resources/fire.m4a");
+    assert.equal(reopened.controller.getTrackUrl(), "resources/soundscapes/cast/fire.m4a");
 
     // And it must not then reload — the room is already playing this.
     await reopened.controller.play();
@@ -325,7 +325,7 @@ test("a pause at the receiver reaches the app", async () => {
 
 test("a track change while casting reloads the receiver", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -347,7 +347,7 @@ test("a track change while casting reloads the receiver", async () => {
 // re-fetches the file for every one of them.
 test("a track change loads the receiver exactly once", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -374,7 +374,7 @@ test("a track change loads the receiver exactly once", async () => {
 // failure reaches whoever asked for it.
 test("a load the receiver rejects is reported to the caller, not swallowed", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -432,7 +432,7 @@ test("a repeated request for the in-flight track shares it rather than reloading
 // from the app's side the skip had gone to plan.
 test("skipping back to the current track while a load is open still reaches the receiver", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -467,8 +467,8 @@ test("skipping back to the current track while a load is open still reaches the 
 // next press of play re-loaded it over the top of what was playing.
 test("a second skip waits for the first rather than opening a load beside it", async () => {
     const { sdk, controller } = createController();
-    const fire = { title: "Fireplace", url: "resources/fire.opus" };
-    const road = { title: "Open road", url: "resources/road.opus" };
+    const fire = { id: "fire", title: "Fireplace" };
+    const road = { id: "road", title: "Open road" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -489,7 +489,7 @@ test("a second skip waits for the first rather than opening a load beside it", a
     await Promise.all([first, second]);
     await settle();
 
-    assert.equal(controller.getTrackUrl(), "resources/road.m4a");
+    assert.equal(controller.getTrackUrl(), "resources/soundscapes/cast/road.m4a");
     assert.match(sdk.state.receiverMedia.contentId, /road\.m4a$/);
 });
 
@@ -497,9 +497,9 @@ test("a second skip waits for the first rather than opening a load beside it", a
 // so a run of presses costs the room one restart rather than one per press.
 test("a destination superseded before it is sent never reaches the receiver", async () => {
     const { sdk, controller } = createController();
-    const fire = { title: "Fireplace", url: "resources/fire.opus" };
-    const road = { title: "Open road", url: "resources/road.opus" };
-    const thunder = { title: "Thunder", url: "resources/thunder.opus" };
+    const fire = { id: "fire", title: "Fireplace" };
+    const road = { id: "road", title: "Open road" };
+    const thunder = { id: "thunder", title: "Thunder" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -535,8 +535,8 @@ test("a destination superseded before it is sent never reaches the receiver", as
 // load that was queued behind it.
 test("a load that fails after being superseded does not take the newer skip down with it", async () => {
     const { sdk, controller } = createController();
-    const fire = { title: "Fireplace", url: "resources/fire.opus" };
-    const road = { title: "Open road", url: "resources/road.opus" };
+    const fire = { id: "fire", title: "Fireplace" };
+    const road = { id: "road", title: "Open road" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -580,7 +580,7 @@ test("a load that fails after being superseded does not take the newer skip down
 // actually playing), or resending it over the top of what the live run is doing.
 test("a run abandoned by a disconnect stops rather than finishing into a new session", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -618,7 +618,7 @@ test("a run abandoned by a disconnect stops rather than finishing into a new ses
 // the slot it owns must survive it.
 test("a new session after a disconnect still loads normally", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
@@ -648,7 +648,7 @@ test("a new session after a disconnect still loads normally", async () => {
 // follows reads as a request already under way and never reaches the device.
 test("a failed load does not leave a destination nobody is heading for", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     console.warn = () => {};
 
@@ -732,7 +732,7 @@ test("disconnecting forgets what the receiver was holding", async () => {
     sdk.setCastState("CONNECTED");
     await controller.play();
 
-    assert.equal(controller.getTrackUrl(), "resources/rain.m4a");
+    assert.equal(controller.getTrackUrl(), "resources/soundscapes/cast/rain.m4a");
 
     sdk.setCastState("NOT_CONNECTED");
 
@@ -889,7 +889,7 @@ test("reopening the app onto a live session does not restart the soundscape", as
     reopened.controller.start();
     await settle();
 
-    assert.equal(reopened.controller.getTrackUrl(), "resources/rain.m4a");
+    assert.equal(reopened.controller.getTrackUrl(), "resources/soundscapes/cast/rain.m4a");
     assert.equal(reopened.controller.isPlaying(), true);
 
     await reopened.controller.play();
@@ -1015,7 +1015,7 @@ test("a browser with no cast framework is reported as unreachable", async () => 
 // failure they did not cause. Latent until the failure above became reportable.
 test("the rollback after a failed skip does not restart the playing track", async () => {
     const { sdk, controller } = createController();
-    const other = { title: "Fireplace", url: "resources/fire.opus" };
+    const other = { id: "fire", title: "Fireplace" };
 
     await controller.prompt();
     controller.setTrack(TRACK);
