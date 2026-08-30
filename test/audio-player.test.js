@@ -1168,6 +1168,126 @@ test("a superseded request gives back the identity it claimed", async () => {
     assert.equal(player.getTrackUrl(), "/first.opus");
 });
 
+// A media element that models the one part of play()'s contract
+// createAudioElement leaves out: the promise does not always resolve. A real one
+// rejects it with AbortError when the source is replaced under it, and again
+// when pause() is called while it is still starting. Both are things this app
+// does to itself during an ordinary track change, and the fake resolving anyway
+// is why the cascade below went unnoticed.
+function createInterruptibleAudioElement() {
+    const element = createAudioElement();
+
+    let rejectPending;
+
+    const interrupt = (reason) => {
+        if (!rejectPending) return;
+
+        const reject = rejectPending;
+
+        rejectPending = undefined;
+        reject(Object.assign(new Error(reason), { name: "AbortError" }));
+    };
+
+    return Object.defineProperties(element, {
+        src: {
+            enumerable: true,
+            get() {
+                return this._src ?? "";
+            },
+            set(value) {
+                this._src = value;
+                interrupt("The play() request was interrupted by a new load request.");
+            },
+        },
+        play: {
+            enumerable: true,
+            value() {
+                this.playCalls += 1;
+                this.paused = false;
+
+                // Left pending on purpose: a real element resolves this only
+                // once it has enough data, which on a slow connection is the
+                // whole window this test is about. `settlePlay` ends it.
+                return new Promise((resolve, reject) => {
+                    rejectPending = reject;
+                    element.settlePlay = () => {
+                        rejectPending = undefined;
+                        resolve();
+                    };
+                });
+            },
+        },
+        pause: {
+            enumerable: true,
+            value() {
+                this.pauseCalls += 1;
+                this.paused = true;
+                interrupt("The play() request was interrupted by a call to pause().");
+            },
+        },
+    });
+}
+
+// Skipping twice while the element is still loading must not stop the music.
+//
+// The second skip replaces the source, which aborts the first skip's pending
+// play(). Treating that as a failure tears down state the second skip now owns
+// — and the teardown's own pause() then aborts the second skip's play() too, so
+// one interruption stops a soundscape that had already decoded and puts an
+// error on screen. Reproduced in Chrome before this guard existed.
+test("a skip that interrupts an earlier skip's play() does not stop playback", async () => {
+    const contexts = installAudioContext({ initialState: "running" });
+    installFetch();
+    const audioElement = createInterruptibleAudioElement();
+    const player = createPlayer(audioElement);
+
+    const first = player.playTrack({ id: "first", url: "/first.opus" }, true);
+    await until(() => audioElement.playCalls === 1);
+    audioElement.settlePlay();
+    assert.equal(await first, true);
+
+    // The skip whose element load never finishes.
+    const parked = player.playTrack({ id: "second", url: "/second.opus" }, true);
+    await until(() => audioElement.playCalls === 2);
+
+    // The skip that lands on top of it, replacing the source and so aborting
+    // the pending play() above.
+    const superseding = player.playTrack({ id: "third", url: "/third.opus" }, true);
+    await until(() => audioElement.playCalls === 3);
+    audioElement.settlePlay();
+
+    assert.equal(await parked, false, "the interrupted skip reports itself superseded");
+    assert.equal(await superseding, true, "the newest skip still starts");
+
+    assert.ok(player.holdsTrack({ id: "third" }), "the newest track must be the held one");
+    assert.equal(player.wantsPlayback(), true, "the interruption must not clear playback intent");
+    assert.equal(audioElement.paused, false, "the element must be left playing");
+    assert.equal(contexts[0].state, "running", "the context must not be suspended");
+    assert.equal(player.isPlaying(), true);
+});
+
+// The same interruption, from the other direction: pausing while a track change
+// is still starting the element. The pause has already stopped everything, so
+// the abort it causes is not a second thing to report — and reporting it put a
+// "could not be played" notice on screen for a soundscape the listener had
+// simply paused.
+test("a pause during a track change's play() is not reported as a failure", async () => {
+    const contexts = installAudioContext({ initialState: "running" });
+    installFetch();
+    const audioElement = createInterruptibleAudioElement();
+    const player = createPlayer(audioElement);
+
+    const changing = player.playTrack({ id: "next", url: "/next.opus" }, true);
+    await until(() => audioElement.playCalls === 1);
+
+    await player.pause();
+
+    assert.equal(await changing, true, "the track change resolves rather than throwing");
+    assert.equal(player.wantsPlayback(), false);
+    assert.equal(audioElement.paused, true);
+    assert.equal(contexts[0].state, "suspended");
+});
+
 // The retry is a second load, so it needs the same stale guard as the first.
 // Without one, skipping during a fallback attempt turns a superseded request
 // into a playback error for a soundscape the listener has already left.

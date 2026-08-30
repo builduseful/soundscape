@@ -4,10 +4,10 @@
 // file exactly as it is.
 //
 // `id` is the track's immutable identity: the ?track= value, the manifest
-// shortcut target, the saved preference, and — once the resources are
-// restructured — the resource basename. It is deliberately not derived from
-// `title`, because titles are editorial text that must stay renameable without
-// breaking saved preferences, shared links or app shortcuts.
+// shortcut target, the saved preference, and the resource basename under each
+// role directory. It is deliberately not derived from `title`, because titles
+// are editorial text that must stay renameable without breaking saved
+// preferences, shared links or app shortcuts.
 //
 // A catalog entry is an id and a title, and nothing else. It names a soundscape;
 // it does not name a file. Which file to play is a question about the consumer —

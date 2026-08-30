@@ -565,6 +565,24 @@ export class AudioPlayer {
         try {
             await this.audioElement.play();
         } catch (error) {
+            // The app interrupting itself is not the browser refusing, and
+            // only the second is a failure.
+            //
+            // A media element rejects play() with AbortError in exactly two
+            // situations and this app causes both: the source was replaced by a
+            // newer track change, or pause() was called. Either way something
+            // newer already owns the transport, and the only correct answer is
+            // to leave it as that newer thing set it.
+            //
+            // Tearing down instead cascades, because the teardown's own pause()
+            // aborts whichever play() is now in flight: skip twice while the
+            // element is still loading and the app stops dead, showing "could
+            // not be played" over a soundscape it had already decoded.
+            //
+            // Every other rejection does mean the browser will not start —
+            // NotAllowedError above all — and still tears down and reports.
+            if (error?.name === "AbortError") return;
+
             this.playbackRequested = false;
             this.audioElement.pause();
             await this.audioContext.suspend();
