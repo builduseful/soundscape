@@ -205,8 +205,12 @@ async function requireTool(command) {
 
 async function encoderVersion() {
     const output = await run("ffmpeg", ["-version"]);
+    const line = output.toString().split("\n")[0].trim();
+    const token = line.match(/^ffmpeg version (\S+)/)?.[1] ?? line;
 
-    return output.toString().split("\n")[0].trim();
+    // A git snapshot ("N-109362-g8ad4e46b62") has no release number to keep, so
+    // it stays whole rather than being trimmed away to nothing.
+    return `ffmpeg ${token.match(/^\d+(\.\d+)*/)?.[0] ?? token}`;
 }
 
 async function probe(file) {
@@ -467,6 +471,10 @@ async function buildOpus(track, master) {
         (tempFile) => run("ffmpeg", [
             "-v", "error",
             "-i", master.file,
+            // A master may carry the tags of whoever recorded it, and ffmpeg
+            // copies them to the output by default — which would ship a
+            // person's name in src/.
+            "-map_metadata", "-1",
             "-c:a", "libopus",
             "-b:a", OPUS_BITRATE,
             "-f", "ogg",
@@ -750,11 +758,19 @@ for (const target of options.targets) {
 
         if (!result) continue;
 
-        manifest[`${target}/${track.id}`] = {
+        const key = `${target}/${track.id}`;
+        const outputSha256 = sha256(result.bytes);
+
+        // A re-run with identical bytes must not restamp encoder and builtAt:
+        // both move with the machine and the calendar, so re-recording them
+        // makes a diff out of a build that changed nothing.
+        if (manifest[key]?.outputSha256 === outputSha256) continue;
+
+        manifest[key] = {
             id: track.id,
             role: target,
             output: path.relative(path.join(repoRoot, "src"), result.outputFile).split(path.sep).join("/"),
-            outputSha256: sha256(result.bytes),
+            outputSha256,
             input: await inputRecordFor(track, master, target),
             transform: result.transform,
             encoder,

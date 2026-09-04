@@ -20,7 +20,7 @@
             "repeats": 9,
             "loopSeconds": 14.72
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/garden-rain": {
@@ -44,7 +44,7 @@
             "repeats": 5,
             "loopSeconds": 25.387
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/heavy-rain": {
@@ -68,7 +68,7 @@
             "repeats": 6,
             "loopSeconds": 21.205
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/rain-thunder": {
@@ -92,7 +92,7 @@
             "repeats": 2,
             "loopSeconds": 61.568
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/heavy-thunderstorm": {
@@ -116,7 +116,7 @@
             "repeats": 2,
             "loopSeconds": 66.475
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/fireplace": {
@@ -140,7 +140,7 @@
             "repeats": 5,
             "loopSeconds": 25.557
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/deep-fireplace": {
@@ -164,7 +164,7 @@
             "repeats": 5,
             "loopSeconds": 27.2
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/the-open-road": {
@@ -188,7 +188,7 @@
             "repeats": 5,
             "loopSeconds": 29.973
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/brown-noise": {
@@ -212,7 +212,7 @@
             "repeats": 5,
             "loopSeconds": 29.973
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/pink-noise": {
@@ -236,7 +236,7 @@
             "repeats": 5,
             "loopSeconds": 29.973
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "cast/white-noise": {
@@ -260,7 +260,7 @@
             "repeats": 5,
             "loopSeconds": 29.973
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/rain": {
@@ -283,7 +283,7 @@
             "frameAlignedSamples": 707584,
             "trimmedSamples": 241
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/garden-rain": {
@@ -306,7 +306,7 @@
             "frameAlignedSamples": 1219584,
             "trimmedSamples": 165
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/heavy-rain": {
@@ -329,7 +329,7 @@
             "frameAlignedSamples": 1017856,
             "trimmedSamples": 598
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/rain-thunder": {
@@ -352,7 +352,7 @@
             "frameAlignedSamples": 2955264,
             "trimmedSamples": 805
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/heavy-thunderstorm": {
@@ -375,7 +375,7 @@
             "frameAlignedSamples": 3191808,
             "trimmedSamples": 268
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/fireplace": {
@@ -398,7 +398,7 @@
             "frameAlignedSamples": 1226752,
             "trimmedSamples": 826
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/deep-fireplace": {
@@ -421,7 +421,7 @@
             "frameAlignedSamples": 1306624,
             "trimmedSamples": 129
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/the-open-road": {
@@ -444,7 +444,7 @@
             "frameAlignedSamples": 1439744,
             "trimmedSamples": 256
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/brown-noise": {
@@ -467,7 +467,7 @@
             "frameAlignedSamples": 1439744,
             "trimmedSamples": 256
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/pink-noise": {
@@ -490,7 +490,7 @@
             "frameAlignedSamples": 1439744,
             "trimmedSamples": 256
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     },
     "aac/white-noise": {
@@ -513,7 +513,7 @@
             "frameAlignedSamples": 1439744,
             "trimmedSamples": 256
         },
-        "encoder": "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+        "encoder": "ffmpeg 7.1",
         "builtAt": "2026-08-30"
     }
 }
