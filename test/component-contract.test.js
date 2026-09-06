@@ -219,24 +219,187 @@ test("the menu panel declares display only while it is open", async () => {
     );
 });
 
-// The same defect, in the other component built the same way. Its toggle
-// button sits inside :scope beside the popover, so :focus-within counted it and
-// a popover clicked shut stayed painted over the page, still taking pointer
-// events. The button's own :focus-within colour is not this and stays — it
-// highlights the control rather than revealing the popover.
+// The same shape, in the other component built the same way, and the same
+// answer to it. Dismissal is the browser's here too; what the conversion took
+// away was a document-wide pointerdown listener that blurred
+// `document.activeElement` by hand to force the panel shut.
+//
+// It opens on a click alone for the same reason the menu does. Resting on the
+// speaker used to reveal it and cost nothing, because that reveal was pure CSS
+// `:hover` and a repaint under a still pointer merely re-evaluates it — but a
+// popover cannot be opened from CSS at all, so keeping the hover would have
+// meant this file owning whether the pointer is still there, which is the one
+// question no version of this has ever answered correctly.
 const VOLUME_CONTROL = new URL("volume-control.js", COMPONENTS_DIR);
 
-test("the volume popover is revealed by focus inside it, not focus on its button", async () => {
+test("the volume panel is a popover the browser dismisses", async () => {
     const source = await readFile(VOLUME_CONTROL, "utf8");
 
+    assert.match(source, /class="volume-panel" popover/u, "the panel should be a popover.");
+    assert.match(source, /popovertarget=/u, "the button should toggle it as its invoker.");
+    assert.match(source, /"beforetoggle"/u, "state should be reconciled where the browser reports it.");
+    assert.match(
+        source,
+        /:scope:has\(\.volume-panel:popover-open\)/u,
+        "the paint should ask the panel's own state rather than a proxy for it."
+    );
     assert.doesNotMatch(
         source,
-        /:scope:focus-within\s+\.popover/u,
-        "focus on the toggle button should not reveal the popover."
+        /document\.addEventListener\(\s*"pointer/u,
+        "an outside press is the browser's to dismiss, not a document listener's."
     );
-    assert.ok(
-        [...source.matchAll(/:scope:has\(\.popover-anchor:focus-within\)/gu)].length >= 3,
-        "the popover should be revealed by focus landing inside it."
+    assert.doesNotMatch(
+        source,
+        /document\.activeElement/u,
+        "nothing here should read the document to work out whether to close."
+    );
+});
+
+test("the volume control opens on click alone, with no pointer state of its own", async () => {
+    const source = await readFile(VOLUME_CONTROL, "utf8");
+
+    for (const listener of ["pointerenter", "pointerleave", "pointerdown"]) {
+        assert.doesNotMatch(
+            source,
+            new RegExp(`addEventListener\\(\\s*"${listener}"`, "u"),
+            `${listener} is hover machinery; opening belongs to the invoker.`,
+        );
+    }
+    assert.doesNotMatch(source, /setTimeout/u, "no wait decides whether the panel is open.");
+});
+
+// Neither invoker has a hover state, and the reason outlives the hover-opening
+// that first prompted it: both light to --color-text while their panel is open,
+// so a button that also lit under a passing pointer would mean either "open" or
+// "the pointer is here" with no way to tell which. A reader glancing at the
+// header or the footer can trust the lit one now. Items *inside* a panel are a
+// different thing and keep their hovers.
+test("neither popover's button lights up merely because a pointer is over it", async () => {
+    for (const [name, url] of [["app-menu.js", APP_MENU], ["volume-control.js", VOLUME_CONTROL]]) {
+        const source = await readFile(url, "utf8");
+
+        assert.doesNotMatch(
+            source,
+            /:scope\s*>\s*button:hover/u,
+            `${name} should leave the lit button meaning the panel is open, and nothing else.`,
+        );
+    }
+});
+
+// The button and the panel are two objects, and the open state is colour only.
+// They were briefly one pill — the panel its top, the button its cap — which
+// asked two boxes to meet exactly on an invisible seam. Everything that went
+// wrong there came from the shape being shared: a pixel of misplacement read as
+// a broken join, the focus ring had to be drawn in halves that met at the seam,
+// the panel's shadow fell across its own cap, and the cap unrolled back into a
+// circle in view on every close. A shape that changes under the reader is the
+// thing this guards against, so the open state may set colours and nothing else.
+test("the volume button keeps its own shape while the panel is open", async () => {
+    const source = await readFile(VOLUME_CONTROL, "utf8");
+    const openState = source.slice(
+        source.indexOf(":scope:has(.volume-panel:popover-open) > button {"),
+        source.indexOf(":scope:has(.volume-panel:popover-open) > button {") + 400,
+    );
+    const rule = openState.slice(0, openState.indexOf("}"));
+
+    assert.ok(rule.length > 0, "the open-state rule should still be there.");
+    for (const property of ["border-radius", "border-color", "box-shadow", "width", "height"]) {
+        assert.doesNotMatch(
+            rule,
+            new RegExp(`^\\s*${property}:`, "mu"),
+            `${property} reshapes the button; opening should only recolour it.`,
+        );
+    }
+});
+
+// The panel opens above the button, never over it. A popover draws in the top
+// layer, which no z-index reaches, so the full-height pill this used to be —
+// with the button lifted out of it on a z-index — would now cover its own
+// invoker: the glyph would disappear underneath, and the press that closes the
+// panel would land on the panel instead. A popover is not dismissed by a press
+// inside itself, so on a touch screen, with no hover to fall back on, there
+// would be no way to close it at all. placePanel writes the button's own
+// top-left corner, and both of the panel's edges are arithmetic from there.
+//
+// A percentage translate is what this must not go back to. Lifting the panel
+// with translateY(-100%) reads against a box the panel does not have yet —
+// placePanel runs on beforetoggle, while the popover is still display:none — and
+// it put the panel a few pixels out of line with its button on every open until
+// a resize measured it again. app-menu has never had that, only because its
+// panel drops below its button and needs no lift at all.
+test("the volume panel is lifted clear of the button it is measured from", async () => {
+    const source = await readFile(VOLUME_CONTROL, "utf8");
+    const panelRule = source.slice(source.indexOf(".volume-panel {"), source.indexOf(".volume-panel:popover-open {"));
+
+    assert.match(source, /--volume-panel-gap:\s*\d+px;/u, "the gap should be stated once.");
+
+    // Declared rather than intrinsic, and in absolute lengths — a calc of those
+    // is simplified to a single length at computed-value time, so getComputedStyle
+    // answers it on a panel that has no box yet. Anything needing one to resolve
+    // (a percentage, auto, a fit-content) would come back unusable at exactly the
+    // moment placePanel asks, which is the failure this whole arrangement exists
+    // to avoid.
+    const declaredHeight = panelRule.match(/^\s*height:\s*(.+);/mu);
+
+    assert.ok(declaredHeight, "the panel's height should be declared, so placePanel can read it.");
+    assert.doesNotMatch(
+        declaredHeight[1],
+        /%|auto|fit-content|min-content|max-content/u,
+        "and declared in lengths a display:none panel can still resolve.",
+    );
+    assert.doesNotMatch(
+        panelRule,
+        /transform:/u,
+        "no transform should move the panel; its position is arithmetic in placePanel.",
+    );
+    assert.match(
+        source,
+        /rect\.top \+ globalThis\.scrollY - height - gap/u,
+        "and that arithmetic should place the panel's top a whole panel and a gap above the button.",
+    );
+});
+
+// A range input ignores the wheel on every engine, which is right for one in a
+// scrolling form and wrong for one that is the whole of a panel. Two things have
+// to hold for it not to become a nuisance: the listener cannot be passive, or
+// the page scrolls behind the panel on the same gesture, and the level cannot be
+// scaled by the delta, because a notched mouse, a free-spinning one and a
+// trackpad report the same flick as wildly different numbers in three different
+// deltaMode units.
+test("a scroll over the volume panel moves the level, and nothing else", async () => {
+    const source = await readFile(VOLUME_CONTROL, "utf8");
+
+    assert.match(
+        source,
+        /addEventListener\(\s*"wheel",.*?\{\s*passive:\s*false\s*\}\s*\)/su,
+        "a passive listener cannot stop the page scrolling with the level.",
+    );
+    assert.match(source, /event\.preventDefault\(\)/u, "and it should actually stop it.");
+    assert.match(source, /Math\.sign\(event\.deltaY\)/u, "the delta's sign is the whole of what a wheel says here.");
+});
+
+// The same single-rule `display` the menu has, for the same reason, and worth
+// pinning twice because the trap is invisible: a closed popover with a display
+// in its base rule stays laid out, and its slider stays tabbable, while the
+// panel is nominally shut. `place-items` sitting in the base rule is fine — it
+// does nothing until something is a grid.
+test("the volume panel declares display only while it is open", async () => {
+    const source = await readFile(VOLUME_CONTROL, "utf8");
+    const base = source.slice(
+        source.indexOf(".volume-panel {"),
+        source.indexOf(".volume-panel:popover-open {"),
+    );
+
+    assert.ok(base.length > 0, "the two panel rules should both still be there.");
+    assert.doesNotMatch(
+        base,
+        /^\s*display:/mu,
+        "a display in the base rule outranks the UA's display:none and unhides a closed panel.",
+    );
+    assert.match(
+        source,
+        /\.volume-panel:popover-open \{[^}]*display: grid;/u,
+        "the open rule is where display belongs.",
     );
 });
 

@@ -71,7 +71,7 @@ soundscape/
 │   │   └── components/
 │   │       ├── app-menu.js           # Custom element for the top-right menu (a native popover)
 │   │       ├── theme-selector.js     # Custom element for theme mode selection
-│   │       └── volume-control.js     # Custom element for volume slider
+│   │       └── volume-control.js     # Custom element for volume slider (a native popover)
 │   └── resources/
 │       ├── icons/                    # PWA/favicon icons (png + svg)
 │       ├── screenshots/              # manifest.webmanifest install screenshots (git-tracked PNGs)
