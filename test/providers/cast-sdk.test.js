@@ -4,7 +4,7 @@ import { afterEach, test } from "node:test";
 import { CastSdkController, isCastSdkCapable } from "../../src/js/remote-playback/providers/cast-sdk.js";
 // The platform-API fake, shared with the app-level tests. This file kept a copy
 // of its own until the two started to matter separately — see the fakes note in
-// the remote playback README for which fake answers which question.
+// the remote playback AGENTS.md for which fake answers which question.
 import { createFakeCastSdk } from "../helpers/remote-transport-fakes.js";
 
 const originalConsoleWarn = console.warn;

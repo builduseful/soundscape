@@ -642,7 +642,7 @@ export class CastSdkController {
     // `loadMedia` open at a time, `pendingTrack` a slot holding only the newest
     // destination, and anything superseded while still queued never sent. Both
     // of this feature's skip bugs came of asking `loadedUrl` where this asks
-    // `targetUrl()`; the README records what each of them did to the room.
+    // `targetUrl()`; the plugin's AGENTS.md records what each of them did to the room.
     //
     // A later caller is handed the same run rather than refused. Refusing meant
     // the awaited path (startTrack → play) resolved before the receiver had

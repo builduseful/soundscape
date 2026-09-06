@@ -16,7 +16,7 @@
 opencode.json
 
 # Documentation — runtime doesn't need it. Includes the remote-playback
-# plugin's README, which Caddy never serves (the Pages artifact uploads all of
+# plugin's AGENTS.md, which Caddy never serves (the Pages artifact uploads all
 # src/, so that copy of the doc still ships).
 *.md
 docs/

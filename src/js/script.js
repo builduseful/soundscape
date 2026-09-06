@@ -31,9 +31,10 @@ import {
     loadThemePreference,
     normalizeThemePreference,
     saveThemePreference,
+    watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "1.17.3";
+const VERSION = "1.18.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -174,6 +175,11 @@ document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
 
 updateThemePreference(loadThemePreference(), false);
+// On `system` the OS can change the colours without asking us. It repaints on
+// its own — color-scheme and light-dark() see to that — but the controls that
+// fade a colour would each ease there separately, so the swap is marked instant
+// the same way a chosen theme's is.
+watchSystemTheme();
 restoreSavedVolume();
 updateTrackTitle();
 applyRequestedTrack();

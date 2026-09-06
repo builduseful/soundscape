@@ -1,5 +1,5 @@
 // The platform-API fake for Chrome's Cast SDK. Shared with the provider's own
-// tests rather than copied — see the fakes note in the remote playback README.
+// tests rather than copied — see the fakes note in the remote playback AGENTS.md.
 import { createFakeCastSdk } from "./remote-transport-fakes.js";
 
 const originalAudioContext = globalThis.AudioContext;
@@ -437,7 +437,15 @@ export function installAppTestEnvironment({
         },
     };
     globalThis.launchQueue = launchQueue;
-    globalThis.matchMedia = () => ({ matches: matchMediaMatches });
+    // A real MediaQueryList can be listened to, and the app does listen to one:
+    // theme-utils watches prefers-color-scheme so a system theme change is
+    // marked before the new colours are painted. A fake with only `matches` sent
+    // the app down a branch no browser takes.
+    globalThis.matchMedia = () => ({
+        matches: matchMediaMatches,
+        addEventListener() {},
+        removeEventListener() {},
+    });
     globalThis.MediaMetadata = function FakeMediaMetadata(metadata) {
         Object.assign(this, metadata);
     };

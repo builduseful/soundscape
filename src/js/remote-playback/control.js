@@ -236,7 +236,9 @@ export class RemotePlayback extends HTMLElement {
                         background: transparent;
                         box-shadow: none;
                         color: var(--color-text-muted);
-                        transition: color 0.18s ease, background-color 0.18s ease;
+                        transition:
+                            color var(--color-change-duration),
+                            background-color var(--color-change-duration);
                     }
 
                     button:hover {

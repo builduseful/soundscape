@@ -13,8 +13,39 @@ It has play/pause/prev/next controls, a volume slider, light/dark/system themes,
 | Run the tests | `<container-engine> container run --rm --volume ${PWD}:/app soundscape npm test` |
 | Run the app | See [Development and Testing](#development-and-testing) — start the server, then drive it with `playwright-cli` |
 | Change how audio plays | Read [Audio Invariants](#audio-invariants) first |
-| Change Chromecast/AirPlay | Read [`src/js/remote-playback/README.md`](src/js/remote-playback/README.md) first |
+| Change Chromecast/AirPlay | Read [`src/js/remote-playback/AGENTS.md`](src/js/remote-playback/AGENTS.md) first |
 | Ship a change | Bump the version in three files (see [Service Worker and Versioning](#service-worker-and-versioning)) |
+
+## How To Work On This
+
+Work the front end — implementation, refactoring, design, and the shape of the
+code — as an experienced engineer who cares about the craft and is building
+something meant to last. Prefer what the platform already does well, keep state
+explicit rather than inferred, settle each thing in one place, and leave the
+reasoning behind in a comment. Run the app and look at it, in both themes,
+before calling it done.
+
+### What belongs in this file
+
+This is the standing overview: what is true of the repo as a whole and should be
+taken into account before every task. It is not a changelog, and not a record of
+the last session's work. Before adding anything, ask whether someone working on
+something *else entirely* would get it wrong without it. If the answer is no — if
+it only bites while you are already looking at one file — co-locate it instead:
+
+- **A rule about one component, function, or rule set** — a comment at the code
+  it governs, where whoever is about to break it is already reading.
+- **What a test protects, and why it exists at all** — a comment above the test.
+- **A subsystem with invariants of its own** — a nested `AGENTS.md` in its
+  directory, as `src/js/remote-playback/` and `masters/` already do. It is read
+  the way this file is, by whoever is working in that directory, and it goes
+  with the directory if that is ever deleted or moved.
+- **Why a change was made** — the commit message.
+
+The pull is always toward adding, because what you just learned feels like what
+everyone needs to know. Prefer tightening an existing entry over appending a new
+one: two that overlap will drift, and the stale one is the one that gets
+believed.
 
 ## Project Structure
 
@@ -22,7 +53,7 @@ It has play/pause/prev/next controls, a volume slider, light/dark/system themes,
 soundscape/
 ├── src/                              # Deploy folder (served at site root)
 │   ├── index.html                    # App entry point, loads script.js and styles
-│   ├── style.css                     # App-wide styling (component internals live in @scope blocks)
+│   ├── style.css                     # App-wide styling + theme tokens (component internals live in @scope blocks)
 │   ├── sw.js                         # Service worker for offline/PWA support
 │   ├── manifest.webmanifest          # PWA manifest
 │   ├── CNAME                         # Custom domain for deployment
@@ -35,10 +66,10 @@ soundscape/
 │   │   ├── theme-utils.js            # Light/dark/system theme helpers
 │   │   ├── tracks.js                 # Track catalog: id + title only, no file paths
 │   │   ├── local-source.js           # Which local file this browser plays for a track
-│   │   ├── remote-playback/          # Chromecast/AirPlay plugin — detachable; READ ITS README.md
-│   │   │   └── README.md             # Invariants, platform evidence, testing, device checklist
+│   │   ├── remote-playback/          # Chromecast/AirPlay plugin — detachable; READ ITS AGENTS.md
+│   │   │   └── AGENTS.md             # Invariants, platform evidence, testing, device checklist
 │   │   └── components/
-│   │       ├── app-menu.js           # Custom element for the top-right menu
+│   │       ├── app-menu.js           # Custom element for the top-right menu (a native popover)
 │   │       ├── theme-selector.js     # Custom element for theme mode selection
 │   │       └── volume-control.js     # Custom element for volume slider
 │   └── resources/
@@ -50,8 +81,8 @@ soundscape/
 │           └── cast/                 # Remote playback: repeated ~120s programme, <track-id>.m4a
 ├── test/                             # Unit tests (dependency-free)
 │   ├── playback-output-contract.test.js   # One spec, run against every PlaybackOutput incl. AudioPlayer
-│   ├── *remote-playback*, providers/ # The plugin's own tests — see its README
-│   └── helpers/                      # app-test-harness.js + the three fakes (README explains which)
+│   ├── *remote-playback*, providers/ # The plugin's own tests — see its AGENTS.md
+│   └── helpers/                      # app-test-harness.js + the three fakes (AGENTS.md explains which)
 ├── scripts/
 │   ├── export-icons.mjs              # Icon PNG export from SVG sources
 │   ├── capture-screenshots.mjs       # Manifest install-screenshot capture
@@ -65,7 +96,7 @@ soundscape/
 ├── package.json                      # Scripts and metadata
 ├── package-lock.json                 # Locks the scripts/ devDependencies (playwright); npm test itself has none
 ├── masters/                          # Build inputs: gitignored audio + tracked provenance records
-│   └── README.md                     # What a master must be, and how to supply one
+│   └── AGENTS.md                     # What a master must be, and how to supply one
 ├── .config.md                        # Per-developer configuration (gitignored)
 ├── AGENTS.md
 ├── CLAUDE.md                         # Includes AGENTS.md; keep the guidance itself in AGENTS.md
@@ -89,7 +120,26 @@ soundscape/
   one the moment it moves, which is precisely what happened when this one did.
 - Build components in light DOM (ordinary markup in the page, visible to normal CSS and DevTools) with an inline `@scope` style block, which confines the rules inside it to that component's subtree. This keeps component markup easy to inspect, test and integrate, while stopping its selectors leaking out into the rest of the page.
 - Keep selectors inside `@scope` short and component-local. Reserve `style.css` for app-wide styling, not component internals.
+- **No backticks anywhere inside a component's markup or CSS, comments included.** The whole of `render()` is one template literal, so a backtick quoting a property name ends it, and the file stops parsing — which takes the module, and with it the app, not just the component. Write the name bare. Nothing catches this but running the app: `npm test` reports it as every app-harness test failing to import at once, which reads like anything except a punctuation mark in a comment.
 - Do not use Shadow DOM (which hides a component's markup and styles from the page) for normal app components. If a change seems to need it, raise the reason first; the app is internal and should stay easy to inspect and style.
+- **A panel that floats over the page is a native `popover`.** Opening it is the
+  invoker's job, dismissing it is the browser's, and the component keeps no
+  state of its own about either. `app-menu` is the pattern, and carries the
+  reasoning — including why it no longer opens on hover, which is the shape any
+  new panel should copy rather than rediscover.
+
+## Theme and Colour
+
+- **Never give an element its own colour transition for the theme's sake.** A
+  theme change is animated once, for the whole surface: `theme-utils.js` swaps
+  it inside a view transition, under a `data-theme-switching` mark that
+  `style.css` uses to suppress every transition. Light and dark here are
+  inverses, so a pair of text and ground easing separately passes through the
+  middle where the two are the same grey and the words vanish.
+- **`--color-change-duration`** (0.18s, 0s under `prefers-reduced-motion`) is
+  for the colour changes a *reader* causes — a hover, a focus ring. Form
+  controls get it by default; nothing else needs it.
+  `component-contract.test.js` checks both rules.
 
 ## Audio Invariants (rules that must stay true)
 
@@ -123,14 +173,14 @@ soundscape/
 
 Chromecast and AirPlay are a detachable plugin in `src/js/remote-playback/`.
 
-**Read [`src/js/remote-playback/README.md`](src/js/remote-playback/README.md)
+**Read [`src/js/remote-playback/AGENTS.md`](src/js/remote-playback/AGENTS.md)
 before changing anything in that directory, its tests, or the handover region of
 `script.js`.** It carries measured platform behaviour — silent picker rejections,
 codec limits, device-only failures — that the test suite cannot show you and that
 tidying will quietly undo.
 
 **Never cast to a real device from an automated run.** It plays audio in
-someone's room. Fakes cover everything except the manual checklist in the README.
+someone's room. Fakes cover everything except the manual checklist in its AGENTS.md.
 
 ## Development and Testing
 
@@ -178,16 +228,20 @@ someone's room. Fakes cover everything except the manual checklist in the README
   - Do not make `sw.js` a module that imports `VERSION`. Browsers detect a service worker update by comparing the worker file's own bytes, so the change has to land in `sw.js` itself.
   - Do not split into separate shell/audio caches, hash the asset lists, or add HTTP `Cache-Control` config. The service worker is the only cache that matters here.
 - **`VERSION` lives in three places** — `package.json`, `sw.js`, `script.js` — and all three move together on every release; `test/pwa.test.js` and `test/version-sync.test.js` enforce it. Semantic versioning: patch for fixes, minor for features, major for breaking changes. Bump on any user-facing change, so the deployed PWA and the footer label stay accurate — and on any change under `src/` even when nothing is user-facing, or the cache is not invalidated and a returning visitor gets a half-old shell.
+- **Version and tag move together.** Before a commit to `trunk`, or before opening a PR, propose the bump and a matching `v<version>` tag and wait for a yes or no.
+- **The bump can ride in the PR; the tag cannot.** Tag on `trunk` after the merge — rebasing and squashing rewrite the commit it would point at. Tags are annotated; `git push --follow-tags` sends them.
 
 ## Browser Testing
 
 - Use `playwright-cli` for all browser interaction, in **visible (headed) mode** — never headless. Its YAML snapshots are clearer than the alternatives, it handles hidden elements (e.g. `pointer-events: none`) correctly, and it closes cleanly with no "last tab" limitation. It also covers network requests, console messages and tracing; with `eval` and the Performance API it can verify cache-hit vs cache-miss without DevTools. Fall back to `chrome-devtools_*` only when explicitly asked.
   ```sh
-  playwright-cli open http://soundscape.localhost:4321 --persistent --config=".opencode/skills/playwright-cli/config.json"
-  # ...interactions...
-  playwright-cli close
+  playwright-cli -s=soundscape open http://soundscape.localhost:4321 --persistent --config=".opencode/skills/playwright-cli/config.json"
+  # ...interactions, every one of them -s=soundscape...
+  playwright-cli -s=soundscape close
   ```
-  The skill's config sets headed mode, a 900×700 OS window, and `viewport: null` so the page renders at the window size — no separate `resize` step. Add `--profile=".temp/fresh-profile"` for clean-state testing, which avoids saved localStorage preferences (track, volume, theme) and cached SW assets; reusing a `--profile` opens a new tab sharing cookies, localStorage and the SW cache. Full reference: the [playwright-cli skill](.opencode/skills/playwright-cli/SKILL.md).
+  The skill's config sets headed mode, a 900×700 OS window, and `viewport: null` so the page renders at the window size — no separate `resize` step. Add `--profile=".temp/fresh-profile"` for clean-state testing, which avoids saved localStorage preferences (track, volume, theme) and cached SW assets; reusing a `--profile` opens a new tab sharing cookies, localStorage and the SW cache.
+
+  **Name the session, on every command.** Without `-s=`, `playwright-cli` drives one shared default browser, so anything else using it — another agent, another terminal, the maintainer testing something unrelated — steers the same tab. It fails silently and in the worst way: the tab here was navigated to someone else's app mid-run, and `eval` went on answering about that page. A named session is the whole fix, but it is per command, not per browser: one call that forgets `-s=` reaches for the default browser instead. Full reference: the [playwright-cli skill](.opencode/skills/playwright-cli/SKILL.md).
 - **Check console first** — run `playwright-cli console` after every action to catch warnings/errors before they scroll away.
 - **Verify network** — run `playwright-cli requests --static` to see every URL, method, and status code. Use `eval` with `performance.getEntriesByType('resource')` to check `transferSize`: **0** means served from the SW cache, **>0** means fetched from the network. For audio specifically, a **206 only** (without a preceding 200) on a replayed track confirms a cache hit — the SW served the full file and sliced the byte range without a network re-fetch. Use `eval` with `performance.getEntriesByType('navigation')[0].transferSize` to confirm the navigation itself came from cache.
 - **Check UI state** — use `snapshot` for visual structure, `eval` for JS-driven state (e.g. Media Session metadata/playbackState, localStorage values). `navigator.mediaSession.playbackState` is the most reliable playback source; DOM attributes (`aria-label`, `data-playing`) mirror the same value.
@@ -210,7 +264,7 @@ someone's room. Fakes cover everything except the manual checklist in the README
 ## Manifest Screenshots and Icons
 
 - `npm run audio` follows the same host-only, skip-when-unchanged contract as
-  these, but needs `ffmpeg`, and reads `masters/` — see `masters/README.md`. It
+  these, but needs `ffmpeg`, and reads `masters/` — see `masters/AGENTS.md`. It
   builds all three roles; `-- --opus`, `-- --aac`, `-- --cast` narrow it.
 - `npm run screenshots` and `npm run icons` regenerate `src/resources/screenshots/*.png` and `src/resources/icons/*.png` via Playwright (see each script's header for how). Host-only — not part of `npm test` or the Docker image. Re-run after a change that affects the home page's appearance or either icon SVG; both skip writing when the output is unchanged.
 - **Keep what the script produces; never revert it.** Stale is the only failure
@@ -225,8 +279,19 @@ someone's room. Fakes cover everything except the manual checklist in the README
 ## Agent Workflow
 
 - Do not run `git commit`, `git push`, `git reset`, `git rebase`, or any other git mutations unless explicitly asked.
-- Preserve the existing git staging state: keep staged files staged and unstaged files unstaged.
-- Do not stage or unstage files on the agent's own initiative.
+- **Preserve the existing staging state, and never stage or unstage anything on
+  your own initiative.** Staging here is a review marker, not a commit being
+  assembled: the maintainer stages a file once they have read it and are happy
+  with it, so the index is the record of what has been reviewed so far.
+  Unstaging destroys that record.
+- Two things follow from what staging means. It **moves while you work** — files
+  that were unstaged when you started may be staged part-way through, as they are
+  read; that is review happening, not drift to be reported or corrected. And
+  **changing an already-staged file is ordinary work**: the new change simply
+  appears as unstaged beside the staged one. Leave that split exactly where it
+  falls — do not stage the new change to tidy it away, and do not unstage the
+  reviewed one to make the file whole again. The split is the point: it says what
+  has been read and what has not.
 
 ## Nothing Machine-Specific in the Repo
 

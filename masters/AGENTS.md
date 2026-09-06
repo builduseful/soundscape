@@ -10,7 +10,7 @@ service worker precache, and not in the Docker image.
 
 | Path | Tracked? | Why |
 |---|---|---|
-| `README.md` | yes | This file. |
+| `AGENTS.md` | yes | This file. |
 | `provenance.json` | yes | What each master *is*, and its hash. |
 | `build-manifest.json` | yes | What was built from what. |
 | `*.wav` | **no** | Master audio. Large, and not all of it is ours to redistribute. |

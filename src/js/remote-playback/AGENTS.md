@@ -476,8 +476,9 @@ at. The host element is `#remotePlaybackUi`, the button's state is
   ui.setConnection({});                     // "Playback returned to this device."
   ```
   Reading `getComputedStyle(button).color` immediately after returns the *old*
-  colour — the button carries a 0.18s colour transition and the computed value is
-  mid-flight. Read it a moment later, or it looks like the rule did not apply.
+  colour — the button fades over `--color-change-duration` (0.18s, from
+  `style.css`) and the computed value is mid-flight. Read it a moment later, or
+  it looks like the rule did not apply.
 - **To exercise the app's real handlers**, shadow the read-only state on the live
   `RemotePlayback` object and dispatch its events. Contacts nothing:
   ```js

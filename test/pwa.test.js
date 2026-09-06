@@ -396,7 +396,7 @@ test("every deployable asset is precached by the service worker", async () => {
         // a deployment artefact the browser never requests. Screenshots are
         // only ever fetched by the OS install UI before the app is installed,
         // so offline precaching buys nothing. Markdown is documentation that
-        // happens to sit beside the code it documents (remote-playback/README.md
+        // happens to sit beside the code it documents (remote-playback/AGENTS.md
         // ships with its plugin so deleting the directory takes the docs too) —
         // the app never requests it, and precaching it would cost every visitor
         // bytes for a file only a developer reads.

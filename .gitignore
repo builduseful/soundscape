@@ -16,8 +16,8 @@ node_modules/
 .opencode/package-lock.json
 
 # Master audio: the build inputs, kept out of the deploy folder and out of git.
-# The records beside them are tracked on purpose — see masters/README.md.
+# The records beside them are tracked on purpose — see masters/AGENTS.md.
 masters/*
-!masters/README.md
+!masters/AGENTS.md
 !masters/provenance.json
 !masters/build-manifest.json

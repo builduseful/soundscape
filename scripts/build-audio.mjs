@@ -15,7 +15,7 @@
 // why it cannot be produced by transcoding either of the others.
 //
 // Requires ffmpeg/ffprobe on PATH. Host-only — not part of npm test or the
-// Docker image. See masters/README.md for where the inputs come from.
+// Docker image. See masters/AGENTS.md for where the inputs come from.
 //
 // Usage:
 //   npm run audio                    every applicable target
@@ -339,7 +339,7 @@ async function loadProvenance(mastersDir) {
         throw new Error(
             `No ${PROVENANCE_FILE} in ${mastersDir}.`
             + ` Run \`npm run audio -- --placeholders\` to create stand-in masters,`
-            + ` or see masters/README.md to supply real ones.`,
+            + ` or see masters/AGENTS.md to supply real ones.`,
         );
     }
 

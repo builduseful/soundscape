@@ -33,6 +33,66 @@
     /* Layers the contact shadow above with a softer, wider one, for surfaces
        that should read as fractionally lifted off the page. */
     --shadow-elevated: var(--shadow-surface), 0 4px 12px light-dark(rgba(15, 23, 42, 0.04), rgba(0, 0, 0, 0.18));
+    /* How long a colour takes to change when something a reader did changes it:
+       a hover, a focus ring, a control lighting up. One timing for all of them,
+       so the controls in a row answer at one pace rather than each at its own.
+
+       Not for a change of theme. That one is animated too, but in one piece and
+       by the browser rather than colour by colour — see the cross-fade below.
+       And not for motion, which keeps the timings its choreography needs. A
+       duration and nothing else, as the name says: `ease` is what a transition
+       uses when no timing function is given. */
+    --color-change-duration: 0.18s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        /* Every colour transition in the app goes through here, so this is the
+           only place that has to know. */
+        --color-change-duration: 0s;
+    }
+}
+
+/* How a theme change is animated. The browser holds a still picture of the old
+   colours and cross-fades the new ones over it — one fade of the whole surface,
+   rather than every colour easing on its own, so nothing arrives out of step
+   with anything else.
+
+   The overlay covers the page while it runs, so it is taken out of hit-testing
+   and a click during the fade still reaches what is under it. That is not
+   hypothetical here: the theme is picked from inside the open menu, so a second
+   pick a moment later lands while the fade is still running. */
+::view-transition {
+    pointer-events: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none;
+    }
+}
+
+/* No colour eases into another while the theme is being swapped, and this is
+   what stops it. Every element fading its own colours meant two things at once:
+   they arrived out of step, each at whatever duration its own rule named, and
+   each pair of text and ground crossed through the middle where the two are the
+   same grey and the words disappear — light and dark here are inverses, so that
+   middle is exactly where the contrast goes. The change is animated by the
+   cross-fade above instead, which is one animation over the whole surface.
+
+   `theme-utils.js` puts `data-theme-switching` on the document for the frame the
+   swap happens in. */
+:root[data-theme-switching],
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+    transition: none !important;
 }
 
 /* An explicit theme pick narrows color-scheme to a single value, which makes
@@ -382,15 +442,35 @@ button.play[data-playing="true"] .play-icon--pause {
     }
 }
 
+/* Form controls answer a pointer and a caret, and most of them do it without a
+   rule of their own. Nothing else needs a default: a colour that only ever
+   changes with the theme needs no transition here, because a theme change is
+   animated whole and suppressed element by element, both above.
+
+   Not gated on prefers-reduced-motion — a colour easing is not motion, and
+   --color-change-duration is already 0s under that preference. The buttons'
+   press-in is motion, and stays behind it below. */
+button,
+input,
+select,
+textarea {
+    transition:
+        background-color var(--color-change-duration),
+        border-color var(--color-change-duration),
+        box-shadow var(--color-change-duration),
+        color var(--color-change-duration);
+}
+
 @media (prefers-reduced-motion: no-preference) {
-    body,
-    button,
-    input {
+    /* The press-in on the app's buttons. A transition replaces rather than adds
+       to the one it overrides, so naming the motion here means naming the
+       colours again with it. */
+    button {
         transition:
-            background-color 0.18s ease,
-            border-color 0.18s ease,
-            box-shadow 0.18s ease,
-            color 0.18s ease,
+            background-color var(--color-change-duration),
+            border-color var(--color-change-duration),
+            box-shadow var(--color-change-duration),
+            color var(--color-change-duration),
             transform 0.12s ease;
     }
 

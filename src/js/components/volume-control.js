@@ -1,6 +1,20 @@
 /**
  * Volume trigger plus hover/focus popover.
  *
+ * Not a native `popover`, unlike `app-menu`, which it otherwise mirrors: this is
+ * the older hand-rolled shape, dismissing itself from a document-wide pointer
+ * listener rather than leaving that to the browser. It works, and it is the next
+ * one to convert — read `app-menu.js` for the pattern rather than copying this.
+ *
+ * Copy the popover, not the opening. `app-menu` deliberately does not open on
+ * hover, because a menu dragged open by a pointer crossing the corner lands over
+ * what the reader was aiming at. A volume slider revealed by resting on its
+ * speaker is the opposite case — it is one control, it reveals itself and
+ * nothing else, and there is nothing behind it to obscure. What it must not
+ * grow is the *timed* hover the menu had: this reveal is pure CSS `:hover`, so a
+ * repaint under the pointer just re-evaluates it, where a wait on a timer fires
+ * through the repaint and takes the panel with it.
+ *
  * @element volume-control
  * @attr {string} value - Slider value between 0 and 1.
  * @attr {string} label - Accessible name for the control. Defaults to "Volume".
@@ -127,7 +141,8 @@ export class VolumeControl extends HTMLElement {
                         -webkit-tap-highlight-color: transparent;
                         tap-highlight-color: transparent;
                         transition:
-                            color 0.18s ease,
+                            color var(--color-change-duration),
+                            background-color var(--color-change-duration),
                             transform 0.12s ease;
                     }
 
@@ -194,8 +209,16 @@ export class VolumeControl extends HTMLElement {
                         z-index: 1;
                     }
 
+                    /* The focus reason asks about the popover, not the whole
+                       control. Plain :focus-within counted the toggle button
+                       too, and clicking a button leaves it focused — so a
+                       popover clicked open and clicked shut again stayed
+                       painted over the page, still taking pointer events,
+                       until something else took the focus. What it is for is a
+                       reader who has moved into the popover: the slider is
+                       focusable while the popover is transparent. */
                     :scope:hover .popover-anchor,
-                    :scope:focus-within .popover-anchor,
+                    :scope:has(.popover-anchor:focus-within) .popover-anchor,
                     :scope[open] .popover-anchor {
                         pointer-events: auto;
                     }
@@ -220,7 +243,7 @@ export class VolumeControl extends HTMLElement {
                     }
 
                     :scope:hover .popover,
-                    :scope:focus-within .popover,
+                    :scope:has(.popover-anchor:focus-within) .popover,
                     :scope[open] .popover {
                         opacity: 1;
                     }
@@ -239,7 +262,7 @@ export class VolumeControl extends HTMLElement {
                     }
 
                     :scope:hover .popover-surface,
-                    :scope:focus-within .popover-surface,
+                    :scope:has(.popover-anchor:focus-within) .popover-surface,
                     :scope[open] .popover-surface {
                         clip-path: inset(0 0 0 round 999px);
                     }
@@ -285,19 +308,19 @@ export class VolumeControl extends HTMLElement {
 
                     :scope[disabled] .popover-anchor,
                     :scope[disabled]:hover .popover-anchor,
-                    :scope[disabled]:focus-within .popover-anchor {
+                    :scope[disabled]:has(.popover-anchor:focus-within) .popover-anchor {
                         pointer-events: none;
                     }
 
                     :scope[disabled] .popover,
                     :scope[disabled]:hover .popover,
-                    :scope[disabled]:focus-within .popover {
+                    :scope[disabled]:has(.popover-anchor:focus-within) .popover {
                         opacity: 0;
                     }
 
                     :scope[disabled] .popover-surface,
                     :scope[disabled]:hover .popover-surface,
-                    :scope[disabled]:focus-within .popover-surface {
+                    :scope[disabled]:has(.popover-anchor:focus-within) .popover-surface {
                         clip-path: inset(140px 0 0 round 999px);
                     }
 
