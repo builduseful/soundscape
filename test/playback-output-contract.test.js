@@ -3,7 +3,7 @@
  *
  * Each output used to be tested to whatever depth someone thought of at the
  * time, against a fake shaped like its own platform.
- * `test/providers/media-element.test.js` knows about media elements and
+ * `test/providers/airplay.test.js` knows about media elements and
  * `remote.state`; `test/providers/cast-sdk.test.js` knows about `cast.framework`
  * and receiver player states. Both are right for what they do, and neither can
  * say anything about the other — so a behaviour every output is supposed to
@@ -33,7 +33,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 
 import { AudioPlayer } from "../src/js/audio-player.js";
-import { MediaElementController } from "../src/js/remote-playback/providers/media-element.js";
+import { AirPlayController } from "../src/js/remote-playback/providers/airplay.js";
 import { CastSdkController } from "../src/js/remote-playback/providers/cast-sdk.js";
 import { missingPlaybackOutputMembers } from "../src/js/playback-output.js";
 import { createFakeRemotePlayback } from "./helpers/fake-remote-playback.js";
@@ -75,11 +75,11 @@ const TRACK = {
 
 const drivers = [
     {
-        name: "MediaElementController (Remote Playback / AirPlay)",
+        name: "AirPlayController (Remote Playback / AirPlay)",
         create(callbacks) {
             const element = createCastableElement();
             const scope = nonChromiumScope();
-            const output = new MediaElementController(element, { ...callbacks, scope });
+            const output = new AirPlayController(element, { ...callbacks, scope });
 
             return {
                 output,
@@ -221,8 +221,8 @@ const outputs = [
         create: () => new AudioPlayer(createFakeMediaElement()),
     },
     {
-        name: "MediaElementController",
-        create: () => new MediaElementController(createCastableElement(), { scope: nonChromiumScope() }),
+        name: "AirPlayController",
+        create: () => new AirPlayController(createCastableElement(), { scope: nonChromiumScope() }),
     },
     {
         name: "CastSdkController",

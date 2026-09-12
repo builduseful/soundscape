@@ -15,7 +15,7 @@
  *
  * The element renders hidden and stays that way until `attach()` is called, and
  * `detach()` removes it from the document outright. A browser with no way to
- * cast — Firefox, Samsung Internet — therefore ships no remote markup at all,
+ * cast therefore ships no remote markup at all,
  * rather than markup kept permanently hidden. Nothing here is wired before
  * `attach()`: no listeners, no facade, nothing to press.
  *
@@ -24,14 +24,25 @@
  * is no path that re-hides an attached control, and a live connection can never
  * lose its stop button by construction rather than by a guard.
  *
+ * ## The glyph belongs to the provider
+ *
+ * The button draws the technology it will open, and this file knows the name of
+ * none of them: the provider hands over its own mark as markup, and the button
+ * shows it at the one size the stylesheet sets. So adding a provider never means
+ * editing this file.
+ *
+ * An icon is two drawings, `idle` and `connected` — sometimes the same one.
+ * Both go up at once and CSS shows one, so a state change never re-renders
+ * markup the provider owns.
+ *
  * ## Two states that look the same on purpose
  *
  * `connecting` and busy pulse the same glyph, because from the user's side they
  * are the same sentence: something is happening, wait. They are still distinct
  * attributes, because only one of them means a session exists — busy is the gap
- * between pressing the button and the browser's own picker appearing, which on
- * the Cast SDK path includes fetching a script, and claiming a connection during
- * it would make the glyph describe a session that does not exist.
+ * between pressing the button and the browser's own picker appearing, which for
+ * some providers includes fetching a script, and claiming a connection during it
+ * would make the glyph describe a session that does not exist.
  */
 
 // Everything this control says. The keys below are the three connection states,
@@ -45,17 +56,17 @@ const BUTTON_LABEL_BY_STATE = {
     connected: "Casting — change device or stop",
 };
 
-// Neither platform tells a page which device was picked, so these stay generic
-// on purpose rather than guessing a name.
+// No provider tells a page which device was picked, so these stay generic on
+// purpose rather than guessing a name.
 const STATUS_BY_STATE = {
     connecting: "Connecting to a device.",
     connected: "Now playing on another device.",
 };
 const DISCONNECTED_STATUS = "Playback returned to this device.";
 
-// Both platforms need the cast file's header read before they will show a device
-// list, and Chromium reports a picker it never opened as an ordinary dismissal —
-// so without this the press looks like nothing happened at all.
+// A provider may need the cast file's header read before it will show a device
+// list, and a browser can report a picker it never opened as an ordinary
+// dismissal — so without this the press looks like nothing happened at all.
 const REMOTE_UNAVAILABLE_MESSAGE =
     "Couldn't open the device list yet. Check your connection, then try again.";
 
@@ -99,6 +110,7 @@ export class RemotePlayback extends HTMLElement {
      * knows whether there is a provider at all.
      *
      * @param {object} facade
+     * @param {{idle: string, connected: string}} facade.icon The provider's own mark.
      * @param {() => Promise<boolean>} facade.prompt Open the picker. True if it opened.
      * @param {() => boolean} facade.prepare Spend the wait early. True once it has been done.
      * @param {() => boolean} facade.isTransportReady Could a picker have opened at all.
@@ -109,6 +121,11 @@ export class RemotePlayback extends HTMLElement {
         this.hidden = false;
 
         const button = this.button();
+
+        // Written once: a browser cannot change cast technology while the page is
+        // open, so the glyph is as settled as the control's visibility.
+        this.querySelector(".glyph-idle").innerHTML = facade.icon.idle;
+        this.querySelector(".glyph-connected").innerHTML = facade.icon.connected;
 
         button.addEventListener("click", () => this.handleClick());
         // Hover, focus, or the pointerdown that precedes a tap: the last moment
@@ -148,7 +165,7 @@ export class RemotePlayback extends HTMLElement {
         return this._state;
     }
 
-    // Reaching a Chromecast takes a few seconds, and the only sign of it is the
+    // Reaching a device takes a few seconds, and the only sign of it is the
     // pulse and the changed label — neither of which a screen reader announces
     // on a control nobody is focused on. Idle is the one state with no wording
     // of its own: "returned to this device" is only true if the audio ever left,
@@ -253,10 +270,12 @@ export class RemotePlayback extends HTMLElement {
                     }
 
                     /* Connected is the app's one persistent "audio is somewhere
-                       else" signal, so it gets weight as well as a filled glyph
-                       — a shape change alone is small to read at 22px.
-                       Connecting takes the same weight but not the fill: the
-                       screen stays empty until something is actually on it. Not
+                       else" signal, so it carries weight here rather than
+                       leaning on the provider's connected drawing — a mark may
+                       be the same in both states, and a shape change alone is
+                       small to read at 22px. Connecting takes the weight but
+                       keeps the
+                       idle drawing: nothing is playing elsewhere yet. Not
                        --color-primary: the palette is monochrome and defines it
                        as the same ink as --color-text, so the contrast has to
                        come from stepping off the muted idle colour. */
@@ -269,28 +288,35 @@ export class RemotePlayback extends HTMLElement {
                         color: var(--color-text);
                     }
 
-                    .button-icon {
+                    /* One size for every mark, so an icon only has to be a
+                       drawing — its viewBox is its own business. */
+                    .glyph svg {
+                        display: block;
                         width: 22px;
                         height: 22px;
-                        fill: none;
+                        pointer-events: none;
                     }
 
-                    .remote-icon-screen {
+                    .glyph-connected {
                         display: none;
                     }
 
-                    button[data-remote-state="connected"] .remote-icon-screen {
+                    button[data-remote-state="connected"] .glyph-idle {
+                        display: none;
+                    }
+
+                    button[data-remote-state="connected"] .glyph-connected {
                         display: block;
                     }
 
-                    /* Reaching a Chromecast can take several seconds. A slow
+                    /* Reaching a device can take several seconds. A slow
                        pulse carries the wait without moving anything in the
                        header. Opening the picker is the same wait from the
                        user's side — a script may have to be fetched first — and
                        says the same thing, so it borrows the same pulse rather
                        than inventing a second one. */
-                    button[data-remote-state="connecting"] .remote-icon,
-                    button[data-remote-busy] .remote-icon {
+                    button[data-remote-state="connecting"] .glyph,
+                    button[data-remote-busy] .glyph {
                         animation: remote-connecting 1.4s ease-in-out infinite;
                     }
 
@@ -317,8 +343,8 @@ export class RemotePlayback extends HTMLElement {
                         /* The wait still needs saying, so the pulse settles into
                            the dimmed half of its own cycle rather than
                            disappearing. */
-                        button[data-remote-state="connecting"] .remote-icon,
-                        button[data-remote-busy] .remote-icon {
+                        button[data-remote-state="connecting"] .glyph,
+                        button[data-remote-busy] .glyph {
                             animation: none;
                             opacity: 0.55;
                         }
@@ -335,16 +361,12 @@ export class RemotePlayback extends HTMLElement {
                 }
             </style>
             <!-- No state or label here: connectedCallback sets both, so the
-                 three state names are written once, in one place. -->
+                 three state names are written once. The glyph slots stay empty
+                 until attach() fills them, which is safe because an unattached
+                 control is hidden. -->
             <button type="button">
-                <svg class="button-icon remote-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M3 17.5a3.5 3.5 0 0 1 3.5 3.5M3 13.5A7.5 7.5 0 0 1 10.5 21M3 9.5A11.5 11.5 0 0 1 14.5 21" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
-                    <path d="M3 6.5v-1a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
-                    <!-- The filled screen is the connected state. Drawing it on
-                         top of the idle glyph rather than shipping a second copy
-                         of the whole icon keeps the two from drifting apart. -->
-                    <path class="remote-icon-screen" d="M7 7.75h10v8.5h-3.6A10.9 10.9 0 0 0 7 10.4V7.75Z" fill="currentColor" stroke="none"></path>
-                </svg>
+                <span class="glyph glyph-idle"></span>
+                <span class="glyph glyph-connected"></span>
             </button>
             <p role="status"></p>
         `;

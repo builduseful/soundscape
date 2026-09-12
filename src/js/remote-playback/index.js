@@ -22,7 +22,7 @@
  *     this output owns the soundscape. Identical to `AudioPlayer`'s.
  *   - **The remote contract** — `isSupported`, `start`, `stopWatching`,
  *     `prompt`, `prepare`, `allowTransportLoad`, `isTransportReady`,
- *     `isConnected`, `isConnecting`, `backendName`, `setTrack`,
+ *     `isConnected`, `isConnecting`, `backendName`, `icon`, `setTrack`,
  *     `setPlaybackRequested`, `getTrackUrl`. How a remote output is discovered,
  *     opened, kept current and torn down. It has no local counterpart, which is
  *     exactly why it is a second contract and not more members on the first.
@@ -35,9 +35,8 @@
  * re-asks, and nothing downstream branches on *which* provider it got — a
  * `backendName()` exists for diagnostics and for nothing else.
  *
- * Chrome takes the Cast SDK, Safari the media element path. The order below is
- * load-bearing and the two capability checks are pointed at each other on
- * purpose; each provider's header carries the evidence for its own half.
+ * Which browser gets which provider is each provider's own answer, given in its
+ * own file. This module only asks, in order.
  *
  * ## Why both contracts are checked rather than assumed
  *
@@ -48,8 +47,8 @@
  */
 
 import { missingPlaybackOutputMembers } from "../playback-output.js";
-import { CastSdkController, isCastSdkCapable } from "./providers/cast-sdk.js";
-import { MediaElementController } from "./providers/media-element.js";
+import { CAST_SDK_PROVIDER } from "./providers/cast-sdk.js";
+import { AIRPLAY_PROVIDER } from "./providers/airplay.js";
 
 export { REMOTE_FAILURE_MESSAGE } from "./messages.js";
 
@@ -77,11 +76,15 @@ export { REMOTE_FAILURE_MESSAGE } from "./messages.js";
  * why they are not members of the port.
  *
  * Ordered as the app uses them: discovery, then the picker, then keeping the
- * transport current, then teardown.
+ * transport current, then teardown. `icon` is the odd one out — it hands over
+ * the mark this technology wears, so the button can be drawn by something that
+ * knows no technology's name. Required, not optional: a provider without it
+ * would ship a button with nothing on it.
  */
 export const REMOTE_PROVIDER_MEMBERS = [
     "isSupported",
     "backendName",
+    "icon",
     "start",
     "stopWatching",
     "isConnected",
@@ -103,54 +106,25 @@ export function missingRemoteProviderMembers(candidate) {
 }
 
 /**
- * The providers, most preferred first.
+ * The providers, most preferred first. Each entry comes from the file that
+ * implements it, so no technology is named here.
  *
- * `create` returns a candidate or `null`; a candidate is then checked against
- * both contracts and, only if it conforms, asked `isSupported()`. Two stages
- * because the two providers genuinely answer at different times: the SDK path
- * can rule itself out from the browser alone, while the media element path has
- * to be handed the element before it can say which backend — if any — that
- * element supports.
+ * An entry answers `create` with a candidate or `null`; a candidate is then
+ * checked against both contracts and, only if it conforms, asked
+ * `isSupported()`. Two stages because providers answer at different times — one
+ * may rule itself out from the browser alone, another only once it has the
+ * transport element in hand.
  *
- * Each implementation is one file under `providers/`, named for the entry below
- * it. Adding a third is that file plus one entry here; nothing outside this
- * directory changes.
+ * Adding a third provider is one file under `providers/`, plus an import and a
+ * line below; nothing outside this directory changes.
  */
-export const REMOTE_PROVIDERS = [
-    {
-        name: "cast-sdk",
-        create({ tracks, onChange, onPlaybackChange, onTrackAdopted, onVolumeChange, scope }) {
-            if (!isCastSdkCapable(scope)) return null;
-
-            // `scope` is handed on, not just consulted: a provider that decided
-            // it was capable from the injected scope and then re-decided from
-            // the real one would answer two different questions, and the second
-            // is the one `isSupported()` gives the registry a line later.
-            return new CastSdkController({
-                tracks,
-                onChange,
-                onPlaybackChange,
-                onTrackAdopted,
-                onVolumeChange,
-                scope,
-            });
-        },
-    },
-    {
-        name: "media-element",
-        create({ element, onChange, onPlaybackChange, scope }) {
-            if (!element) return null;
-
-            return new MediaElementController(element, { onChange, onPlaybackChange, scope });
-        },
-    },
-];
+export const REMOTE_PROVIDERS = [CAST_SDK_PROVIDER, AIRPLAY_PROVIDER];
 
 /**
  * Choose the remote playback provider for this browser, or `null` if it has none.
  *
- * `element` is the cast transport element — used only by the media element
- * provider, and harmless to pass on a browser that takes the SDK. `scope` is
+ * `element` is the cast transport element — wanted only by a provider that casts
+ * through one, and harmless to pass to one that does not. `scope` is
  * injectable so the choice can be tested against a fake browser rather than the
  * one the tests happen to run in.
  */

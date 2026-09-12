@@ -34,7 +34,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "1.19.0";
+const VERSION = "1.20.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -494,10 +494,10 @@ function applyVolume(volume) {
         return;
     }
 
-    // The active output's level is not the app's to set — on AirPlay the
-    // element's volume is the receiver's own and outlives the session. Set the
-    // local player's anyway: it is parked and silent, and this is the level the
-    // room gets back on handback.
+    // The active output's level is not the app's to set — some transports hand
+    // it to the receiver, where it outlives the session. Set the local player's
+    // anyway: it is parked and silent, and this is the level the room gets back
+    // on handback.
     localOutput.setVolume(volume);
 }
 
@@ -505,10 +505,10 @@ function applyVolume(volume) {
 // options — it looks broken rather than absent, and gives no clue why. So the
 // control now takes one of two honest shapes while a remote is active:
 //
-//   - The transport can carry volume (one of the two providers can): the
-//     slider drives the device, relabelled so it is clear whose level moves.
-//   - It cannot (AirPlay, where element volume is not ours to set): no slider
-//     at all, because a control that moves nothing should not be on screen.
+//   - The transport can carry volume: the slider drives the device, relabelled
+//     so it is clear whose level moves.
+//   - It cannot: no slider at all, because a control that moves nothing should
+//     not be on screen.
 //
 // The device's level is *adopted*, never pushed. Sending this page's slider
 // position on connect would turn the speaker in the room to wherever it
@@ -556,10 +556,9 @@ function isOutputPlaying() {
 // "which output owns the soundscape".
 //
 // Deliberately not "discovery": nothing is asked of the network here or ever.
-// Both platforms discover devices inside their own picker when it opens, so the
-// app never needs to know in advance whether one is out there —
-// providers/media-element.js explains what that replaced and why it is not
-// coming back.
+// Every provider discovers devices inside its own picker when it opens, so the
+// app never needs to know in advance whether one is out there — the plugin's
+// AGENTS.md explains what that replaced and why it is not coming back.
 //
 // The track is handed over now so the provider knows what to load, but no bytes
 // move until the first gesture releases it.
@@ -570,6 +569,9 @@ function initRemotePlayback() {
     }
 
     remotePlaybackUi.attach({
+        // Forwarded, never read: the mark is the provider's, so this file
+        // still knows nothing about which one it got.
+        icon: remotePlayback.icon(),
         prompt: () => remotePlayback.prompt(),
         prepare: () => remotePlayback.prepare(),
         isTransportReady: () => remotePlayback.isTransportReady(),

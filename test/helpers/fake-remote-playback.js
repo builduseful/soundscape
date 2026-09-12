@@ -9,7 +9,7 @@
  * under test is the app.
  *
  * This fakes the output itself. It implements the same public surface
- * `MediaElementController` and `CastSdkController` present, so it is drivable through
+ * `AirPlayController` and `CastSdkController` present, so it is drivable through
  * exactly the calls the app makes — which is what makes a test that passes
  * against it meaningful about the real ones. It is also the reference
  * implementation the shared contract suite is written against: if the contract
@@ -99,7 +99,7 @@ export function createFakeRemotePlayback({
         // The raw intent, ungated on still being connected: a disconnect has to
         // be able to ask "was this playing?" after the connection is gone.
         isPlaybackRequested: () => playbackRequested,
-        // Coincide on any remote — see the same member in providers/media-element.js.
+        // Coincide on any remote — see the same member in providers/airplay.js.
         wantsPlayback: () => playbackRequested,
         setPlaybackRequested(requested) {
             playbackRequested = Boolean(requested);

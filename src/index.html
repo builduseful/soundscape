@@ -109,7 +109,7 @@
         <audio id="audioElement" preload="auto" disableremoteplayback x-webkit-airplay="deny"></audio>
         <!-- The remote playback transport. Never pass this to
              createMediaElementSource — see
-             js/remote-playback/providers/media-element.js for why that would
+             js/remote-playback/providers/airplay.js for why that would
              break casting outright.
 
              It stays in the markup rather than being created by the provider
@@ -128,7 +128,7 @@
              It is a hint, not a budget: Chrome reads well past the header on a
              file this small. What actually keeps that off the wire is that the
              element carries no src until someone touches the page, which
-             js/remote-playback/providers/media-element.js explains. Nothing here
+             js/remote-playback/providers/airplay.js explains. Nothing here
              is fetched on load.
 
              x-webkit-airplay="allow" is Safari's default rather than a

@@ -63,14 +63,35 @@ rules themselves, and the evidence you cannot get from reading the code.
     `audio-player.js`, `style.css` and the rest of `index.html` are untouched,
     and no remote-only fact has to be dug out of any of them — which is what the
     catalog and the stylesheet each used to cost before the restructure.
+  - **A provider exports its own registry entry**, so `index.js` is a list:
+    `REMOTE_PROVIDERS = [CAST_SDK_PROVIDER, AIRPLAY_PROVIDER]`, in preference
+    order. Which browsers a provider claims, and what it needs to be built, stay
+    in its own file; the registry asks each in turn and takes the first candidate
+    that passes both contracts and `isSupported()`.
   - The control is **not** re-exported from `index.js`: `control.js` extends
     `HTMLElement` at import time, which would make the registry unloadable
     outside a browser. Two imports from one directory is the cheaper price, and
     both still start `remote-playback/`.
 - **The control cannot connect, read a connection, or move audio.** It gets a
-  four-function facade (`prompt`, `prepare`, `isTransportReady`, `onUnavailable`)
-  and owns everything the user sees. With no provider it removes itself, so a
-  browser that cannot cast ships no remote markup at all.
+  facade — `icon`, `prompt`, `prepare`, `isTransportReady`, `onUnavailable` — and
+  owns everything the user sees. With no provider it removes itself, so a browser
+  that cannot cast ships no remote markup at all.
+- **The button draws the technology it opens, and the provider supplies the
+  drawing.** `icon()` returns `{ idle, connected }` as SVG markup; `script.js`
+  forwards it unread and `control.js` puts it up in a 22px box. Nothing outside
+  `providers/` names a remote technology, so a third provider is its
+  implementation, an icon module beside it, and a registry entry. Not a name the
+  control maps to a glyph: that was the first shape of this, and it put both
+  technologies inside the one file meant to know about none.
+  - **Each icon lives with its own because the licensing differs.** Cast is
+    Google's drawing from Material Symbols (Apache-2.0, verbatim, recoloured
+    only), because Google asks that a Cast button use their template. AirPlay is
+    ours, because Apple's ships in SF Symbols — licensed for interfaces on
+    Apple's operating systems, not for a web page.
+  - **An icon is a whole drawing, colours included**, and the two states may be
+    the same one. Each sets its own `fill`/`stroke` against `currentColor`; Cast
+    ships a pair, AirPlay is a single mark that Apple recolours rather than
+    redraws. Follow whoever owns the mark — the control imposes only the box.
 
 ### The platform facts
 - **Casting is three mechanisms, not one, and the difference decides everything
@@ -111,12 +132,12 @@ rules themselves, and the evidence you cannot get from reading the code.
   - On the SDK path it is the player state: a settled `PAUSED` clears, while
     `BUFFERING` or `IDLE` — a receiver in the middle of something — does not.
     `providers/cast-sdk.test.js` pins both halves.
-  - On the media element path there is no player state, only the element, so the
+  - On the AirPlay path there is no player state, only the element, so the
     discriminator is `readyState`. The media load algorithm drops it to
     `HAVE_NOTHING` *before* queueing the spurious `pause`, so an element with no
     header is reporting its own reload and is ignored; one that has read its
     metadata is reporting the room. That gate is
-    `MediaElementController.handleTransportPlaybackChange`, and removing it is
+    `AirPlayController.handleTransportPlaybackChange`, and removing it is
     how the speaker-pause bug comes back. `app-remote-playback.test.js` pins each
     side — "the pause a source change fires cannot clear the intent" and "a pause
     pressed on the device hands back silence, not sound".
@@ -127,7 +148,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   change reaches `CastSdkController.loadTrack` three times — the app keeps the
   transport current, `startTrack` sets it again, and `play()` asks a third time.
   Each is a full load and a real receiver re-fetches the file for every one, so a
-  skip restarted the soundscape twice before settling. The media element path has
+  skip restarted the soundscape twice before settling. The AirPlay path has
   never needed any of this: `applyElementSource` compares and assigns in the same
   turn.
   - **Ask `targetUrl()` — where the receiver is *going* — never `loadedUrl`.**
@@ -169,7 +190,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   `tracks.js` so the catalog carries no remote-only fact — delete the plugin and
   `tracks.js` is untouched. `remote-playback-assets.test.js` checks every twin
   exists on disk, has no orphans, and is never the `.opus` original.
-- Everything platform-specific lives in the two backend objects in `providers/media-element.js`, and
+- Everything platform-specific lives in the two backend objects in `providers/airplay.js`, and
   it comes to only two things: how you open the picker, and how you observe the
   connection. Once connected, both platforms are driven by plain
   `src`/`play`/`pause`. Keep it that way — new targets should be a backend, not a
@@ -229,7 +250,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   `availability_` to *reject early*, and it sits at `UNKNOWN` when nothing is
   watching. A machine with no devices gets the browser's own picker rather than
   an error to report, so there is nothing to hand-roll for that case either.
-  `providers/media-element.test.js` asserts neither backend registers a scan.
+  `providers/airplay.test.js` asserts neither backend registers a scan.
   What is **not** optional is metadata: see the `prompt()` bullet below.
 - The control is therefore always present when it exists at all, decided once at
   boot. There is no path that re-hides an attached control, which is what makes
@@ -246,7 +267,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   metadata, for the reason in the next bullet; without it `NotAllowedError` means
   the opposite thing. Only genuinely unexpected failures are logged. The common
   cause of that race — a double-click on the button — is
-  refused outright by `MediaElementController.prompt()` rather than absorbed after the
+  refused outright by `AirPlayController.prompt()` rather than absorbed after the
   fact. There is no
   `disconnect()` in the Remote Playback API by design; prompting again while
   connected is what offers "stop casting".
@@ -260,7 +281,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   rejection a real dismissal produces. Safari reaches the same place from the
   other side, rejecting below `HAVE_METADATA` with `NotSupportedError`. Symptom:
   the cast button does nothing, on desktop and Android alike, with a clean
-  console. Hence the metadata wait in `MediaElementController.prompt()`,
+  console. Hence the metadata wait in `AirPlayController.prompt()`,
   `preload="metadata"` on the element, `+faststart` on the twins, and the service
   worker leaving `.m4a` alone.
   - The wait is capped (`TRANSPORT_METADATA_WAIT_MS`, 2.5 s) because `prompt()`
@@ -372,7 +393,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   or paused and never calls `client_->OnEnded()`, so Blink never runs its
   end-of-media algorithm: no `ended`, no `pause`, and `loop` never applied. The
   room goes quiet with the app still showing playing. Position is the one signal
-  every platform keeps, so `LoopWatchdog` polls it and asks `MediaElementController` to
+  every platform keeps, so `LoopWatchdog` polls it and asks `AirPlayController` to
   restart a cast that has stopped advancing. It is kept a separate class on
   purpose: liveness policy, knowing nothing about elements, backends or URLs. Keep
   the `ended` handler too — it is one line and covers the receivers that do
@@ -386,7 +407,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   quiet, and `restartLoop` deliberately returns to the un-advanced posture. If
   that posture meant "never intervene again", the first restart would disarm the
   watchdog for the session and leave the app showing playing into a silent room —
-  the exact failure it exists to catch. `providers/media-element.test.js` pins the retry.
+  the exact failure it exists to catch. `providers/airplay.test.js` pins the retry.
 - `npm run audio -- --cast` rebuilds the AAC twins (needs `ffmpeg`/`ffprobe` on PATH;
   host-only, not in `npm test` or the Docker image). It imports the app's own
   `applyLoopCrossfade`, trims to the loop period, and writes that period
@@ -424,7 +445,7 @@ except the manual checklist at the end.
   - `test/helpers/remote-transport-fakes.js` fakes a **platform API** — a
     `RemotePlayback` object, a `cast.framework` namespace. Use it when the subject
     is a particular controller against a particular browser API
-    (`providers/media-element.test.js`, `providers/cast-sdk.test.js`).
+    (`providers/airplay.test.js`, `providers/cast-sdk.test.js`).
   - `test/helpers/fake-remote-playback.js` fakes **a PlaybackOutput**. Use it when
     the subject is "some remote output" rather than a platform. It is also the
     reference implementation the contract suite is written against: if the

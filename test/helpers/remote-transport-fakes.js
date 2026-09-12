@@ -1,7 +1,7 @@
 /**
  * The platform fakes the two real remote outputs are driven by.
  *
- * These were built separately inside `providers/media-element.test.js` and `providers/cast-sdk.test.js` and
+ * These were built separately inside `providers/airplay.test.js` and `providers/cast-sdk.test.js` and
  * grew to fit whatever each file happened to be testing. They are lifted here
  * unchanged in behaviour so one shared contract suite can construct either
  * controller, which is the whole point of the exercise: a spec that only one
@@ -20,7 +20,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// The media element path: W3C Remote Playback API and AirPlay (src/js/remote-playback/providers/media-element.js)
+// The media element path: W3C Remote Playback API and AirPlay (src/js/remote-playback/providers/airplay.js)
 // ---------------------------------------------------------------------------
 
 function createListenerMap() {
@@ -99,7 +99,7 @@ export function createFakeRemotePlaybackApi() {
 
         // Counted, never expected to run. The backend feature-detects on this
         // method without calling it — see the comment on
-        // `remotePlaybackBackend.isSupported` in providers/media-element.js for why it probes one it
+        // `remotePlaybackBackend.isSupported` in providers/airplay.js for why it probes one it
         // does not use — so the fake must carry it to be selected at all, and
         // counting proves no network scan was ever started.
         watchAvailabilityCalls: 0,
@@ -160,7 +160,7 @@ export function createCastableElement({ airplay = false } = {}) {
 /**
  * A clock the test drives.
  *
- * `MediaElementController`'s loop watchdog is a poll that outlives every call that
+ * `AirPlayController`'s loop watchdog is a poll that outlives every call that
  * starts it, so against the real clock a test that plays and does not tear down
  * leaks a live interval — which under `node --test` holds the event loop open
  * and the run never finishes. It is also the only way to test the watchdog's
@@ -216,9 +216,9 @@ export function createFakeClock() {
 /**
  * Safari/Firefox shape: no `userAgentData` at all, so `isChromium` is false.
  *
- * Carries a driveable clock, because `providers/media-element.js` resolves timers off this same
+ * Carries a driveable clock, because `providers/airplay.js` resolves timers off this same
  * scope. A scope without one falls back to the real clock, which is what every
- * existing test in `providers/media-element.test.js` relies on.
+ * existing test in `providers/airplay.test.js` relies on.
  */
 export function nonChromiumScope(extras = {}) {
     return { navigator: {}, ...createFakeClock(), ...extras };

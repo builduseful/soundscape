@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.19.0";
+const VERSION = "1.20.0";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -22,8 +22,10 @@ const APP_SHELL_ASSETS = [
     "./js/remote-playback/index.js",
     "./js/remote-playback/messages.js",
     "./js/remote-playback/track-source.js",
-    "./js/remote-playback/providers/media-element.js",
+    "./js/remote-playback/providers/airplay.js",
+    "./js/remote-playback/providers/airplay-icon.js",
     "./js/remote-playback/providers/cast-sdk.js",
+    "./js/remote-playback/providers/cast-icon.js",
     "./js/media-session.js",
     "./js/pwa.js",
     "./js/theme-utils.js",

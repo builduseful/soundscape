@@ -269,7 +269,7 @@ function createFakeRemotePlayback() {
         promptShouldReject: null,
 
         // Present but never expected to run. The backend feature-detects on this
-        // method without calling it — see its comment in providers/media-element.js for why it probes
+        // method without calling it — see its comment in providers/airplay.js for why it probes
         // one it does not use — so the fake has to carry it to be selected at all.
         // Counted so a test can prove no scan was started.
         watchAvailabilityCalls: 0,

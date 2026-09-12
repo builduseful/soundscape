@@ -2,7 +2,7 @@
  * Casting to Chromecast and Google/Nest speakers via the Google Cast SDK.
  *
  * This exists because the standards-track answer does not work. The Remote
- * Playback API in providers/media-element.js is designed for exactly this job —
+ * Playback API in providers/airplay.js is designed for exactly this job —
  * "a page with a media element initiate and control playback of that media on a
  * remote device" — and it was the correct first choice. In practice its picker
  * never opened: measured on Chrome/Windows, Chrome/Android and Samsung
@@ -30,7 +30,7 @@
  *
  * So: the SDK, with Google's stock Default Media Receiver, which needs no
  * registration, no account and no fee. Safari keeps the Remote Playback and
- * AirPlay path in providers/media-element.js, which is the one platform where
+ * AirPlay path in providers/airplay.js, which is the one platform where
  * that API is properly honoured.
  *
  * The script is fetched from gstatic.com and cannot be precached, which is why
@@ -39,6 +39,7 @@
  */
 
 import { REMOTE_FAILURE_MESSAGE } from "../messages.js";
+import { CAST_ICON } from "./cast-icon.js";
 import { remoteUrlFor } from "../track-source.js";
 
 const SDK_URL = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
@@ -91,7 +92,7 @@ const MAX_CONSECUTIVE_IDLE_RESTARTS = 3;
  * on: the Presentation API, which Chrome exposes only in a secure context.
  *
  * Deliberately false in Safari and Firefox. Neither ships the Presentation API,
- * so both fall through to providers/media-element.js — Safari to AirPlay, Firefox
+ * so both fall through to providers/airplay.js — Safari to AirPlay, Firefox
  * to no cast button at all, which is correct in both cases.
  *
  * The Presentation API and secure-context checks alone are not enough: every
@@ -99,7 +100,7 @@ const MAX_CONSECUTIVE_IDLE_RESTARTS = 3;
  * up in actual Chrome — Samsung Internet passes both checks and then the SDK
  * fails to load. Rather than show the button and report that failure after a
  * press, capability is narrowed here with the same brand signal that
- * providers/media-element.js uses to exclude Samsung from the Remote Playback
+ * providers/airplay.js uses to exclude Samsung from the Remote Playback
  * backend, so the browsers that cannot cast get no button at all instead of one
  * that explains itself.
  */
@@ -245,6 +246,12 @@ export class CastSdkController {
 
     backendName() {
         return this.isSupported() ? "cast-sdk" : null;
+    }
+
+    // Markup rather than a name, so the control can draw it without knowing
+    // which technology it is.
+    icon() {
+        return CAST_ICON;
     }
 
     // Nothing can be observed before the SDK is loaded, so this reports the
@@ -398,7 +405,7 @@ export class CastSdkController {
 
         // The receiver has its own remote and the person holding it is not this
         // page, so its pause is the app's only word that the room went quiet —
-        // the same reasoning as the transport element's play/pause in providers/media-element.js.
+        // the same reasoning as the transport element's play/pause in providers/airplay.js.
         this.playerController.addEventListener(
             cast.framework.RemotePlayerEventType.IS_PAUSED_CHANGED,
             this.handlePlaybackChange,
@@ -452,7 +459,7 @@ export class CastSdkController {
     }
 
     // PlaybackOutput. Coincides with the above on any remote — see the same
-    // member in providers/media-element.js for why that is honest rather than duplicated.
+    // member in providers/airplay.js for why that is honest rather than duplicated.
     wantsPlayback() {
         return this.playbackRequested;
     }
@@ -465,7 +472,7 @@ export class CastSdkController {
     }
 
     // PlaybackOutput. The receiver owns the position and the page cannot read
-    // it; see the same member in providers/media-element.js.
+    // it; see the same member in providers/airplay.js.
     canReportPosition() {
         return false;
     }
@@ -968,3 +975,28 @@ export class CastSdkController {
         }
     }
 }
+
+/**
+ * This provider's registry entry, kept here so `index.js` stays a list.
+ *
+ * Only this file knows that the SDK path can be ruled out from the browser
+ * alone, and that the scope it was judged on is the scope it must then run on.
+ */
+export const CAST_SDK_PROVIDER = {
+    name: "cast-sdk",
+    create({ tracks, onChange, onPlaybackChange, onTrackAdopted, onVolumeChange, scope }) {
+        if (!isCastSdkCapable(scope)) return null;
+
+        // `scope` is handed on, not just consulted: judging capability against
+        // the injected scope and then running against the real one would answer
+        // two different questions.
+        return new CastSdkController({
+            tracks,
+            onChange,
+            onPlaybackChange,
+            onTrackAdopted,
+            onVolumeChange,
+            scope,
+        });
+    },
+};

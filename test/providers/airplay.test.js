@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { REMOTE_BACKENDS, MediaElementController, selectRemoteBackend } from "../../src/js/remote-playback/providers/media-element.js";
+import { REMOTE_BACKENDS, AirPlayController, selectRemoteBackend } from "../../src/js/remote-playback/providers/airplay.js";
 import { remoteUrlFor } from "../../src/js/remote-playback/track-source.js";
 
 const originalConsoleWarn = console.warn;
@@ -101,7 +101,7 @@ function createRemote() {
 const track = { id: "rain", title: "Rain" };
 
 test("no backend is selected on a browser that cannot cast", () => {
-    const controller = new MediaElementController(createElement());
+    const controller = new AirPlayController(createElement());
 
     assert.equal(controller.isSupported(), false);
     assert.equal(controller.backendName(), null);
@@ -114,7 +114,7 @@ test("no backend is selected on a browser that cannot cast", () => {
 // happen — and `preload="metadata"` does not keep that to a header.
 test("a browser that cannot cast never fetches a cast twin", () => {
     const element = createElement();
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.setTrack(track);
 
@@ -143,7 +143,7 @@ test("a Chromium browser is not offered the Remote Playback backend", () => {
     const chromium = { navigator: { userAgentData: { brands: [{ brand: "Chromium" }] } } };
 
     assert.equal(selectRemoteBackend(element, REMOTE_BACKENDS, chromium), null);
-    assert.equal(new MediaElementController(element, { scope: chromium }).isSupported(), false);
+    assert.equal(new AirPlayController(element, { scope: chromium }).isSupported(), false);
 });
 
 // Safari and Firefox have no userAgentData at all, so the check cannot catch
@@ -157,16 +157,38 @@ test("a browser without userAgentData still gets the Remote Playback backend", (
 // AirPlay is unaffected: WebKit is not Chromium, and the twin is loaded on the
 // first gesture rather than when the button is approached.
 test("preparing the AirPlay transport is a no-op", () => {
-    const controller = new MediaElementController(createElement({ webkitShowPlaybackTargetPicker() {} }));
+    const controller = new AirPlayController(createElement({ webkitShowPlaybackTargetPicker() {} }));
 
     assert.equal(controller.prepare(), false);
 });
 
+// Both backends open an AirPlay picker, so the button must not change with which
+// API happened to be detected.
+test("either backend wears the same AirPlay mark", () => {
+    const remotePlayback = new AirPlayController(createElement({ remote: createRemote() }));
+    const airplay = new AirPlayController(createElement({ webkitShowPlaybackTargetPicker() {} }));
+
+    assert.equal(remotePlayback.backendName(), "remote-playback");
+    assert.equal(airplay.backendName(), "webkit-picker");
+    assert.deepEqual(remotePlayback.icon(), airplay.icon());
+    assert.match(remotePlayback.icon().idle, /^\s*<svg/u);
+});
+
+// Apple ships one AirPlay symbol and marks a live session by recolouring it,
+// which the control does. So the two states matching is the decision, not a gap
+// to be filled by hollowing the idle beam.
+test("both states wear the one solid mark Apple ships", () => {
+    const icon = new AirPlayController(createElement({ remote: createRemote() })).icon();
+
+    assert.equal(icon.idle, icon.connected);
+    assert.match(icon.idle, /<path d="M12 13.4[^"]*" fill="currentColor">/u);
+});
+
 test("the AirPlay backend is selected on WebKit", () => {
     const element = createElement({ webkitShowPlaybackTargetPicker() {} });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
-    assert.equal(controller.backendName(), "airplay");
+    assert.equal(controller.backendName(), "webkit-picker");
     assert.equal(controller.isSupported(), true);
 });
 
@@ -175,7 +197,7 @@ test("the AirPlay backend is selected on WebKit", () => {
 // whether a device exists and never scans to find out.
 test("the controller never asks the network whether a device exists", async () => {
     const remote = createRemote();
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
 
     controller.start();
     await new Promise((resolve) => setImmediate(resolve));
@@ -190,7 +212,7 @@ test("the controller never asks the network whether a device exists", async () =
 test("start reports the opening state", async () => {
     const remote = createRemote();
     const changes = [];
-    const controller = new MediaElementController(createElement({ remote }), {
+    const controller = new AirPlayController(createElement({ remote }), {
         onChange: (state) => changes.push(state),
     });
 
@@ -207,7 +229,7 @@ test("start reports a cast that was already live", async () => {
 
     remote.state = "connected";
 
-    const controller = new MediaElementController(createElement({ remote }), {
+    const controller = new AirPlayController(createElement({ remote }), {
         onChange: (state) => changes.push(state),
     });
 
@@ -220,7 +242,7 @@ test("connect and disconnect events are reported as connection changes", async (
     const remote = createRemote();
     const element = createElement({ remote });
     const changes = [];
-    const controller = new MediaElementController(element, {
+    const controller = new AirPlayController(element, {
         onChange: (state) => changes.push(state),
     });
 
@@ -247,7 +269,7 @@ test("the AirPlay backend never registers WebKit's availability listener", async
             this.pickerCalls = (this.pickerCalls ?? 0) + 1;
         },
     });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
 
@@ -272,7 +294,7 @@ test("routine picker outcomes are not reported as failures", async () => {
         console.warn = (...args) => warnings.push(args);
         remote.promptRejection = Object.assign(new Error("dismissed"), { name });
 
-        const controller = new MediaElementController(createElement({ remote }));
+        const controller = new AirPlayController(createElement({ remote }));
 
         assert.equal(await controller.prompt(), false);
         assert.deepEqual(warnings, [], `${name} should not be logged`);
@@ -283,7 +305,7 @@ test("connecting is reported between the picker and a live connection", async ()
     const remote = createRemote();
     const element = createElement({ remote });
     const changes = [];
-    const controller = new MediaElementController(element, {
+    const controller = new AirPlayController(element, {
         onChange: (state) => changes.push(state),
     });
 
@@ -304,7 +326,7 @@ test("connecting is reported between the picker and a live connection", async ()
 // AirPlay exposes only the settled state, so the shared interface has to answer
 // for it rather than leaving the caller to special-case the backend.
 test("AirPlay reports no connecting state", () => {
-    const controller = new MediaElementController(createElement({ webkitShowPlaybackTargetPicker() {} }));
+    const controller = new AirPlayController(createElement({ webkitShowPlaybackTargetPicker() {} }));
 
     assert.equal(controller.isConnecting(), false);
 });
@@ -314,7 +336,7 @@ test("AirPlay reports no connecting state", () => {
 test("a receiver that ends the track instead of looping is restarted", async () => {
     const remote = createRemote();
     const element = createElement({ remote });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -335,7 +357,7 @@ test("a receiver that ends the track instead of looping is restarted", async () 
 test("an ended event is ignored when the cast is paused or gone", async () => {
     const remote = createRemote();
     const element = createElement({ remote });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -360,7 +382,7 @@ test("an ended event is ignored when the cast is paused or gone", async () => {
 test("a receiver that stops without saying so is restarted", async () => {
     const remote = createRemote();
     const element = createElement({ remote, currentTime: 0 });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -389,7 +411,7 @@ test("a receiver that stops without saying so is restarted", async () => {
 test("a cast that has not started yet is never mistaken for a stalled one", async () => {
     const remote = createRemote();
     const element = createElement({ remote, currentTime: 0 });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -412,7 +434,7 @@ test("a cast that has not started yet is never mistaken for a stalled one", asyn
 test("a restart that does not take is tried again", async () => {
     const remote = createRemote();
     const element = createElement({ remote, currentTime: 0 });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -448,7 +470,7 @@ test("a cast that refuses to start leaves no watchdog behind", async () => {
         currentTime: 0,
         play: () => Promise.reject(new Error("NotSupportedError")),
     });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -462,7 +484,7 @@ test("a cast that refuses to start leaves no watchdog behind", async () => {
 test("a cast paused from the receiver is left paused", async () => {
     const remote = createRemote();
     const element = createElement({ remote, currentTime: 0 });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
     remote.state = "connected";
@@ -485,7 +507,7 @@ test("a cast paused from the receiver is left paused", async () => {
 
 test("the progress watchdog runs only while a cast wants audio", async () => {
     const remote = createRemote();
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
 
     controller.start();
     remote.state = "connected";
@@ -509,7 +531,7 @@ test("the progress watchdog runs only while a cast wants audio", async () => {
 test("prompt holds for the transport's metadata before opening the picker", async () => {
     const remote = createRemote();
     const element = createElement({ remote, readyState: 0 });
-    const controller = new MediaElementController(element, { metadataWaitMs: 50 });
+    const controller = new AirPlayController(element, { metadataWaitMs: 50 });
 
     const opened = controller.prompt();
 
@@ -528,7 +550,7 @@ test("prompt holds for the transport's metadata before opening the picker", asyn
 // spent here is one it does not have.
 test("prompt does not wait when the transport is already readable", async () => {
     const remote = createRemote();
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
 
     assert.equal(await controller.prompt(), true);
     assert.equal(remote.promptCalls, 1);
@@ -544,7 +566,7 @@ test("a dismissal reported without metadata is logged rather than absorbed", asy
     remote.promptRejection = Object.assign(new Error("dismissed"), { name: "NotAllowedError" });
 
     const element = createElement({ remote, readyState: 0 });
-    const controller = new MediaElementController(element, { metadataWaitMs: 5 });
+    const controller = new AirPlayController(element, { metadataWaitMs: 5 });
 
     console.warn = (...args) => warnings.push(args);
 
@@ -559,7 +581,7 @@ test("a failed transport load ends the metadata wait immediately", async () => {
     const remote = createRemote();
     const element = createElement({ remote, readyState: 0 });
     // Long enough that a timer, rather than the error, would be an obvious hang.
-    const controller = new MediaElementController(element, { metadataWaitMs: 60_000 });
+    const controller = new AirPlayController(element, { metadataWaitMs: 60_000 });
 
     console.warn = () => {};
 
@@ -579,7 +601,7 @@ test("an unexpected picker failure is logged rather than thrown at the caller", 
     console.warn = (...args) => warnings.push(args);
     remote.promptRejection = new Error("Route provider crashed");
 
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
 
     assert.equal(await controller.prompt(), false);
     assert.equal(warnings.length, 1);
@@ -590,7 +612,7 @@ test("an unexpected picker failure is logged rather than thrown at the caller", 
 // single code path for every backend, and it is the only one all of them decode.
 test("setTrack hands the element the track's AAC twin", () => {
     const element = createElement({ remote: createRemote() });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.setTrack(track);
     assert.equal(element.src, "", "held back until a gesture releases it");
@@ -605,7 +627,7 @@ test("setTrack hands the element the track's AAC twin", () => {
 // that lands on the same file would interrupt a cast that is already playing.
 test("setTrack does not touch the element when the track is unchanged", () => {
     const element = createElement({ remote: createRemote() });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.allowTransportLoad();
     controller.setTrack(track);
@@ -619,7 +641,7 @@ test("setTrack does not touch the element when the track is unchanged", () => {
 // must not re-assign src, because by then a cast may be playing from it.
 test("a later gesture cannot re-source a live cast", () => {
     const element = createElement({ remote: createRemote() });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.setTrack(track);
     assert.equal(controller.allowTransportLoad(), true);
@@ -633,7 +655,7 @@ test("a later gesture cannot re-source a live cast", () => {
 test("play only starts a connected cast, and loops", async () => {
     const remote = createRemote();
     const element = createElement({ remote });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     // Looping is the element's standing configuration, not something play()
     // reapplies. Where the browser honours it, it implements it as a seek;
@@ -655,7 +677,7 @@ test("play only starts a connected cast, and loops", async () => {
 // app asks "was this playing?" to decide whether local playback resumes.
 test("playback intent survives the connection dropping", async () => {
     const remote = createRemote();
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
 
     remote.state = "connected";
     await controller.play();
@@ -671,7 +693,7 @@ test("playback intent survives the connection dropping", async () => {
 test("pause clears intent and stops the element", async () => {
     const remote = createRemote();
     const element = createElement({ remote });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     remote.state = "connected";
     await controller.play();
@@ -696,7 +718,7 @@ test("a second prompt is refused while the picker is already open", async () => 
         return remote.promptCalls === 1 ? stillOpen : Promise.resolve();
     };
 
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
     const first = controller.prompt();
 
     assert.equal(await controller.prompt(), false);
@@ -716,7 +738,7 @@ test("a second prompt is refused while the picker is already open", async () => 
 test("the controller never changes the element's volume", async () => {
     const remote = createRemote();
     const element = createElement({ remote });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     // The port requires every output to answer "what is your level", so the
     // member exists here rather than being absent. What it must never do is
@@ -745,7 +767,7 @@ test("the controller never changes the element's volume", async () => {
 // flag alone, so it has to be settable before any connection exists.
 test("playback intent can be handed over before the transport moves", () => {
     const remote = createRemote();
-    const controller = new MediaElementController(createElement({ remote }));
+    const controller = new AirPlayController(createElement({ remote }));
 
     controller.setPlaybackRequested(true);
     assert.equal(controller.isPlaybackRequested(), true, "even while disconnected");
@@ -758,7 +780,7 @@ test("playback intent can be handed over before the transport moves", () => {
 test("stopWatching releases every subscription", async () => {
     const remote = createRemote();
     const element = createElement({ remote });
-    const controller = new MediaElementController(element);
+    const controller = new AirPlayController(element);
 
     controller.start();
 
@@ -779,7 +801,7 @@ test("a throwing change listener cannot break cast state tracking", async () => 
 
     console.warn = (...args) => warnings.push(args);
 
-    const controller = new MediaElementController(createElement({ remote }), {
+    const controller = new AirPlayController(createElement({ remote }), {
         onChange() {
             throw new Error("UI blew up");
         },

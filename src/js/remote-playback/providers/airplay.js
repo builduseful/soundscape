@@ -1,38 +1,32 @@
 /**
- * Casting to Chromecast, Google/Nest speakers, Google TV, AirPlay targets
- * (HomePod, Apple TV) and AirPlay 2 speakers such as modern Sonos.
+ * Casting to AirPlay targets — HomePod, Apple TV, and AirPlay 2 speakers such as
+ * modern Sonos.
  *
- * Remote playback is not another audio output the app can mix into. Nothing in the
- * browser can route an AudioContext to a cast target, so a connected cast stops
- * the local Web Audio path entirely and this module's own media element takes
- * over as the transport.
+ * Named for what it opens, not for how. The two backends below use different
+ * APIs, but only WebKit reaches either: Chrome takes providers/cast-sdk.js, and
+ * the rest of Chromium is turned away by the engine check below. Google devices
+ * are the Cast SDK provider's job; its header says why the split exists.
  *
- * What happens beyond that element is not one mechanism but three, and the
- * difference matters. Chrome on Android flings: the receiver is handed the URL
- * and fetches it. Chrome on desktop remotes: the browser unpacks the audio from
- * its container file itself and streams the encoded frames to the device —
- * MediaRouterDesktop has no flinging controller at all. Safari drives AirPlay, where the Mac or iPhone decodes and
- * streams audio to the speaker. Two of the three fetch the file through the
- * page, and only the first can loop without the browser's help.
+ * Playing elsewhere is not a second output to mix into. Nothing in the browser
+ * can route an AudioContext to a remote target, so a connection stops the local
+ * Web Audio path and this module's media element becomes the transport. That
+ * element is kept out of the audio graph: createMediaElementSource would divert
+ * its audio into the graph, which is what disqualifies the app's long-lived
+ * <audio> from the job.
  *
- * The transport element is deliberately kept out of the audio graph:
- * createMediaElementSource diverts an element's audio into the graph, which is
- * precisely what disqualifies the app's long-lived <audio> from this job.
+ * Here the Mac or iPhone fetches the file through the page, decodes it, and
+ * streams to the speaker — so the loop cannot be left to the receiver. See
+ * LoopWatchdog.
  *
- * Everything platform-specific lives in the two backends below, and it comes to
- * two things: how you open the picker, and how you observe the connection. Once
- * connected, both platforms are driven by plain src/play/pause on the same
- * element, so the controller stays generic and a new target should be a backend
- * rather than a branch.
- *
- * There is deliberately no third thing: neither backend asks whether a device is
- * out there. See airPlayBackend's note on the event it does not register.
- *
- * This is the Safari and AirPlay path. Chrome takes providers/cast-sdk.js, whose
- * header carries the evidence for why.
+ * All that differs between the backends is how you open the picker and how you
+ * observe the connection. Once connected both are plain src/play/pause on the
+ * same element, so a new target should be a backend rather than a branch. And
+ * neither asks whether a device is out there: see webkitPickerBackend's note on
+ * the event it does not register.
  */
 
 import { REMOTE_FAILURE_MESSAGE } from "../messages.js";
+import { AIRPLAY_ICON } from "./airplay-icon.js";
 import { remoteUrlFor } from "../track-source.js";
 
 const REMOTE_CONNECTION_EVENTS = ["connecting", "connect", "disconnect"];
@@ -101,7 +95,9 @@ function isChromium(scope = globalThis) {
     ));
 }
 
-// Chromium's Remote Playback API. Covers Chromecast, Nest speakers, Google TV.
+// The standards-track Remote Playback API. Named for the API, not a device
+// family: isSupported below turns Chromium away, so Safari 13.1+ is the only
+// engine that arrives, and what it opens is AirPlay.
 const remotePlaybackBackend = {
     name: "remote-playback",
 
@@ -109,9 +105,9 @@ const remotePlaybackBackend = {
     // a proxy for a complete Remote Playback implementation. Narrowing it to the
     // methods actually used would be tidier and is not worth it: Safari 13.1+
     // implements part of this API, so which member is probed decides whether
-    // modern Safari lands on this backend or the AirPlay one below. That routing
-    // has been tested as it stands, on a platform this repo cannot test, and it
-    // must not change as a side effect of tidying.
+    // modern Safari lands on this backend or the one below. That routing has
+    // been tested as it stands, on a platform this repo cannot test, and it must
+    // not change as a side effect of tidying.
     //
     // The engine check is not tidying and must stay: see isChromium above.
     isSupported(element, scope = globalThis) {
@@ -119,7 +115,7 @@ const remotePlaybackBackend = {
     },
 
     // "connecting" is watched as well as the two settled states because reaching
-    // a Chromecast takes long enough to be worth reporting to the user.
+    // a device takes long enough to be worth reporting to the user.
     watchConnection(element, onChange) {
         for (const type of REMOTE_CONNECTION_EVENTS) {
             element.remote.addEventListener(type, onChange);
@@ -147,11 +143,11 @@ const remotePlaybackBackend = {
     },
 };
 
-// WebKit's AirPlay API. Covers HomePod, Apple TV, and AirPlay 2 speakers
-// (modern Sonos included — they appear as ordinary AirPlay targets, so they
-// need no code of their own).
-const airPlayBackend = {
-    name: "airplay",
+// WebKit's own picker call, for the older Safari that has no Remote Playback
+// API. Same targets, different door — including AirPlay 2 speakers such as
+// modern Sonos, which need no code of their own.
+const webkitPickerBackend = {
+    name: "webkit-picker",
 
     isSupported(element) {
         return typeof element.webkitShowPlaybackTargetPicker === "function";
@@ -188,7 +184,7 @@ const airPlayBackend = {
     },
 };
 
-export const REMOTE_BACKENDS = [remotePlaybackBackend, airPlayBackend];
+export const REMOTE_BACKENDS = [remotePlaybackBackend, webkitPickerBackend];
 
 /**
  * Watches a running remote session for the one failure no platform reports: the receiver
@@ -303,7 +299,7 @@ export function selectRemoteBackend(element, backends = REMOTE_BACKENDS, scope =
     return backends.find((backend) => backend.isSupported(element, scope)) ?? null;
 }
 
-export class MediaElementController {
+export class AirPlayController {
     constructor(element, {
         onChange,
         onPlaybackChange,
@@ -346,6 +342,12 @@ export class MediaElementController {
 
     backendName() {
         return this.backend?.name ?? null;
+    }
+
+    // One icon for both backends: they differ in which API opens the picker, not
+    // in what comes up.
+    icon() {
+        return AIRPLAY_ICON;
     }
 
     isConnected() {
@@ -779,3 +781,19 @@ export class MediaElementController {
         }
     }
 }
+
+/**
+ * This provider's registry entry, kept here so `index.js` stays a list.
+ *
+ * This is the provider that casts through the transport element, so it is the
+ * one that knows no element means no candidate. Whether that element supports
+ * any backend is `isSupported()`'s answer, a line later.
+ */
+export const AIRPLAY_PROVIDER = {
+    name: "airplay",
+    create({ element, onChange, onPlaybackChange, scope }) {
+        if (!element) return null;
+
+        return new AirPlayController(element, { onChange, onPlaybackChange, scope });
+    },
+};

@@ -45,7 +45,7 @@ test("cast support is detected without loading the SDK", () => {
         isCastSdkCapable({ PresentationRequest() {}, isSecureContext: true, navigator: chromeBrands }),
         true,
     );
-    // Safari and Firefox: no Presentation API, so they fall through to providers/media-element.js.
+    // Safari and Firefox: no Presentation API, so they fall through to providers/airplay.js.
     assert.equal(isCastSdkCapable({ isSecureContext: true, navigator: chromeBrands }), false);
     // The SDK needs a secure context, so an http origin gets no cast button.
     assert.equal(
@@ -62,6 +62,17 @@ test("cast support is detected without loading the SDK", () => {
         }),
         false,
     );
+});
+
+// This path really is Google Cast, so it is the one entitled to wear Google's
+// glyph. See providers/cast-icon.js for the licence that permits it.
+test("this provider supplies the drawings for its own button", () => {
+    const { controller } = createController();
+    const icon = controller.icon();
+
+    assert.match(icon.idle, /^\s*<svg/u);
+    assert.match(icon.connected, /^\s*<svg/u);
+    assert.notEqual(icon.idle, icon.connected, "connected should be its own drawing");
 });
 
 // The whole justification for adding a Google script to a self-contained app:

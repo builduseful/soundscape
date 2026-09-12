@@ -51,6 +51,8 @@ test("the cast control is there from the start, without asking the network", asy
 
     assert.equal(remoteUi.attached, true);
     assert.equal(remoteUi.state, "idle");
+    // The other provider, handing over its own mark rather than a name.
+    assert.match(remoteUi.facade.icon.idle, /<svg/u);
 });
 
 // It is the one control that can stop a cast, so it can never go away while one

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 /**
@@ -12,18 +13,23 @@ import { test } from "node:test";
  * state, the announcement wording, the facade calls — is the real class.
  *
  * What is not covered here is the markup and CSS `render()` writes, because a
- * fake DOM that parsed HTML would be a browser. That half is checked as source
- * by component-contract.test.js, which pins the state names in the template
- * against the ones in the logic below.
+ * fake DOM that parsed HTML would be a browser. That half is checked as source by
+ * component-contract.test.js, which pins the state names in the template against
+ * the ones in the logic below.
  */
 
 const originalHTMLElement = globalThis.HTMLElement;
+const CONTROL_URL = new URL("../src/js/remote-playback/control.js", import.meta.url);
+const PROVIDERS_DIR = new URL("../src/js/remote-playback/providers/", import.meta.url);
 
 class FakeNode {
     constructor(tag) {
         this.tag = tag;
         this.dataset = {};
         this.textContent = "";
+        // Recorded, not parsed: the glyph slots are handed whole drawings by the
+        // provider, and what matters here is that each lands in its own slot.
+        this.innerHTML = "";
         this.attributes = new Map();
         this.listeners = new Map();
     }
@@ -76,6 +82,8 @@ class FakeHost {
         this.removed = false;
         this._button = new FakeNode("button");
         this._status = new FakeNode("p");
+        this._idleGlyph = new FakeNode("span");
+        this._connectedGlyph = new FakeNode("span");
     }
 
     set innerHTML(value) {
@@ -89,6 +97,8 @@ class FakeHost {
     querySelector(selector) {
         if (selector === "button") return this._button;
         if (selector === "p") return this._status;
+        if (selector === ".glyph-idle") return this._idleGlyph;
+        if (selector === ".glyph-connected") return this._connectedGlyph;
 
         return null;
     }
@@ -112,11 +122,17 @@ async function loadComponent() {
     }
 }
 
-function createFacade({ prompt = async () => true, transportReady = true, prepare = () => true } = {}) {
+function createFacade({
+    prompt = async () => true,
+    transportReady = true,
+    prepare = () => true,
+    icon = { idle: "<svg id='idle'></svg>", connected: "<svg id='connected'></svg>" },
+} = {}) {
     const calls = { prompt: 0, prepare: 0, unavailable: [] };
 
     return {
         calls,
+        icon,
         prompt: async () => {
             calls.prompt += 1;
 
@@ -349,4 +365,25 @@ test("a provider with nothing to prepare yet keeps its listeners", async () => {
 
     assert.equal(button.listenerCount("pointerenter"), 1);
     assert.equal(button.listenerCount("focus"), 1);
+});
+
+// Nothing here names a technology, which is the point: a provider added
+// tomorrow gets its mark drawn without this file changing.
+test("the button wears the drawings the provider supplied", async () => {
+    const icon = { idle: "<svg id='mine-idle'></svg>", connected: "<svg id='mine-connected'></svg>" };
+    const { control } = await createControl({ icon });
+
+    assert.equal(control.querySelector(".glyph-idle").innerHTML, icon.idle);
+    assert.equal(control.querySelector(".glyph-connected").innerHTML, icon.connected);
+});
+
+// Both go up at once and CSS shows one, so a connection can never land on a
+// button whose glyph has not been drawn yet.
+test("both drawings are in place from the moment the control is attached", async () => {
+    const { control } = await createControl();
+
+    control.setConnection({ connected: true });
+
+    assert.notEqual(control.querySelector(".glyph-idle").innerHTML, "");
+    assert.notEqual(control.querySelector(".glyph-connected").innerHTML, "");
 });

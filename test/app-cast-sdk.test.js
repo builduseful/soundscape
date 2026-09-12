@@ -50,6 +50,9 @@ test("the app reaches the Cast SDK on Chrome, and casts through it", async () =>
         true,
         "Chrome should be offered a cast control",
     );
+    // Carried from the provider to the control unread. Pinned here because
+    // script.js is the only place the two ends meet.
+    assert.match(environment.elements.get("remotePlaybackUi").facade.icon.idle, /<svg/u);
 
     await environment.elements.get("playPauseButton").dispatch("click");
     await castTo(environment);
