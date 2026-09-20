@@ -1,17 +1,20 @@
 # Service worker, cache and versioning
 
-**Any change under `src/` needs a version bump**, even when nothing is
-user-facing — otherwise the cache is not invalidated and a returning visitor
-gets a half-old shell.
+**Any change to a deployed asset under `src/` needs a version bump**, even when
+nothing is user-facing — otherwise the cache is not invalidated and a returning
+visitor gets a half-old shell. The exception is the `AGENTS.md` files that sit
+beside the code they govern: the browser never requests them, and
+`tests/pwa.test.js` already excludes them from the precache for that reason.
 
 ## Versioning
 
 - **`VERSION` lives in three places you edit** — `package.json`, `sw.js`,
   `script.js` — and all three move together on every release;
-  `tests/pwa.test.js` and `tests/version-sync.test.js` enforce it. A fourth,
-  `package-lock.json`, is generated rather than edited: re-sync it with
-  `npm install --package-lock-only` after the bump. The same test pins it,
-  because nothing else would notice it falling behind.
+  `tests/version-sync.test.js` enforces that. (`tests/pwa.test.js` covers a
+  neighbouring rule: that `sw.js` hardcodes `VERSION` rather than importing it.)
+  A fourth, `package-lock.json`, is generated rather than edited: re-sync it
+  with `npm install --package-lock-only` after the bump. `version-sync` pins it
+  too, because nothing else would notice it falling behind.
 - Semantic versioning: patch for fixes, minor for features, major for breaking
   changes.
 - **Version and tag move together.** Before a commit to `trunk`, or before
@@ -53,8 +56,8 @@ gets a half-old shell.
 ## Deploy
 
 `.github/workflows/deploy.yml` runs `npm test` on every push to `trunk` and on
-every pull request against it. GitHub Pages publishes only if the tests pass,
-and never from a pull request. Three details there are deliberate:
+every pull request against it. GitHub Pages publishes `src/` as-is if the tests
+pass, and never from a pull request. Three details there are deliberate:
 
 - **Only named events may publish**, and the deploy job pins the branch to
   `trunk`. Listing what may publish is safer than excluding what may not —
@@ -68,3 +71,7 @@ and never from a pull request. Three details there are deliberate:
   (playwright) belongs to `scripts/`, which CI never runs. The Docker image
   exists to make *local* runs match each other, and the CI runner is already a
   clean Linux box with the right Node.
+
+`src/CNAME` rides along in that upload and is what puts the site on its own
+domain. It is the one file under `src/` the browser never requests, which is why
+`tests/pwa.test.js` exempts it from the precache alongside `sw.js`.

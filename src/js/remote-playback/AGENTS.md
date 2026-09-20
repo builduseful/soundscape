@@ -104,9 +104,9 @@ rules themselves, and the evidence you cannot get from reading the code.
   `handleBrowserPlaybackPause` must stay guarded by `isRemoteActive()`, or parking
   the element reads as "the user paused" and stops the receiver too. Same for
   `handleVisibilityChange`: a cast keeps playing whether the tab is visible or not.
-  These are two of the three paths entitled to name the local player rather than
+  These are two of the few paths entitled to name the local player rather than
   ask `activeOutput()` — they are *about* that element, not about whatever is
-  currently making sound.
+  currently making sound. `src/js/AGENTS.md` lists the rest.
 - **The transport element's `play`/`pause` events are the exact opposite, so do not
   make the two symmetrical.** The receiver has its own controls and the person
   holding them is not this page; the Remote Playback API reports nothing about
@@ -473,17 +473,22 @@ except the manual checklist at the end.
   cast interface with a second implementation bolted on. It also carries the leak
   test (listener counts net to zero across a connect/disconnect cycle) and pins
   the `isPlaybackRequested() ⇒ wantsPlayback()` implication.
-- `tests/app-remote-playback.test.js` covers the transport handoff end to end via the
-  harness's opt-in `startAppTestEnvironment({ castDevices: true })`, which
-  attaches a fake Remote Playback object to the transport element and exposes
-  `castRemote` for driving `beginConnecting` / `connect` / `disconnect`. There is
-  no availability control to drive, because the app has no availability to hear
-  about; the fake's `watchAvailability` exists only to satisfy feature detection
-  and counts its calls so a test can prove it is never used.
-- **A bare `startAppTestEnvironment()` — no `castDevices` — is the Firefox case**,
-  and the detachability claim made executable: the registry returns `null`, the
-  control is removed rather than hidden, no listener is registered, and nothing
-  reaches the network. Assert against `elements.get("remotePlaybackUi").removed`.
+- **The harness has an opt-in per provider, and they are not interchangeable.**
+  `startAppTestEnvironment({ castDevices: true })` attaches a fake Remote
+  Playback object to the transport element — the AirPlay path — and exposes
+  `castRemote` for driving `beginConnecting` / `connect` / `disconnect`;
+  `{ castSdk: true }` attaches a fake `cast.framework` instead, which is
+  Chrome's. With both on, the registry takes the SDK and the element path is
+  never reached, which is what a real Chrome does.
+  `tests/app-remote-playback.test.js` covers the transport handoff end to end on
+  the first, `tests/app-cast-sdk.test.js` on the second. There is no
+  availability control to drive on either, because the app has no availability
+  to hear about; the fake's `watchAvailability` exists only to satisfy feature
+  detection and counts its calls so a test can prove it is never used.
+- **A bare `startAppTestEnvironment()` — neither `castDevices` nor `castSdk` — is
+  the Firefox case**, and the detachability claim made executable: the registry
+  returns `null`, the control is removed rather than hidden, no listener is
+  registered, and nothing reaches the network. Assert against `elements.get("remotePlaybackUi").removed`.
 - **Clocks are injected, not global.** `LoopWatchdog`, the metadata wait and the
   SDK's idle restart all resolve timers through an injected `scope`. A test that
   plays without tearing down used to leak a live `setInterval` and hang the whole

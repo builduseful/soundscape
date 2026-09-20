@@ -39,10 +39,13 @@ buffers for audible playback.
   replace newer playback.
 - `AudioPlayer` is one implementation of `PlaybackOutput`, not the only one.
   Anything the app does to "the thing that is playing" goes through
-  `activeOutput()` in `script.js`; only three paths are entitled to reach for the
-  local player by name (its media element's own `play`/`pause` events,
-  visibility, and the volume the app may persist), and they say so via
-  `isRemoteActive()`.
+  `activeOutput()` in `script.js`. Few paths may reach for the local player by
+  name — its media element's own `play`/`pause` events, visibility, the volume
+  the app may persist, and the paused-or-none question in `syncPlaybackState` —
+  and each says so by asking `isRemoteActive()` first. What makes one of them
+  legitimate is that it is *about that element* rather than about whatever is
+  making sound; keep any new one to that test. The handover is not among them:
+  it is the one place ownership moves, so naming both outputs is its job.
 - Re-register Media Session action handlers after every track change. Some
   browsers drop the Media Session association when the long-lived `<audio>`
   element's `src` changes, so refreshing the handlers (and metadata) inside

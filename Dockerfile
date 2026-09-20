@@ -39,9 +39,10 @@ LABEL org.opencontainers.image.title="Soundscape (dev)" \
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 
 # /app is intentional: WORKDIR, the --volume ${PWD}:/app bind mount in
-# AGENTS.md, and --root in the CMD below must all match. That trio is what
-# makes live source edits on the host visible to Caddy without rebuilding.
-# Changing this path also requires updating the bind mount in AGENTS.md.
+# tests/AGENTS.md and README.md, and --root in the CMD below must all match.
+# That trio is what makes live source edits on the host visible to Caddy
+# without rebuilding. Changing this path also requires updating the bind mount
+# in both of those files.
 WORKDIR /app
 
 COPY . .

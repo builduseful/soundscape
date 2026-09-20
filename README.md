@@ -11,6 +11,8 @@ It supports:
 - light, dark, and system theme modes
 - Media Session integration for browser and OS media controls
 - sample-accurate looping through Web Audio
+- playback on a Chromecast or AirPlay device, where the browser supports it
+- installable as a PWA, and fully playable offline once installed
 
 ## Prerequisites
 

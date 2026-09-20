@@ -4,7 +4,7 @@
 
 Soundscape is a browser-based Progressive Web App (PWA) that plays looping ambient background audio — rain, thunderstorms, fireplace, open road, and white/pink/brown noise.
 
-It has play/pause/prev/next controls, a volume slider, light/dark/system themes, and it remembers your volume, theme and track. It works offline once installed, and it responds to the media keys on your keyboard and the playback controls your OS shows in its notification area. The loops are gapless, which is harder than it sounds and is the reason for most of the audio rules.
+It has play/pause/prev/next controls, a volume slider, light/dark/system themes, and it remembers your volume, theme and track. It works offline once installed, and it responds to the media keys on your keyboard and the playback controls your OS shows in its notification area. Where the browser allows it, playback can move to a Chromecast or an AirPlay device. The loops are gapless, which is harder than it sounds and is the reason for most of the audio rules.
 
 ## Where the rules live
 
@@ -22,8 +22,8 @@ before you touch it.
 | Rebuild audio, icons or screenshots | [`scripts/AGENTS.md`](scripts/AGENTS.md) |
 | Supply a new audio master | [`masters/AGENTS.md`](masters/AGENTS.md) |
 
-**Any change under `src/` needs a version bump** in three files — see
-[`src/AGENTS.md`](src/AGENTS.md).
+**Any change to a deployed asset under `src/` needs a version bump** in three
+files — see [`src/AGENTS.md`](src/AGENTS.md).
 
 ## How To Work On This
 
@@ -48,69 +48,28 @@ undo. Do not narrate what the code already shows.
 - **Only what is true of the repo as a whole, and needed before every task** —
   this file. It is not a changelog. Prefer tightening an existing entry over
   appending a new one: two that overlap will drift, and the stale one is the one
-  that gets believed.
+  that gets believed. `CLAUDE.md` only includes this file; guidance itself never
+  goes there.
 
 ## Project Structure
 
 ```
 soundscape/
-├── src/                              # Deploy folder (served at site root)
-│   ├── AGENTS.md                     # Service worker, cache, versioning, deploy
-│   ├── index.html                    # App entry point, loads script.js and styles
-│   ├── style.css                     # App-wide styling + theme tokens (component internals live in @scope blocks)
-│   ├── sw.js                         # Service worker for offline/PWA support
-│   ├── manifest.webmanifest          # PWA manifest
-│   ├── CNAME                         # Custom domain for deployment
-│   ├── js/
-│   │   ├── AGENTS.md                 # Audio invariants
-│   │   ├── script.js                 # App bootstrap: wires audio, UI, state, and components
-│   │   ├── audio-player.js           # Web Audio + HTMLAudioElement playback engine (the local PlaybackOutput)
-│   │   ├── playback-output.js        # The PlaybackOutput port: what "a thing that can be playing" is
-│   │   ├── media-session.js          # Media Session API integration (metadata, actions)
-│   │   ├── pwa.js                    # Service worker registration + Launch Queue consumer
-│   │   ├── theme-utils.js            # Light/dark/system theme helpers
-│   │   ├── tracks.js                 # Track catalog: id + title only, no file paths
-│   │   ├── local-source.js           # Which local file this browser plays for a track
-│   │   ├── remote-playback/          # Chromecast/AirPlay plugin — detachable; READ ITS AGENTS.md
-│   │   │   └── AGENTS.md             # Invariants, platform evidence, testing, device checklist
-│   │   └── components/
-│   │       ├── AGENTS.md             # Custom element rules, theme and colour
-│   │       ├── app-menu.js           # Custom element for the top-right menu (a native popover)
-│   │       ├── theme-selector.js     # Custom element for theme mode selection
-│   │       └── volume-control.js     # Custom element for volume slider (a native popover)
-│   └── resources/
-│       ├── icons/                    # PWA/favicon icons (png + svg)
-│       ├── screenshots/              # manifest.webmanifest install screenshots (git-tracked PNGs)
-│       └── soundscapes/              # Ambience loops, by output role
-│           ├── opus/                 # Local primary: one loop period, <track-id>.opus
-│           ├── aac/                  # Local fallback (older Safari/iOS): one loop period, <track-id>.m4a
-│           └── cast/                 # Remote playback: repeated ~120s programme, <track-id>.m4a
-├── tests/                            # Unit tests (dependency-free)
-│   ├── AGENTS.md                     # Running the suite, the app, and the browser
-│   ├── playback-output-contract.test.js   # One spec, run against every PlaybackOutput incl. AudioPlayer
-│   ├── *remote-playback*, providers/ # The plugin's own tests — see its AGENTS.md
-│   └── helpers/                      # app-test-harness.js, popover-fakes.js, and the remote-playback fakes (see that plugin's AGENTS.md)
-├── scripts/
-│   ├── AGENTS.md                     # The generators: audio, icons, screenshots
-│   ├── export-icons.mjs              # Icon PNG export from SVG sources
-│   ├── capture-screenshots.mjs       # Manifest install-screenshot capture
-│   ├── build-audio.mjs               # All three audio roles from masters/ (needs ffmpeg)
-│   └── send-media-key.ps1            # OS-level media key injection for testing
-├── .github/
-│   └── workflows/
-│       └── deploy.yml                # CI: `npm test` gates the Pages deploy (uploads src/)
-├── Dockerfile                        # Multi-target image: default = Caddy + Node (serve + npm test); `--target serve` = slim Caddy-only runtime
-├── .dockerignore                     # Excludes unnecessary files from the build
-├── package.json                      # Scripts and metadata
-├── package-lock.json                 # Locks the scripts/ devDependencies (playwright); npm test itself has none
-├── masters/                          # Build inputs: gitignored audio + tracked provenance records
-│   └── AGENTS.md                     # What a master must be, and how to supply one
-├── .config.md                        # Per-developer configuration (gitignored)
-├── AGENTS.md
-├── CLAUDE.md                         # Includes AGENTS.md; keep the guidance itself in AGENTS.md
-├── README.md
-└── opencode.json
+├── src/                   # Deploy folder (served at site root): index.html, style.css, sw.js, manifest
+│   ├── js/                # App modules; components/ and remote-playback/ each carry their own AGENTS.md
+│   └── resources/         # icons/, screenshots/, soundscapes/{opus,aac,cast}/
+├── tests/                 # Unit suite (dependency-free), plus helpers/
+├── scripts/               # Host-only generators: audio, icons, screenshots
+├── masters/               # Build inputs: gitignored audio, tracked provenance records
+├── .opencode/skills/      # playwright-cli (browser testing), git-commit
+├── .github/workflows/     # CI: `npm test` gates the Pages deploy (uploads src/)
+├── Dockerfile             # Default target = Caddy + Node; `--target serve` = slim Caddy only
+└── .config.md             # Per-developer configuration (gitignored)
 ```
+
+Directories only, and deliberately: a per-file listing here is a second copy of
+what `sw.js`'s precache list, the routing table above, and each nested
+`AGENTS.md` already say — and it is always the copy that goes stale.
 
 ## Remote Playback
 

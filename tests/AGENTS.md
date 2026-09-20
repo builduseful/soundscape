@@ -84,6 +84,8 @@ so the page renders at the window size — no separate `resize` step. Add
 `--profile=".temp/fresh-profile"` for clean-state testing, which avoids saved
 localStorage preferences (track, volume, theme) and cached SW assets; reusing a
 `--profile` opens a new tab sharing cookies, localStorage and the SW cache.
+The `config.json` itself is gitignored: a fresh clone copies
+`example.config.json` beside it first.
 
 - **Name the session, on every command.** Without `-s=`, `playwright-cli` drives
   one shared default browser, so anything else using it — another agent, another
