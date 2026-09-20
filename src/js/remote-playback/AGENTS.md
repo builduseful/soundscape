@@ -182,10 +182,10 @@ rules themselves, and the evidence you cannot get from reading the code.
   codec selection. `remote-playback/track-source.js` derives the twin's name from
   the track *id* — never from the local file, which is itself chosen per browser
   and on a fallback would name a file that does not exist — and it lives there
-  rather than in
-  `tracks.js` so the catalog carries no remote-only fact — delete the plugin and
-  `tracks.js` is untouched. `remote-playback-assets.test.js` checks every twin
-  exists on disk, has no orphans, and is never the `.opus` original.
+  rather than in `tracks.js` so the catalog carries no remote-only fact: delete
+  the plugin and `tracks.js` is untouched. `remote-playback-assets.test.js`
+  checks every twin exists on disk, has no orphans, and is never the `.opus`
+  original.
 - Inside the AirPlay provider, everything platform-specific lives in its two
   backend objects (`remotePlaybackBackend`, `webkitPickerBackend`) and comes to
   two things: how you open the picker, and how you observe the connection. Once
@@ -279,10 +279,9 @@ rules themselves, and the evidence you cannot get from reading the code.
   metadata, for the reason in the next bullet; without it `NotAllowedError` means
   the opposite thing. Only genuinely unexpected failures are logged. The common
   cause of that race — a double-click on the button — is
-  refused outright by `AirPlayController.prompt()` rather than absorbed after the
-  fact. There is no
-  `disconnect()` in the Remote Playback API by design; prompting again while
-  connected is what offers "stop casting".
+  refused outright by `AirPlayController.prompt()` rather than absorbed after
+  the fact. There is no `disconnect()` in the Remote Playback API by design;
+  prompting again while connected is what offers "stop casting".
 - **Neither engine will open a picker on an element that has not read its
   header, and Chromium's way of saying so is silent.**
   `RemotePlayback::UpdateAvailabilityUrlsAndStartListening()` clears
@@ -322,15 +321,16 @@ rules themselves, and the evidence you cannot get from reading the code.
   precached nor cached at runtime. They are identified by their directory
   (`resources/soundscapes/cast/`), not their extension: a local fallback may
   also be `.m4a`, and that one must stay cacheable or offline playback
-  disappears for exactly the browsers needing the fallback. It is not a caching preference: `cacheIfOk`
-  buffers the whole body and `handleRangeRequest` upgrades a range miss to a full
+  disappears for exactly the browsers needing the fallback. It is not a caching
+  preference: `cacheIfOk` buffers the whole body and `handleRangeRequest`
+  upgrades a range miss to a full
   fetch, so every partial read the transport element makes would become a whole
   megabyte. Passing them through leaves the browser fetching the bytes it
-  actually asked for. `test/pwa.test.js` excludes everything under
+  actually asked for. `tests/pwa.test.js` excludes everything under
   `resources/soundscapes/` from the precache, and separately proves the
-  exemption admits `cast/` and refuses both local variants. The consequence to accept: casting needs the network,
-  which is true of the Android path regardless, since there the receiver does the
-  fetching.
+  exemption admits `cast/` and refuses both local variants. The consequence to
+  accept: casting needs the network, which is true of the Android path
+  regardless, since there the receiver does the fetching.
 - **`playCurrentTrack` checks the track generation before `finishTrackChange`, for
   every output and not just a remote one.** Two quick skips leave two changes in
   flight and a receiver can answer the first one last; the older skip would then
@@ -454,11 +454,11 @@ except the manual checklist at the end.
 - **Which fake to reach for is the whole trick, and there are three.** They fake
   different things on purpose, and picking the wrong one produces a test that
   proves something about the fake:
-  - `test/helpers/remote-transport-fakes.js` fakes a **platform API** — a
+  - `tests/helpers/remote-transport-fakes.js` fakes a **platform API** — a
     `RemotePlayback` object, a `cast.framework` namespace. Use it when the subject
     is a particular controller against a particular browser API
     (`providers/airplay.test.js`, `providers/cast-sdk.test.js`).
-  - `test/helpers/fake-remote-playback.js` fakes **a PlaybackOutput**. Use it when
+  - `tests/helpers/fake-remote-playback.js` fakes **a PlaybackOutput**. Use it when
     the subject is "some remote output" rather than a platform. It is also the
     reference implementation the contract suite is written against: if the
     contract cannot be satisfied by something that simple, the contract is wrong.
@@ -468,13 +468,13 @@ except the manual checklist at the end.
     against the real class in `remote-playback-control.test.js`, with a DOM
     stand-in instead. A fake that reproduced the pulse would make every app test
     prove things about the fake.
-- `test/playback-output-contract.test.js` runs one spec against **four**
+- `tests/playback-output-contract.test.js` runs one spec against **four**
   implementations — `AudioPlayer`, both providers, and the fake. `AudioPlayer`
   being in that list is the point: it is what proves the port is a port and not a
   cast interface with a second implementation bolted on. It also carries the leak
   test (listener counts net to zero across a connect/disconnect cycle) and pins
   the `isPlaybackRequested() ⇒ wantsPlayback()` implication.
-- `test/app-remote-playback.test.js` covers the transport handoff end to end via the
+- `tests/app-remote-playback.test.js` covers the transport handoff end to end via the
   harness's opt-in `startAppTestEnvironment({ castDevices: true })`, which
   attaches a fake Remote Playback object to the transport element and exposes
   `castRemote` for driving `beginConnecting` / `connect` / `disconnect`. There is
@@ -497,9 +497,10 @@ except the manual checklist at the end.
 
 ### In a browser
 
-The tool itself is the browser testing section of `tests/AGENTS.md`; this
-is what to point it at. The host element is `#remotePlaybackUi`, the button's state is
-`data-remote-state`, and the announcement is the component's `<p role="status">`.
+The tool itself is the browser testing section of `tests/AGENTS.md`; this is
+what to point it at. The host element is `#remotePlaybackUi`, the button's
+state is `data-remote-state`, and the announcement is the component's
+`<p role="status">`.
 
 - **Driving the component directly is safe and contacts nothing** — it is how the
   glyph, labels and announcements were verified without a device:
