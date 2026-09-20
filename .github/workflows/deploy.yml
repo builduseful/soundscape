@@ -11,9 +11,9 @@ jobs:
   # Gates the deploy below: a red suite must not reach production. Also the whole
   # of what a pull request runs — see the deploy job's `if`.
   #
-  # No `npm ci` and no Dockerfile here, both deliberate; see "Development and
-  # Testing" in AGENTS.md for why. Verified: the suite passes from a bare
-  # checkout with no node_modules present.
+  # No `npm ci` and no Dockerfile here, both deliberate; see the deploy section
+  # of src/AGENTS.md for why. Verified: the suite passes from a bare checkout
+  # with no node_modules present.
   test:
     runs-on: ubuntu-latest
     # A hung suite is not waiting on anything a superseding push will fix, so

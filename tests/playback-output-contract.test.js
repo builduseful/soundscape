@@ -253,8 +253,7 @@ for (const { name, create } of outputs) {
         // they genuinely differ; on a remote they coincide. Both satisfy this,
         // and an implementation that got them the wrong way round would hand a
         // receiver silence after an explicit press of play — the exact bug
-        // AGENTS.md's "keep the two callers apart" paragraph describes, which
-        // until now had no test.
+        // playback-output.js's "keep the two callers apart" describes.
         test("isPlaybackRequested implies wantsPlayback", () => {
             const output = create();
             const check = () => {

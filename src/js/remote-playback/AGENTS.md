@@ -497,8 +497,8 @@ except the manual checklist at the end.
 
 ### In a browser
 
-The tool itself is AGENTS.md's Browser Testing section; this is what to point it
-at. The host element is `#remotePlaybackUi`, the button's state is
+The tool itself is the browser testing section of `tests/AGENTS.md`; this
+is what to point it at. The host element is `#remotePlaybackUi`, the button's state is
 `data-remote-state`, and the announcement is the component's `<p role="status">`.
 
 - **Driving the component directly is safe and contacts nothing** — it is how the
