@@ -7,7 +7,8 @@
  * specification used to settle, and every engine answered differently:
  * dismissing it. A press anywhere else closes it, Escape closes it, focus comes
  * back to the button, and it draws in the top layer, so nothing above it in the
- * page can clip it or swallow a click meant for it.
+ * page can clip it or swallow a click meant for it. CSS anchor positioning hangs
+ * it off the button, so nothing here measures anything either.
  *
  * A click is the only way it opens. It was hover-to-open as well for a while,
  * on the theory that a menu you can graze is quicker than one you have to hit,
@@ -22,7 +23,9 @@
  * A disclosure rather than a `role="menu"`: what is inside is a radio group, a
  * button and a link, none of which is a menu item, and a screen reader told
  * "menu" would promise arrow-key navigation between them that they do not have.
- * `aria-expanded` on the button says the true thing instead.
+ * The browser already reports the button as expanded or collapsed from
+ * `popovertarget` alone, so the button carries no `aria-expanded` — a static one
+ * would override the live state.
  *
  * Its content (theme-selector, install button, version link) is authored in
  * index.html rather than built here, so component-contract.test.js — which
@@ -37,13 +40,9 @@ export class AppMenu extends HTMLElement {
 
         this._buttonId = `app-menu-button-${unique()}`;
         this._panelId = `app-menu-panel-${unique()}`;
-        this._listenersAttached = false;
-        this._focusoutHandler = this.handleFocusOut.bind(this);
-        // A resize is the one thing that moves the button out from under an
-        // open panel — see placePanel.
-        this._resizeHandler = () => {
-            if (this.showing) this.placePanel();
-        };
+        // On the element itself rather than on a rendered node, so it outlives
+        // the render a reconnection redoes and never needs attaching twice.
+        this.addEventListener("focusout", this.handleFocusOut.bind(this));
     }
 
     connectedCallback() {
@@ -61,13 +60,6 @@ export class AppMenu extends HTMLElement {
             panel.append(installButton, installDivider);
         }
         if (versionLink) panel.append(versionLink);
-        this.addEventListeners();
-    }
-
-    disconnectedCallback() {
-        this.removeEventListener("focusout", this._focusoutHandler);
-        globalThis.removeEventListener("resize", this._resizeHandler);
-        this._listenersAttached = false;
     }
 
     /** @returns {HTMLElement|null} The popover itself. */
@@ -75,23 +67,14 @@ export class AppMenu extends HTMLElement {
         return this.querySelector(".menu-panel");
     }
 
-    /** @returns {boolean} Whether the panel is on screen, however it got there. */
-    get showing() {
-        return this.panel?.matches(":popover-open") === true;
-    }
-
-    /**
-     * Whether the panel is open — the same question as `showing`, under the
-     * name the app has always used to ask a menu.
-     * @returns {boolean} True while the panel is on screen.
-     */
+    /** @returns {boolean} Whether the panel is open, however it got there. */
     get open() {
-        return this.showing;
+        return this.panel?.matches(":popover-open") === true;
     }
 
     set open(value) {
         const panel = this.panel;
-        if (!panel || Boolean(value) === this.showing) return;
+        if (!panel || Boolean(value) === this.open) return;
         // showPopover throws on an element that is not in the document, which a
         // menu being asked to open is not always going to be.
         if (!panel.isConnected) return;
@@ -101,67 +84,35 @@ export class AppMenu extends HTMLElement {
     }
 
     /**
-     * Follow the popover's own state, whichever side moved it.
+     * Close the menu when focus has gone somewhere else.
      *
-     * Every open and every close comes through here, ours and the browser's
-     * alike: the button's `popovertarget` toggles it without asking us, and so
-     * do Escape and a press anywhere outside. Nothing here decides anything —
-     * the popover is the state, and this only reflects it into the markup that
-     * has to agree with it.
-     * @param {ToggleEvent} event - The panel's beforetoggle.
+     * A popover stays open while focus leaves it, so a reader who tabs past the
+     * version link would otherwise leave the menu hanging open behind them.
+     *
+     * Only a real destination counts. Pressing a theme label blurs with no
+     * `relatedTarget` before the click reaches its radio, and closing then would
+     * shut the menu mid-click; a press that truly landed outside is the
+     * browser's to dismiss.
+     * @param {FocusEvent} event - The focusout.
      */
-    handleBeforeToggle(event) {
-        const showing = event.newState === "open";
+    handleFocusOut(event) {
+        // hidePopover throws on a closed popover. Focus leaves a closed menu
+        // whenever its button is tabbed away from, and a press on another
+        // popover's button can reach here after the browser has closed this one.
+        if (!this.open) return;
+        if (!event.relatedTarget || this.contains(event.relatedTarget)) return;
 
-        // Before the state flips, so the first frame the panel is painted in is
-        // already the right one.
-        if (showing) this.placePanel();
-
-        this.toggleAttribute("open", showing);
-        this.querySelector("button")?.setAttribute("aria-expanded", String(showing));
-    }
-
-    /**
-     * Put the panel under the button.
-     *
-     * The one thing a popover does not bring with it. A box in the top layer
-     * does not keep its place in the page: its containing block is the viewport
-     * and Chrome lays it out at the origin of that, not at the static position
-     * the div would have had in flow. CSS anchor positioning exists for exactly
-     * this and would say it in two declarations, but it is Chrome and Safari and
-     * not yet Firefox, and this is a public site rather than an extension that
-     * can name a minimum browser. So the button is measured, once per open.
-     *
-     * Page coordinates rather than viewport ones, so a scroll carries the panel
-     * along with the header instead of leaving it behind. A resize is then the
-     * only thing that can move the button out from under an open panel, and
-     * that is listened for while one is open.
-     *
-     * Flush with the button's bottom, so the panel reads as belonging to the
-     * button rather than floating near it.
-     */
-    placePanel() {
-        const button = this.querySelector("button");
-        const panel = this.panel;
-        if (!button || !panel) return;
-
-        const rect = button.getBoundingClientRect();
-
-        panel.style.top = `${rect.bottom + globalThis.scrollY}px`;
-        panel.style.left = `${rect.left + globalThis.scrollX}px`;
+        this.panel.hidePopover();
     }
 
     render() {
         this.innerHTML = /* html */ `
             <style>
                 @scope (app-menu) {
-                    /* Nothing is positioned against this element any more — the
-                       panel is in the top layer — so this is only the button's
-                       slot in the header row. */
+                    /* Nothing is positioned against this element — the panel is
+                       in the top layer, anchored to the button — so this is only
+                       the button's slot in the header row. */
                     :scope {
-                        /* The button's own size, and the distance the panel has
-                           to be pulled back by to line their trailing edges up.
-                           One number, asked for in two places. */
                         --menu-button-size: 40px;
                         display: block;
                         justify-self: end;
@@ -170,7 +121,8 @@ export class AppMenu extends HTMLElement {
                     /* Overrides style.css's global button reset (border,
                        box-shadow, background-color) — this is a plain
                        transparent circle, not one of the app's bordered icon
-                       buttons. */
+                       buttons. It is also what the panel is anchored to; one
+                       menu per page, so one anchor name is enough. */
                     :scope > button {
                         display: grid;
                         place-items: center;
@@ -184,6 +136,7 @@ export class AppMenu extends HTMLElement {
                         box-shadow: none;
                         color: var(--color-text-muted);
                         cursor: pointer;
+                        anchor-name: --app-menu-button;
                         -webkit-tap-highlight-color: transparent;
                         tap-highlight-color: transparent;
                         transition:
@@ -235,30 +188,31 @@ export class AppMenu extends HTMLElement {
                     }
 
                     /* Undoing the UA's popover box, which arrives centred in the
-                       viewport with a border and padding of its own. Where it
-                       goes instead is half here and half in placePanel: the
-                       leading edge and the top are measured off the button
-                       there, and the pull-back below is what lines the two
-                       trailing edges up, so the panel opens back across the
-                       header rather than off the side of the page. Keeping that
-                       half in CSS means nothing has to measure the panel's own
-                       width — a percentage in a translate is already the
-                       element's own. Both halves are physical, left and
-                       translateX, so this places the panel for a left-to-right
-                       page and would need mirroring for a right-to-left one;
-                       nothing here sets a dir, and the app has never had one. */
+                       viewport with a border and padding of its own, and hanging
+                       it off the button instead: flush below it, spanning back
+                       leftward so the two trailing edges line up and the panel
+                       opens across the header rather than off the side of the
+                       page. bottom and span-left are physical, so a right-to-left
+                       page would need them mirrored; the app has never set a
+                       dir. */
                     .menu-panel {
                         /* Reused by .menu-install to bleed back out to the panel edge. */
                         --menu-panel-inset: 14px;
-                        /* Everything the panel is wider than the button by,
-                           negated: the panel's own width, less the button's. */
-                        --menu-panel-pull: calc(var(--menu-button-size) - 100%);
-                        position: absolute;
+                        position-anchor: --app-menu-button;
+                        position-area: bottom span-left;
                         inset: auto;
                         /* Same gap for every item, including both dividers, so the
                            vertical rhythm is even. */
                         gap: 10px;
                         width: max-content;
+                        /* Stated outright rather than left to the UA popover
+                           rule. An older iPad Safari drew this panel from under
+                           the button to the bottom of the screen — its height
+                           grown to fill its insets instead of fitting its
+                           content — and the fallback below sets every inset to
+                           zero on purpose. A declared height cannot be stretched,
+                           whichever insets apply. */
+                        height: max-content;
                         margin: 0;
                         padding: var(--menu-panel-inset);
                         border: 1px solid var(--color-border-subtle);
@@ -268,7 +222,7 @@ export class AppMenu extends HTMLElement {
                         background: var(--color-surface);
                         box-shadow: var(--shadow-elevated);
                         opacity: 0;
-                        transform: translateX(var(--menu-panel-pull)) translateY(-4px) scale(0.98);
+                        transform: translateY(-4px) scale(0.98);
                         transform-origin: 100% 0;
                         /* display and overlay are discrete, so without these the
                            panel leaves the top layer on the first frame of the
@@ -291,7 +245,7 @@ export class AppMenu extends HTMLElement {
                     .menu-panel:popover-open {
                         display: grid;
                         opacity: 1;
-                        transform: translateX(var(--menu-panel-pull));
+                        transform: none;
 
                         /* Where the open transition starts from. A popover is
                            display:none until it is shown, and a style change in
@@ -299,7 +253,17 @@ export class AppMenu extends HTMLElement {
                            unless it is written here. */
                         @starting-style {
                             opacity: 0;
-                            transform: translateX(var(--menu-panel-pull)) translateY(-4px) scale(0.98);
+                            transform: translateY(-4px) scale(0.98);
+                        }
+                    }
+
+                    /* A browser without anchor positioning (Safari before 26)
+                       keeps the UA's own placement: centred in the viewport, a
+                       whole and usable panel, just not hung off the button. */
+                    @supports not (anchor-name: --app-menu-button) {
+                        .menu-panel {
+                            inset: 0;
+                            margin: auto;
                         }
                     }
 
@@ -425,7 +389,6 @@ export class AppMenu extends HTMLElement {
                 popovertarget="${this._panelId}"
                 aria-label="Menu"
                 aria-controls="${this._panelId}"
-                aria-expanded="false"
             >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="12" cy="5" r="2"></circle>
@@ -439,54 +402,5 @@ export class AppMenu extends HTMLElement {
                 <div class="menu-divider"></div>
             </div>
         `;
-
-        // Wired here rather than beside the rest: toggle events do not bubble,
-        // so this one belongs to the panel this render just built.
-        this.panel?.addEventListener("beforetoggle", this.handleBeforeToggle.bind(this));
-    }
-
-    /**
-     * The listeners that belong to the element rather than to a render.
-     *
-     * There is no click handler among them: `popovertarget` on the button is
-     * the whole of opening and closing by click, and it is worth having as
-     * markup rather than as code. A press on an invoker is the one press the
-     * browser will not dismiss a popover for, so it cannot close the panel on
-     * the way down and reopen it on the way up — the double-toggle every
-     * hand-rolled version of this has to defend against.
-     */
-    addEventListeners() {
-        if (this._listenersAttached) return;
-        this._listenersAttached = true;
-
-        this.addEventListener("focusout", this._focusoutHandler);
-        globalThis.addEventListener("resize", this._resizeHandler);
-    }
-
-    /**
-     * A caret that has gone somewhere else closes the menu.
-     *
-     * The only dismissal left to us: a popover holds its ground while focus
-     * walks out of it, and a reader who has tabbed past the version link is
-     * done with the menu whether or not they ever pressed Escape.
-     *
-     * `relatedTarget` is the whole test, and the null case is the one that
-     * matters: pressing a theme label blurs the button with nowhere to send the
-     * caret, and only forwards the click to the hidden radio on the way up.
-     * Focus going nowhere is not a reader leaving, so nothing happens here —
-     * and a press that really did land outside is the browser's to dismiss.
-     * Between the two there is no moment where this has to guess, which is what
-     * the deferred `activeElement` check it replaced was doing when it shut the
-     * panel mid-click on Chrome and not on Edge.
-     * @param {FocusEvent} event - The focusout.
-     */
-    handleFocusOut(event) {
-        // hidePopover throws on a popover that is already hidden, and focus
-        // leaves a closed menu every time the button is tabbed away from.
-        if (!this.showing) return;
-        if (!event.relatedTarget) return;
-        if (this.contains(event.relatedTarget)) return;
-
-        this.panel.hidePopover();
     }
 }

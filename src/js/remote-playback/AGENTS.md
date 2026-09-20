@@ -50,19 +50,14 @@ rules themselves, and the evidence you cannot get from reading the code.
   `index.html`, the `sw.js` precache entries, and the `.m4a` bypass. Run it on a
   scratch branch before believing it again.
   - **The claim is about *files*, not lines, and `script.js` is where the
-    difference shows.** Deleting the two imports is not enough on its own: with
-    `remotePlayback` gone, everything that reads it goes too. That is the whole
-    handover region, plus four sites outside it that a search for
-    `remotePlayback`/`isRemoteActive`/`activeOutput` finds in one pass — the
-    volume-persistence guard in the slider listener, the failed-skip rollback in
-    `changeTrack`, the transport refresh in `playCurrentTrack`, and
-    `syncVolumeControlForRemote`. `activeOutput()` then collapses to
-    `localOutput` and `isRemoteActive()` to `false`, which is a mechanical
-    substitution rather than an untangling.
-  - What the claim buys is that the deletion stops there. `tracks.js`,
-    `audio-player.js`, `style.css` and the rest of `index.html` are untouched,
-    and no remote-only fact has to be dug out of any of them — which is what the
-    catalog and the stylesheet each used to cost before the restructure.
+    difference shows.** Deleting the two imports is not enough: everything that
+    reads `remotePlayback` goes too — the handover region, plus what a search
+    for `remotePlayback`/`isRemoteActive`/`activeOutput` finds in one pass.
+    `activeOutput()` then collapses to `localOutput` and `isRemoteActive()` to
+    `false`, a mechanical substitution rather than an untangling. What the claim
+    buys is that it stops there: `tracks.js`, `audio-player.js`, `style.css` and
+    the rest of `index.html` are untouched, which is not what the catalog and
+    the stylesheet each used to cost.
   - **A provider exports its own registry entry**, so `index.js` is a list:
     `REMOTE_PROVIDERS = [CAST_SDK_PROVIDER, AIRPLAY_PROVIDER]`, in preference
     order. Which browsers a provider claims, and what it needs to be built, stay
@@ -94,6 +89,7 @@ rules themselves, and the evidence you cannot get from reading the code.
     redraws. Follow whoever owns the mark — the control imposes only the box.
 
 ### The platform facts
+
 - **Casting is three mechanisms, not one, and the difference decides everything
   below.** Chrome on Android *flings*: the receiver is handed the URL and fetches
   it. Chrome on desktop (121+) *remotes*: the browser demuxes locally and streams
@@ -190,11 +186,11 @@ rules themselves, and the evidence you cannot get from reading the code.
   `tracks.js` so the catalog carries no remote-only fact — delete the plugin and
   `tracks.js` is untouched. `remote-playback-assets.test.js` checks every twin
   exists on disk, has no orphans, and is never the `.opus` original.
-- Everything platform-specific lives in the two backend objects in `providers/airplay.js`, and
-  it comes to only two things: how you open the picker, and how you observe the
-  connection. Once connected, both platforms are driven by plain
-  `src`/`play`/`pause`. Keep it that way — new targets should be a backend, not a
-  branch in the controller.
+- Inside the AirPlay provider, everything platform-specific lives in its two
+  backend objects (`remotePlaybackBackend`, `webkitPickerBackend`) and comes to
+  two things: how you open the picker, and how you observe the connection. Once
+  connected, both are driven by plain `src`/`play`/`pause`. Keep it that way —
+  a new target is a backend, not a branch in the controller.
 - **`remotePlaybackBackend.isSupported` also refuses Chromium, and that is not a
   bug.** Chromium ships the whole Remote Playback API and never opens a picker
   for this app's audio — measured on Chrome desktop, Chrome for Android and
@@ -212,20 +208,37 @@ rules themselves, and the evidence you cannot get from reading the code.
   check it would reach the Cast SDK controller instead of falling through to
   this one, get a button, and fail on press instead of having none. Keep the two
   checks pointed at each other.
-- **Do not "tidy" `remotePlaybackBackend.isSupported`.** It probes
-  `watchAvailability`, a method the module deliberately never calls, and that is
-  not an oversight. Because Safari 13.1+ implements part of the Remote Playback
-  API, the member being probed is what decides whether modern Safari selects that
-  backend or the AirPlay one — so narrowing the check to the methods actually used
-  could silently re-route Safari onto an untested path, on the one platform this
-  repo cannot test.
+  - **Do not narrow it to the methods the module actually calls**, either. It
+    probes `watchAvailability`, which nothing ever calls, and that is not an
+    oversight: Safari 13.1+ implements part of the Remote Playback API, so the
+    member being probed is what decides whether modern Safari selects this
+    backend or the AirPlay one. Tidying it could silently re-route Safari onto
+    an untested path, on the one platform this repo cannot test.
 - Chrome needs the Google Cast Web Sender SDK because the standards-track answer
   does not work there: `remote.prompt()` never opened a picker on desktop or
   Android, since Chrome only offers devices once its Media Router judges the
   media "remotable" and that judgement never engaged for a plain audio file.
   `providers/cast-sdk.js` records the SDK-free routes tried first. The script is
-  fetched from `gstatic.com`, so it is not precached and nothing loads it until
-  the button is pressed — a visitor who never casts never contacts Google.
+  fetched from `gstatic.com`, so it cannot be precached and the app stays fully
+  usable offline without it.
+- **Nothing may load the SDK on page load, and that is a privacy position
+  rather than a latency one.** A visitor who never reaches for the button
+  should never have fetched a script from Google. The lazy path already works,
+  so a preload buys a marginally faster first cast and nothing else. No test
+  catches it, and it looks like an obvious win.
+  - Two paths already load before a press, both deliberate: `control.js` calls
+    `prepare()` on `pointerenter`, `pointerdown` and `focus`, so tabbing past
+    the button is enough, and `start()` brings the SDK up at load when the
+    `soundscape.casting` resume hint is set, so a reopened app can rejoin a
+    session still playing in the room. Narrowing either is fair. Widening them
+    to every visit is not.
+  - Measured 2026-09-12 (Playwright Chromium, `CastContext` up to device
+    discovery): no cookies, nothing in any storage, three script `GET`s to
+    `gstatic.com` and no other request. Evidence for the decision above,
+    recorded so nobody has to re-run it — one run, no device present, and the
+    last hop is Google's to change without notice. What it means for a consent
+    banner or a privacy notice is not this file's call, and nothing
+    user-facing makes a claim about it.
 - Do not replace the twins with an HLS playlist that lists one short segment
   hundreds of times. It is a real technique and it looks tailor-made for this
   problem — one 30 s segment on disk, a text playlist, hours of seamless output,
@@ -252,10 +265,9 @@ rules themselves, and the evidence you cannot get from reading the code.
   an error to report, so there is nothing to hand-roll for that case either.
   `providers/airplay.test.js` asserts neither backend registers a scan.
   What is **not** optional is metadata: see the `prompt()` bullet below.
-- The control is therefore always present when it exists at all, decided once at
-  boot. There is no path that re-hides an attached control, which is what makes
-  "a live cast can never lose its stop button" true by construction rather than
-  by a guard.
+  - The control is therefore decided once at boot and never re-hidden, which is
+    what makes "a live cast can never lose its stop button" true by
+    construction rather than by a guard.
 - **The pulse's `@keyframes` sits outside the component's `@scope` block**, inside
   the same `<style>`. `@keyframes` is not a style rule, so scoping it leaves the
   `animation` property naming keyframes that do not exist — and the wait simply
@@ -482,6 +494,7 @@ except the manual checklist at the end.
   empty. Dispatch a `pointerdown` or `keydown` on the document first — the
   `touchPage` helper in `app-remote-playback.test.js` does exactly that. In a browser, any
   real click or keypress does it.
+
 ### In a browser
 
 The tool itself is AGENTS.md's Browser Testing section; this is what to point it

@@ -26,4 +26,17 @@ describe("version sync", () => {
         assert.ok(match, "script.js should declare a top-level VERSION constant");
         assert.equal(match[1], pkg.version, "script.js and package.json versions must stay in sync");
     });
+
+    // Generated, not hand-edited, so a bump leaves it behind until someone runs
+    // npm install --package-lock-only. A stale lock resolves the same
+    // dependencies, but the next npm install commits a version diff nobody asked for.
+    it("package-lock.json records the same version, in both places it names one", async () => {
+        const [lock, pkg] = await Promise.all([
+            readFile(new URL("../package-lock.json", import.meta.url), "utf8").then(JSON.parse),
+            readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
+        ]);
+
+        assert.equal(lock.version, pkg.version, "the lock's top-level version must stay in sync");
+        assert.equal(lock.packages[""].version, pkg.version, "and so must the root package entry's");
+    });
 });

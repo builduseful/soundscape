@@ -144,7 +144,6 @@ test("the menu panel is a popover the browser dismisses", async () => {
 
     assert.match(source, /class="menu-panel" popover/u, "the panel should be a popover.");
     assert.match(source, /popovertarget=/u, "the button should toggle it as its invoker.");
-    assert.match(source, /"beforetoggle"/u, "state should be reconciled where the browser reports it.");
     assert.doesNotMatch(
         source,
         /document\.addEventListener\(\s*"pointer/u,
@@ -237,7 +236,6 @@ test("the volume panel is a popover the browser dismisses", async () => {
 
     assert.match(source, /class="volume-panel" popover/u, "the panel should be a popover.");
     assert.match(source, /popovertarget=/u, "the button should toggle it as its invoker.");
-    assert.match(source, /"beforetoggle"/u, "state should be reconciled where the browser reports it.");
     assert.match(
         source,
         /:scope:has\(\.volume-panel:popover-open\)/u,
@@ -312,51 +310,63 @@ test("the volume button keeps its own shape while the panel is open", async () =
     }
 });
 
-// The panel opens above the button, never over it. A popover draws in the top
-// layer, which no z-index reaches, so the full-height pill this used to be —
-// with the button lifted out of it on a z-index — would now cover its own
-// invoker: the glyph would disappear underneath, and the press that closes the
-// panel would land on the panel instead. A popover is not dismissed by a press
-// inside itself, so on a touch screen, with no hover to fall back on, there
-// would be no way to close it at all. placePanel writes the button's own
-// top-left corner, and both of the panel's edges are arithmetic from there.
+// Each panel hangs off its own button by CSS anchor positioning, and nothing in
+// script measures anything. Both used to be placed by hand on every open — the
+// button measured, page coordinates worked out, a resize listened for, and the
+// volume panel's height declared only so script could read it back — which is
+// all machinery the platform now does. A browser without anchor positioning
+// (Safari before 26) keeps the UA's centred placement instead: a whole, usable
+// panel, rather than one pinned to the viewport's corner.
 //
-// A percentage translate is what this must not go back to. Lifting the panel
-// with translateY(-100%) reads against a box the panel does not have yet —
-// placePanel runs on beforetoggle, while the popover is still display:none — and
-// it put the panel a few pixels out of line with its button on every open until
-// a resize measured it again. app-menu has never had that, only because its
-// panel drops below its button and needs no lift at all.
-test("the volume panel is lifted clear of the button it is measured from", async () => {
-    const source = await readFile(VOLUME_CONTROL, "utf8");
-    const panelRule = source.slice(source.indexOf(".volume-panel {"), source.indexOf(".volume-panel:popover-open {"));
+// The volume panel opens above its button, never over it: a popover is not
+// dismissed by a press inside itself, so a panel covering its own invoker would
+// leave a touch screen no way to close it. And no transform moves it — a
+// percentage translate reads against a box that is not laid out yet while the
+// popover is display:none, and it put the panel a few pixels out of line on
+// every open.
+test("each panel is anchored to its own button by CSS, with a centred fallback", async () => {
+    for (const [name, url, panel] of [
+        ["app-menu.js", APP_MENU, "menu-panel"],
+        ["volume-control.js", VOLUME_CONTROL, "volume-panel"],
+    ]) {
+        const source = await readFile(url, "utf8");
+        const anchor = source.match(/anchor-name:\s*(--[\w-]+);/u);
+        const panelRule = source.slice(source.indexOf(`.${panel} {`), source.indexOf(`.${panel}:popover-open {`));
 
-    assert.match(source, /--volume-panel-gap:\s*\d+px;/u, "the gap should be stated once.");
+        assert.ok(anchor, `${name}'s button should name itself as an anchor.`);
+        assert.match(panelRule, new RegExp(`position-anchor:\\s*${anchor[1]};`, "u"), `${name}'s panel should hang off that button.`);
+        assert.match(panelRule, /position-area:/u, `${name}'s panel should be placed by position-area.`);
+        // An older iPad Safari stretched the menu to fill its insets instead of
+        // fitting its content, and the fallback sets every inset to zero.
+        assert.match(panelRule, /^\s*height:\s*max-content;/mu, `${name}'s panel should size to its content, not its insets.`);
+        assert.match(source, /@supports not \(anchor-name:/u, `${name} should fall back where anchor positioning is missing.`);
+        assert.doesNotMatch(source, /getBoundingClientRect|"resize"/u, `${name} should measure nothing in script.`);
+    }
 
-    // Declared rather than intrinsic, and in absolute lengths — a calc of those
-    // is simplified to a single length at computed-value time, so getComputedStyle
-    // answers it on a panel that has no box yet. Anything needing one to resolve
-    // (a percentage, auto, a fit-content) would come back unusable at exactly the
-    // moment placePanel asks, which is the failure this whole arrangement exists
-    // to avoid.
-    const declaredHeight = panelRule.match(/^\s*height:\s*(.+);/mu);
+    const volume = await readFile(VOLUME_CONTROL, "utf8");
+    const volumePanel = volume.slice(volume.indexOf(".volume-panel {"), volume.indexOf(".volume-panel:popover-open {"));
 
-    assert.ok(declaredHeight, "the panel's height should be declared, so placePanel can read it.");
-    assert.doesNotMatch(
-        declaredHeight[1],
-        /%|auto|fit-content|min-content|max-content/u,
-        "and declared in lengths a display:none panel can still resolve.",
-    );
-    assert.doesNotMatch(
-        panelRule,
-        /transform:/u,
-        "no transform should move the panel; its position is arithmetic in placePanel.",
-    );
-    assert.match(
-        source,
-        /rect\.top \+ globalThis\.scrollY - height - gap/u,
-        "and that arithmetic should place the panel's top a whole panel and a gap above the button.",
-    );
+    assert.match(volumePanel, /position-area:\s*top\b/u, "the volume panel should open above its button, not over it.");
+    // position-area aligns safely by default: a panel taller than the room above
+    // the button, as in a very short window, is shifted down over the button.
+    assert.match(volumePanel, /align-self:\s*unsafe end;/u, "and stay above it even when there is too little room.");
+    assert.doesNotMatch(volumePanel, /transform:/u, "and no transform should move it.");
+});
+
+// popovertarget already tells assistive technology whether the panel is
+// expanded, in Chrome, Edge, Firefox and Safari. An aria-expanded written into
+// the markup would override that live state, and one kept in sync by script is
+// a second copy of state the browser already holds.
+test("neither popover button keeps its own expanded state", async () => {
+    for (const [name, url] of [["app-menu.js", APP_MENU], ["volume-control.js", VOLUME_CONTROL]]) {
+        const source = await readFile(url, "utf8");
+
+        assert.doesNotMatch(
+            source,
+            /aria-expanded="|setAttribute\(\s*"aria-expanded"/u,
+            `${name} should leave the expanded state to popovertarget.`,
+        );
+    }
 });
 
 // A range input ignores the wheel on every engine, which is right for one in a

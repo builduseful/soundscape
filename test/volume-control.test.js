@@ -1,287 +1,42 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { loadComponent } from "./helpers/popover-fakes.js";
+
 /**
  * The volume control's logic, tested against a DOM stand-in.
  *
- * The same split, and the same reason, as `app-menu.test.js`: what is left in
- * this component once the platform owns dismissing the panel is a handful of
- * small things that were only ever checked by opening a browser and looking.
- * They reflect the popover's state into the markup that has to agree with it,
- * place the panel on the button, and close it in the three cases the browser
- * will not — focus gone elsewhere, the control disabled, the control hidden.
+ * The same split, and the same reason, as `app-menu.test.js`. The browser
+ * opens, dismisses and places the panel; what is left here is closing it when
+ * focus leaves or the control is disabled or hidden, the level, and the scroll.
  *
  * Every one of those closes calls `hidePopover`, which throws on a popover that
- * is already hidden, so the guard in front of each is the thing under test as
- * much as the close itself. The fake panel throws exactly where a real one does.
+ * is already hidden, so the guard in front of each is under test as much as the
+ * close itself.
  *
  * The markup and CSS `render()` writes are not covered here, because a fake DOM
  * that parsed HTML would be a browser. That half is checked as source by
  * component-contract.test.js.
  */
 
-const originalHTMLElement = globalThis.HTMLElement;
-const originalScrollX = globalThis.scrollX;
-const originalScrollY = globalThis.scrollY;
-const originalGetComputedStyle = globalThis.getComputedStyle;
-
-// placePanel reads the panel's declared height and the gap off the element,
-// because a display:none popover reports no box of its own. These are the two
-// values the stylesheet gives it.
-const PANEL_HEIGHT = 158;
-const PANEL_GAP = 8;
-
-/** A popover that records what was asked of it, and refuses what a real one refuses. */
-class FakePanel {
-    constructor({ connected = true } = {}) {
-        this.isConnected = connected;
-        this.showing = false;
-        this.style = {};
-        this.calls = { show: 0, hide: 0 };
-        this.listeners = new Map();
-        // Recorded raw rather than defaulted, so a listener that never states
-        // its passivity reads as undefined here instead of quietly as false.
-        this.passive = {};
-    }
-
-    addEventListener(type, handler, options) {
-        this.listeners.set(type, handler);
-        this.passive[type] = options?.passive;
-    }
-
-    showPopover() {
-        if (!this.isConnected) throw new Error("InvalidStateError: not connected");
-        if (this.showing) throw new Error("InvalidStateError: already showing");
-
-        this.calls.show += 1;
-        this.showing = true;
-    }
-
-    hidePopover() {
-        if (!this.showing) throw new Error("InvalidStateError: already hidden");
-
-        this.calls.hide += 1;
-        this.showing = false;
-    }
-
-    matches(selector) {
-        return selector === ":popover-open" ? this.showing : false;
-    }
-}
-
-class FakeControl {
-    constructor(rect) {
-        this.rect = rect;
-        this.attributes = new Map();
-        this.disabled = false;
-        this.value = "1";
-        this.listeners = new Map();
-    }
-
-    getBoundingClientRect() {
-        return this.rect;
-    }
-
-    addEventListener(type, handler) {
-        this.listeners.set(type, handler);
-    }
-
-    setAttribute(name, value) {
-        this.attributes.set(name, String(value));
-    }
-
-    getAttribute(name) {
-        return this.attributes.get(name) ?? null;
-    }
-}
-
-class FakeHost {
-    constructor() {
-        this.attributes = new Map();
-        this.listeners = new Map();
-        this.contained = new Set();
-        this.dispatched = [];
-        this.panelNode = new FakePanel();
-        this.buttonNode = new FakeControl({ left: 100, top: 400, right: 150, bottom: 450 });
-        this.sliderNode = new FakeControl({});
-        this.labelNode = { textContent: "" };
-    }
-
-    set innerHTML(value) {
-        this.markup = value;
-    }
-
-    querySelector(selector) {
-        if (selector === ".volume-panel") return this.panelNode;
-        if (selector === "button") return this.buttonNode;
-        if (selector === 'input[type="range"]') return this.sliderNode;
-        if (selector === "label") return this.labelNode;
-
-        return null;
-    }
-
-    addEventListener(type, handler) {
-        this.listeners.set(type, handler);
-    }
-
-    removeEventListener(type) {
-        this.listeners.delete(type);
-    }
-
-    setAttribute(name, value) {
-        this.attributes.set(name, String(value));
-    }
-
-    getAttribute(name) {
-        return this.attributes.get(name) ?? null;
-    }
-
-    toggleAttribute(name, force) {
-        if (force) this.attributes.set(name, "");
-        else this.attributes.delete(name);
-    }
-
-    hasAttribute(name) {
-        return this.attributes.has(name);
-    }
-
-    removeAttribute(name) {
-        this.attributes.delete(name);
-    }
-
-    contains(node) {
-        return this.contained.has(node);
-    }
-
-    dispatchEvent(event) {
-        this.dispatched.push(event.type);
-
-        return true;
-    }
-}
-
-async function loadComponent() {
-    globalThis.HTMLElement = FakeHost;
-
-    const url = new URL("../src/js/components/volume-control.js", import.meta.url);
-
-    url.search = `?test=${Date.now()}-${Math.random()}`;
-
-    try {
-        return await import(url.href);
-    } finally {
-        globalThis.HTMLElement = originalHTMLElement;
-    }
-}
-
-/**
- * A control with its listeners actually attached.
- *
- * `globalThis` is not an EventTarget in Node, so the one window listener the
- * component takes has to be absorbed. What this buys is the handlers as the
- * component itself wired them, rather than as a test guessed they were wired.
- */
+/** A control with its listeners actually attached, as the component wires them. */
 async function createWiredControl() {
     const control = await createControl();
-    const originalAdd = globalThis.addEventListener;
 
-    globalThis.addEventListener = () => {};
-    try {
-        control.addEventListeners();
-    } finally {
-        globalThis.addEventListener = originalAdd;
-    }
+    control.addEventListeners();
 
     return control;
 }
 
 /** A control with `render()` stubbed out, since a fake DOM cannot parse its template. */
 async function createControl() {
-    const { VolumeControl } = await loadComponent();
+    const { VolumeControl } = await loadComponent("volume-control.js");
     const control = new VolumeControl();
 
     control.render = () => {};
 
     return control;
 }
-
-// beforetoggle is the only place the component learns the panel moved, and both
-// sides move it: the invoker on a click, the browser on Escape or an outside
-// press. Whatever moved it, the markup beside it has to end up agreeing.
-test("the host and the button follow the popover, whichever side moved it", async () => {
-    const control = await createControl();
-
-    control.handleBeforeToggle({ newState: "open" });
-    assert.equal(control.hasAttribute("open"), true, "the host should be marked open.");
-    assert.equal(control.buttonNode.getAttribute("aria-expanded"), "true");
-
-    control.handleBeforeToggle({ newState: "closed" });
-    assert.equal(control.hasAttribute("open"), false);
-    assert.equal(control.buttonNode.getAttribute("aria-expanded"), "false", "and told so to a screen reader.");
-});
-
-// Placed before the state flips, so the first frame the panel is painted in is
-// already the right one.
-test("an opening panel is placed before it is painted", async () => {
-    const control = await createControl();
-    const placed = [];
-
-    control.placePanel = () => placed.push(control.panel.matches(":popover-open"));
-
-    control.handleBeforeToggle({ newState: "open" });
-    assert.deepEqual(placed, [false], "placed while the panel had not yet been shown.");
-
-    control.handleBeforeToggle({ newState: "closed" });
-    assert.equal(placed.length, 1, "a closing panel needs no placing.");
-});
-
-// Page coordinates, so a scroll carries the panel with the footer instead of
-// leaving it behind — and the panel's own height and the gap come off it, so
-// that nothing depends on a percentage translate resolving against a box the
-// popover does not have while it is still display:none. That is what put the
-// panel a few pixels out of line with its button on every open.
-test("the panel is placed a whole panel and a gap above the button", async () => {
-    const control = await createControl();
-
-    globalThis.scrollX = 5;
-    globalThis.scrollY = 30;
-    globalThis.getComputedStyle = () => ({
-        height: `${PANEL_HEIGHT}px`,
-        getPropertyValue: (name) => (name === "--volume-panel-gap" ? `${PANEL_GAP}px` : ""),
-    });
-    try {
-        control.placePanel();
-    } finally {
-        globalThis.scrollX = originalScrollX;
-        globalThis.scrollY = originalScrollY;
-        globalThis.getComputedStyle = originalGetComputedStyle;
-    }
-
-    // The button's top is 400, the scroll adds 30, and the panel clears it by
-    // its own height and the gap.
-    assert.equal(control.panel.style.top, `${400 + 30 - PANEL_HEIGHT - PANEL_GAP}px`);
-    assert.equal(control.panel.style.left, "105px", "its leading edge, plus the scroll.");
-});
-
-// A browser that tells us nothing must not put the panel somewhere absurd. It
-// lands on the button rather than above it, which is wrong but bounded — and it
-// cannot happen in a browser that has getComputedStyle at all.
-test("a panel whose height cannot be read is still placed on its button", async () => {
-    const control = await createControl();
-
-    globalThis.scrollX = 0;
-    globalThis.scrollY = 0;
-    globalThis.getComputedStyle = undefined;
-    try {
-        control.placePanel();
-    } finally {
-        globalThis.scrollX = originalScrollX;
-        globalThis.scrollY = originalScrollY;
-        globalThis.getComputedStyle = originalGetComputedStyle;
-    }
-
-    assert.equal(control.panel.style.top, "400px");
-});
 
 // A popover holds its ground while focus walks out of it, so this is one of the
 // three dismissals left to the component. The null case is the one that matters:
@@ -295,13 +50,13 @@ test("only a caret that has actually landed elsewhere closes the panel", async (
     control.contained.add(inside);
     control.panel.showPopover();
 
-    control.handleFocusOut({ relatedTarget: null });
+    control.listeners.get("focusout")({ relatedTarget: null });
     assert.equal(control.panel.showing, true, "focus going nowhere is not a reader leaving.");
 
-    control.handleFocusOut({ relatedTarget: inside });
+    control.listeners.get("focusout")({ relatedTarget: inside });
     assert.equal(control.panel.showing, true, "nor is focus moving within the control.");
 
-    control.handleFocusOut({ relatedTarget: outside });
+    control.listeners.get("focusout")({ relatedTarget: outside });
     assert.equal(control.panel.showing, false, "a caret that has landed outside is.");
 });
 
@@ -310,9 +65,7 @@ test("only a caret that has actually landed elsewhere closes the panel", async (
 test("focus leaving a closed control is not a dismissal", async () => {
     const control = await createControl();
 
-    assert.doesNotThrow(() => {
-        control.handleFocusOut({ relatedTarget: { name: "somewhere else" } });
-    });
+    assert.doesNotThrow(() => control.listeners.get("focusout")({ relatedTarget: { name: "somewhere else" } }));
     assert.equal(control.panel.calls.hide, 0);
 });
 
@@ -341,9 +94,8 @@ test("disabling a control whose panel is already closed does not throw", async (
 
 // Hiding has to take the panel with it. The subtree stops rendering either way,
 // so nothing is left on screen — but the popover stays open underneath, and the
-// control comes back open at a place measured for a layout that has since moved.
-// The app hides this when a transport cannot carry volume, which is exactly when
-// the footer is being rearranged.
+// control would come back with its panel already up. The app hides this when a
+// transport cannot carry volume, which is not a moment anyone asked for a slider.
 test("hiding the control closes an open panel", async () => {
     const control = await createControl();
 
@@ -491,6 +243,34 @@ test("the panel is what listens for the scroll, and not passively", async () => 
     assert.equal(control.panelNode.passive.wheel, false, "a passive listener cannot stop the page scrolling.");
 });
 
+// What the flag is for. A panel opened from the keyboard has to hand the caret
+// on to the slider, or a reader who pressed Enter is left on the button with the
+// control they asked for open and unreachable except by tabbing into it. Read on
+// toggle rather than on the press, because the popover is display:none until the
+// state flips and a hidden slider cannot take focus.
+test("a panel opened from the keyboard hands focus to the slider", async () => {
+    const control = await createWiredControl();
+
+    control.buttonNode.listeners.get("click")({ detail: 0 });
+    control.panelNode.listeners.get("toggle")({ newState: "open" });
+
+    assert.equal(control.sliderNode.focused, 1, "the slider should be where the caret lands.");
+    assert.equal(control._openedByKey, false, "and the flag is spent, not left armed.");
+});
+
+// A pointer is already where it wants to be, and the close has nothing to focus.
+// Both arrive as the same toggle event, so the handler cannot read the event alone.
+test("a panel opened by pointer, or closing, moves no focus", async () => {
+    const control = await createWiredControl();
+
+    control.buttonNode.listeners.get("click")({ detail: 1 });
+    control.panelNode.listeners.get("toggle")({ newState: "open" });
+    assert.equal(control.sliderNode.focused, 0, "a pointer open pulls no focus.");
+
+    control.buttonNode.listeners.get("click")({ detail: 0 });
+    control.panelNode.listeners.get("toggle")({ newState: "closed" });
+    assert.equal(control.sliderNode.focused, 0, "and a close is not an open.");
+});
 // The flag means "this press opened the panel", not the looser "this press came
 // from the keyboard". A keyboard press that *closes* it reports the same detail
 // of 0, and reading the click alone would leave the flag raised behind it.

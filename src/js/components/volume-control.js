@@ -5,9 +5,9 @@
  * the part every hand-rolled version of this got wrong: dismissing it. A press
  * anywhere else closes it, Escape closes it, focus comes back to the button, and
  * it draws in the top layer, so nothing in the page can clip it or swallow a
- * click meant for it. What went with the conversion was a document-wide
- * pointerdown listener that read the document's own focus and blurred it by
- * hand, and the stacking pair that kept the button above its own panel.
+ * click meant for it. CSS anchor positioning holds it above the button, and the
+ * browser reports the button as expanded or collapsed from `popovertarget`
+ * alone, so the button carries no `aria-expanded` of its own.
  *
  * It opens on a click and on nothing else. Resting on the speaker used to reveal
  * it, and that cost nothing while the reveal was pure CSS `:hover` — a repaint
@@ -49,16 +49,12 @@ export class VolumeControl extends HTMLElement {
         this._buttonId = `volume-button-${unique()}`;
         this._panelId = `volume-panel-${unique()}`;
         this._sliderId = `volume-slider-${unique()}`;
-        this._listenersAttached = false;
         // Set on the way in by the click that opened the panel, read on the way
         // out by the toggle that confirms it — see addEventListeners.
         this._openedByKey = false;
-        this._focusoutHandler = this.handleFocusOut.bind(this);
-        // A resize is the one thing that moves the button out from under an open
-        // panel — see placePanel.
-        this._resizeHandler = () => {
-            if (this.showing) this.placePanel();
-        };
+        // On the element itself rather than on a rendered node, so it outlives
+        // the render a reconnection redoes and never needs attaching twice.
+        this.addEventListener("focusout", this.handleFocusOut.bind(this));
     }
 
     static get observedAttributes() {
@@ -71,12 +67,6 @@ export class VolumeControl extends HTMLElement {
         this.syncLabel();
         this.syncDisabled();
         this.addEventListeners();
-    }
-
-    disconnectedCallback() {
-        this.removeEventListener("focusout", this._focusoutHandler);
-        globalThis.removeEventListener("resize", this._resizeHandler);
-        this._listenersAttached = false;
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -94,10 +84,9 @@ export class VolumeControl extends HTMLElement {
 
         // Hiding the control has to take the panel with it. Its own subtree
         // stops rendering, so nothing is left on screen either way, but the
-        // popover stays open underneath — and the control comes back open, at a
-        // place measured for a layout that has since moved. The app hides this
-        // when a transport cannot carry volume, which is exactly a moment when
-        // the footer is being rearranged.
+        // popover stays open underneath — and the control would come back with
+        // its panel already up. The app hides this when a transport cannot carry
+        // volume, which is not a moment anyone asked for a slider.
         if (name === "hidden") {
             if (this.hasAttribute("hidden") && this.showing) this.panel.hidePopover();
             return;
@@ -119,74 +108,9 @@ export class VolumeControl extends HTMLElement {
         return this.querySelector(".volume-panel");
     }
 
-    /** @returns {boolean} Whether the slider is on screen. */
+    /** @returns {boolean} Whether the slider is on screen, however it got there. */
     get showing() {
         return this.panel?.matches(":popover-open") === true;
-    }
-
-    /**
-     * Put the panel on the button.
-     *
-     * The one thing a popover does not bring with it. A box in the top layer
-     * does not keep its place in the page: its containing block is the viewport,
-     * and Chrome lays it out at the origin of that rather than at the static
-     * position the div would have had in flow. CSS anchor positioning is exactly
-     * this in two declarations, but it is Chrome and Safari and not yet Firefox,
-     * and this is a public site rather than an extension that can name a minimum
-     * browser. So the button is measured, once per open.
-     *
-     * Both edges are arithmetic here, exactly as `app-menu` does it, and that is
-     * deliberate rather than incidental. This used to write the button's corner
-     * and let CSS lift the panel with a percentage translate, which reads
-     * against the panel's own box — a box that does not exist yet, because this
-     * runs on `beforetoggle` while the popover is still `display: none`. What a
-     * reader saw was a panel a few pixels out of line with its button, on every
-     * open, until a resize measured it again with the box in hand. The menu has
-     * never had that, and the reason is only that its panel drops *below* its
-     * button, so it needs no such trick.
-     *
-     * The cost of doing it here is that the panel's height stops being free: it
-     * is declared, and read back off the element rather than repeated in this
-     * file. That suits a panel whose whole content is one fixed-length slider.
-     *
-     * Page coordinates rather than viewport ones, so a scroll carries the panel
-     * along with the footer instead of leaving it behind; the page scrolls on a
-     * short window. A resize is then the only thing that can move the button out
-     * from under an open panel, and that is listened for while one is open.
-     */
-    placePanel() {
-        const button = this.querySelector("button");
-        const panel = this.panel;
-        if (!button || !panel) return;
-
-        const rect = button.getBoundingClientRect();
-        // Computed rather than measured: a display:none element reports no box,
-        // but its computed height is the length the stylesheet gave it.
-        const styles = globalThis.getComputedStyle?.(panel);
-        const height = Number.parseFloat(styles?.height) || 0;
-        const gap = Number.parseFloat(styles?.getPropertyValue("--volume-panel-gap")) || 0;
-
-        panel.style.top = `${rect.top + globalThis.scrollY - height - gap}px`;
-        panel.style.left = `${rect.left + globalThis.scrollX}px`;
-    }
-
-    /**
-     * Follow the popover's own state, whichever side moved it.
-     *
-     * Every open and close comes through here, ours and the browser's alike: the
-     * button's `popovertarget` toggles it without asking us, and so do Escape
-     * and a press anywhere outside. So this reports rather than decides.
-     * @param {ToggleEvent} event - The panel's beforetoggle.
-     */
-    handleBeforeToggle(event) {
-        const showing = event.newState === "open";
-
-        // Before the state flips, so the first frame the panel is painted in is
-        // already the right one.
-        if (showing) this.placePanel();
-
-        this.toggleAttribute("open", showing);
-        this.querySelector("button")?.setAttribute("aria-expanded", String(showing));
     }
 
     render() {
@@ -202,12 +126,8 @@ export class VolumeControl extends HTMLElement {
                            what says so, and it is what keeps a pixel of
                            misplacement from reading as a broken join. */
                         --volume-panel-gap: 8px;
-                        /* The slider's length and the air around it. The panel
-                           is drawn from these rather than the other way round,
-                           because placePanel has to know the panel's height
-                           before there is a panel to measure — so the sum is
-                           declared once, here, and lengthening the slider moves
-                           the panel to suit without anything else being told. */
+                        /* The slider's length and the air around it, which
+                           between them are the panel's whole height. */
                         --volume-slider-length: 120px;
                         --volume-panel-padding: 18px;
                         display: block;
@@ -232,7 +152,8 @@ export class VolumeControl extends HTMLElement {
                        transparent circle, not one of the app's bordered icon
                        buttons. A circle in every state: it stays exactly this
                        shape while the panel is open, and only its colours
-                       change. */
+                       change. It is also what the panel is anchored to; one
+                       volume control per page, so one anchor name is enough. */
                     :scope > button {
                         display: grid;
                         place-items: center;
@@ -246,6 +167,7 @@ export class VolumeControl extends HTMLElement {
                         box-shadow: none;
                         color: var(--color-text-muted);
                         cursor: pointer;
+                        anchor-name: --volume-button;
                         -webkit-tap-highlight-color: transparent;
                         tap-highlight-color: transparent;
                         transition:
@@ -317,32 +239,37 @@ export class VolumeControl extends HTMLElement {
                     }
 
                     /* Undoing the UA's popover box, which arrives centred in the
-                       viewport with a border and padding of its own. Where it
-                       goes instead is not here at all: placePanel writes both
-                       edges, having read the height declared below back off this
-                       element. What this rule owes it is that height, and no
-                       transform.
+                       viewport with a border and padding of its own, and holding
+                       it above the button instead: its left edge on the button's,
+                       with the gap as clear air between them. No transform moves
+                       it — a percentage translate reads against a box that does
+                       not exist yet while the popover is still display:none, and
+                       it left the panel a few pixels out of line on every open.
 
                        It carries no ground of its own. box-shadow lives out here
                        rather than on the surface below because clip-path
                        restricts painting to exactly its own region: a shadow
                        clipped alongside the reveal would render invisible once
                        fully open, inset(0) matching the border box exactly and
-                       leaving no room for anything painted outside it.
-
-                       Nothing clips that shadow any more. It used to have its
-                       bottom cut off, because the button sat directly beneath
-                       drawing the rest of one shared pill and an elevated shadow
-                       is offset downward — it fell across the top of its own cap
-                       and the join read as a step. The gap ended that: what is
-                       below the panel now is the page, which is what a shadow is
-                       for. */
+                       leaving no room for anything painted outside it. */
                     .volume-panel {
-                        position: absolute;
+                        position-anchor: --volume-button;
+                        position-area: top span-right;
+                        /* Bottom-aligned even when the panel is taller than the
+                           room above the button, as in a very short window. The
+                           default alignment is safe, which shifts an overflowing
+                           panel down over its own button; unsafe lets it run off
+                           the top of the window instead, keeping the gap. */
+                        align-self: unsafe end;
                         inset: auto;
                         place-items: center;
                         width: var(--volume-button-size);
-                        margin: 0;
+                        /* Declared for the same reason as app-menu's panel: an
+                           older iPad Safari stretched that one to fill its insets
+                           rather than fit its content, and the fallback below
+                           sets every inset to zero. */
+                        height: max-content;
+                        margin: 0 0 var(--volume-panel-gap);
                         padding: 0;
                         border: 0;
                         border-radius: 999px;
@@ -351,18 +278,6 @@ export class VolumeControl extends HTMLElement {
                         overflow: visible;
                         box-shadow: var(--shadow-elevated);
                         opacity: 0;
-                        /* Declared, not intrinsic, and placePanel reads it back
-                           to work out where the panel's top goes. The slider is
-                           a fixed length and the padding is symmetric, so this
-                           is that sum, plus a pixel of border either side —
-                           written as the sum rather than as its answer so that
-                           changing a part cannot leave the whole behind. It
-                           resolves to a plain length before anything is laid
-                           out, which is what lets placePanel read it while the
-                           panel is still display:none. No transform lifts this
-                           panel — see placePanel for what a percentage one
-                           cost. */
-                        height: calc(var(--volume-slider-length) + (var(--volume-panel-padding) * 2) + 2px);
                         user-select: none;
                         /* display and overlay are discrete, so without these the
                            panel leaves the top layer on the first frame of the
@@ -392,13 +307,24 @@ export class VolumeControl extends HTMLElement {
                         }
                     }
 
+                    /* A browser without anchor positioning (Safari before 26)
+                       keeps the UA's own placement: centred in the viewport, a
+                       whole and usable slider, just not held above the button. */
+                    @supports not (anchor-name: --volume-button) {
+                        .volume-panel {
+                            align-self: normal;
+                            inset: 0;
+                            margin: auto;
+                        }
+                    }
+
                     /* One ring round one box, now that the panel is the whole of
                        what the slider lives in. While the panel was half a pill
                        this had to be drawn in two pieces that met at the seam,
                        and getting that join right was fiddly for a shape nobody
                        needed. */
                     .volume-panel:has(input[type="range"]:focus-visible) {
-                        box-shadow: var(--shadow-surface), 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
+                        box-shadow: var(--shadow-elevated), 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
                     }
 
                     /* The slider's ground, and nothing else — a self-contained
@@ -485,7 +411,6 @@ export class VolumeControl extends HTMLElement {
                 popovertarget="${this._panelId}"
                 aria-label="${DEFAULT_LABEL}"
                 aria-controls="${this._panelId}"
-                aria-expanded="false"
             >
                 <!-- Volume icon paths are kept inline so the component template stays self-contained. -->
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -510,37 +435,13 @@ export class VolumeControl extends HTMLElement {
                 </div>
             </div>
         `;
-
-        // Wired here rather than beside the rest: toggle events do not bubble,
-        // so these belong to the panel this render just built.
-        this.panel?.addEventListener("beforetoggle", this.handleBeforeToggle.bind(this));
-        // After the state has flipped, because a display:none slider cannot take
-        // focus. Only for a reader who opened the panel from the keyboard: a
-        // pointer that opened it is already where it wants to be, and pulling
-        // focus would put a ring on the slider nobody asked for.
-        this.panel?.addEventListener("toggle", (event) => {
-            if (event.newState !== "open") return;
-            if (!this._openedByKey) return;
-
-            this._openedByKey = false;
-            this.querySelector('input[type="range"]')?.focus();
-        });
     }
 
     /**
-     * The listeners that belong to the element rather than to a render.
-     *
-     * There is no open-and-close handler among them: `popovertarget` on the
-     * button is the whole of that, and it is worth having as markup rather than
-     * as code. A press on an invoker is the one press the browser will not
-     * dismiss a popover for, so it cannot close the panel on the way down and
-     * reopen it on the way up — the double-toggle every hand-rolled version of
-     * this has to defend against.
+     * Listeners on the nodes this render built. A reconnection renders fresh
+     * nodes, so these go on again each time with nothing left to double up.
      */
     addEventListeners() {
-        if (this._listenersAttached) return;
-        this._listenersAttached = true;
-
         const button = this.querySelector("button");
         const slider = this.querySelector('input[type="range"]');
 
@@ -560,8 +461,19 @@ export class VolumeControl extends HTMLElement {
             this._openedByKey = event.detail === 0 && !this.showing;
         });
 
-        this.addEventListener("focusout", this._focusoutHandler);
-        globalThis.addEventListener("resize", this._resizeHandler);
+        // On the panel because toggle events do not bubble, and read after the
+        // state has flipped, because a display:none slider cannot take focus.
+        // Only for a reader who opened the panel from the keyboard: a pointer
+        // that opened it is already where it wants to be, and pulling focus
+        // would put a ring on the slider nobody asked for.
+        this.panel?.addEventListener("toggle", (event) => {
+            if (event.newState !== "open") return;
+            if (!this._openedByKey) return;
+
+            this._openedByKey = false;
+            this.querySelector('input[type="range"]')?.focus();
+        });
+
         // Not passive: this has a page scroll to prevent. Listened for on the
         // panel rather than the slider so the whole pill answers, the padding
         // around the track included — a gesture aimed at a control a finger wide
@@ -581,25 +493,22 @@ export class VolumeControl extends HTMLElement {
     }
 
     /**
-     * A caret that has gone somewhere else closes the panel.
+     * Close the panel when focus has gone somewhere else.
      *
-     * The only dismissal left to us: a popover holds its ground while focus
-     * walks out of it, and a reader who has tabbed past the slider is done with
-     * it whether or not they ever pressed Escape.
+     * A popover stays open while focus leaves it, so a reader who tabs past the
+     * slider would otherwise leave it floating over the footer behind them.
      *
-     * `relatedTarget` is the whole test, and the null case is the one that
-     * matters: focus going nowhere is not a reader leaving, and a press that
-     * really did land outside is the browser's to dismiss. Between the two there
-     * is no moment where this has to guess, which is what the `activeElement`
-     * check it replaced was doing.
+     * Only a real destination counts. Focus that goes nowhere is not a reader
+     * leaving, and a press that truly landed outside is the browser's to
+     * dismiss.
      * @param {FocusEvent} event - The focusout.
      */
     handleFocusOut(event) {
-        // hidePopover throws on a popover that is already hidden, and focus
-        // leaves a closed control every time the button is tabbed away from.
+        // hidePopover throws on a closed popover. Focus leaves a closed panel
+        // whenever its button is tabbed away from, and a press on another
+        // popover's button can reach here after the browser has closed this one.
         if (!this.showing) return;
-        if (!event.relatedTarget) return;
-        if (this.contains(event.relatedTarget)) return;
+        if (!event.relatedTarget || this.contains(event.relatedTarget)) return;
 
         this.panel.hidePopover();
     }

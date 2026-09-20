@@ -82,7 +82,7 @@ soundscape/
 ├── test/                             # Unit tests (dependency-free)
 │   ├── playback-output-contract.test.js   # One spec, run against every PlaybackOutput incl. AudioPlayer
 │   ├── *remote-playback*, providers/ # The plugin's own tests — see its AGENTS.md
-│   └── helpers/                      # app-test-harness.js + the three fakes (AGENTS.md explains which)
+│   └── helpers/                      # app-test-harness.js, popover-fakes.js, and the remote-playback fakes (see that plugin's AGENTS.md)
 ├── scripts/
 │   ├── export-icons.mjs              # Icon PNG export from SVG sources
 │   ├── capture-screenshots.mjs       # Manifest install-screenshot capture
@@ -125,8 +125,11 @@ soundscape/
 - **A panel that floats over the page is a native `popover`.** Opening it is the
   invoker's job, dismissing it is the browser's, and the component keeps no
   state of its own about either. `app-menu` is the pattern, and carries the
-  reasoning — including why it no longer opens on hover, which is the shape any
-  new panel should copy rather than rediscover.
+  reasoning — including why it no longer opens on hover. The panel hangs off its
+  button by CSS anchor positioning, falling back to the browser's centred
+  placement where that is unsupported, and the button sets no `aria-expanded`:
+  `popovertarget` already reports it, and a static one would override the
+  live state.
 
 ## Theme and Colour
 
@@ -227,7 +230,7 @@ someone's room. Fakes cover everything except the manual checklist in its AGENTS
 - **Two things not to "fix":**
   - Do not make `sw.js` a module that imports `VERSION`. Browsers detect a service worker update by comparing the worker file's own bytes, so the change has to land in `sw.js` itself.
   - Do not split into separate shell/audio caches, hash the asset lists, or add HTTP `Cache-Control` config. The service worker is the only cache that matters here.
-- **`VERSION` lives in three places** — `package.json`, `sw.js`, `script.js` — and all three move together on every release; `test/pwa.test.js` and `test/version-sync.test.js` enforce it. Semantic versioning: patch for fixes, minor for features, major for breaking changes. Bump on any user-facing change, so the deployed PWA and the footer label stay accurate — and on any change under `src/` even when nothing is user-facing, or the cache is not invalidated and a returning visitor gets a half-old shell.
+- **`VERSION` lives in three places you edit** — `package.json`, `sw.js`, `script.js` — and all three move together on every release; `test/pwa.test.js` and `test/version-sync.test.js` enforce it. A fourth, `package-lock.json`, is generated rather than edited: re-sync it with `npm install --package-lock-only` after the bump. The same test pins it, because nothing else would notice it falling behind. Semantic versioning: patch for fixes, minor for features, major for breaking changes. Bump on any user-facing change, so the deployed PWA and the footer label stay accurate — and on any change under `src/` even when nothing is user-facing, or the cache is not invalidated and a returning visitor gets a half-old shell.
 - **Version and tag move together.** Before a commit to `trunk`, or before opening a PR, propose the bump and a matching `v<version>` tag and wait for a yes or no.
 - **The bump can ride in the PR; the tag cannot.** Tag on `trunk` after the merge — rebasing and squashing rewrite the commit it would point at. Tags are annotated; `git push --follow-tags` sends them.
 
