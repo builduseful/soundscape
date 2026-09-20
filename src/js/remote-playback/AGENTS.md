@@ -351,10 +351,9 @@ rules themselves, and the evidence you cannot get from reading the code.
   it would play the wrong thing. Asking whether *this* track is held sends both
   paths to `startTrack` when they disagree.
 - The handover reads `AudioPlayer.wantsPlayback()`, not `isPlaybackRequested()`.
-  A device connecting while the *first* track is still decoding finds
-  `hasTrack()` false, which the ANDed reading would take for "the user wasn't
-  playing" — handing the receiver silence after an explicit press of play.
-  `playback-output.js` states the invariant and why the two must stay apart.
+  `playback-output.js` holds the invariant and the reason; it is not repeated
+  here, because a second copy of a fact going stale is what half the bullets
+  above are made of.
 - `takeOverOutput` checks `remoteTransitionId` before **everything** it writes, not
   just the last line. A connect and a disconnect close together leave two
   transitions in flight; the stale one clearing or posting a playback error would
