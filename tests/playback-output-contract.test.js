@@ -454,15 +454,13 @@ for (const driver of drivers) {
         // so it has to arrive — and afterwards the output must not still be
         // claiming to play.
         //
-        // What this deliberately no longer asserts is what the pause does to
-        // *intent*, because the honest answer differs by transport and pinning
-        // one of them here made the other's constraint look universal. On the
-        // media element path a spurious pause is fired by every source change,
-        // so intent must survive it (pinned in app-remote-playback.test.js). The SDK path
-        // has no such event and can tell a settled PAUSED from a receiver merely
-        // buffering, so there a real pause does clear intent — which is what
-        // stops ending a paused cast starting the soundscape on this machine
-        // (pinned in providers/cast-sdk.test.js).
+        // What this deliberately does not assert is what the pause does to
+        // *intent*. Both transports clear it on a real device pause, but each
+        // tells a real one from a transient one differently: the media element
+        // path by readyState, since every source change fires a spurious pause
+        // (pinned in app-remote-playback.test.js), and the SDK path by a settled
+        // PAUSED versus a receiver merely buffering (pinned in
+        // providers/cast-sdk.test.js).
         test("reports a pause pressed on the device and stops claiming to play", async () => {
             const { spy, output, device } = await setup();
 

@@ -476,13 +476,12 @@ export class AirPlayController {
     // to re-read the state and redraw, never to drive the transport back, so
     // this cannot fight the app's own play() and pause().
     //
-    // Deliberately reports nothing but the fact of a change, and does not touch
-    // `playbackRequested`. Assigning `src` runs the media load algorithm, which
-    // pauses the element and fires `pause` — so a track change while casting
-    // emits one of these for a cast that is not stopping at all. A listener that
-    // re-reads `element.paused` when it runs sees the truth after play() has
-    // resumed; one that had trusted the event would have cleared the intent that
-    // same play() just set.
+    // The event itself is never trusted. Assigning `src` runs the media load
+    // algorithm, which pauses the element and fires `pause` — so a track change
+    // while casting emits one of these for a cast that is not stopping at all. A
+    // listener that re-reads `element.paused` when it runs sees the truth after
+    // play() has resumed; one that had trusted the event would have cleared the
+    // intent that same play() just set.
     //
     // That same re-reading makes the connection check below belt-and-braces
     // rather than load-bearing: a listener that recomputes from live state lands

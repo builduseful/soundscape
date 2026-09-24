@@ -34,7 +34,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "1.21.1";
+const VERSION = "1.21.2";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -319,7 +319,9 @@ async function changeTrack(offset, direction) {
         updateTrackTitle();
         updateMediaSessionStatus(getCurrentTrack());
         syncPlaybackState(isOutputPlaying());
-        reportPlaybackFailure("Could not change soundscape track.", error, outputFailureMessage());
+        // Named explicitly: the title has just rolled back, so "this
+        // soundscape" would read as the one on screen, not the one that failed.
+        reportPlaybackFailure("Could not change soundscape track.", error, outputFailureMessage(), attemptedTrack);
         return false;
     }
 }
@@ -779,14 +781,14 @@ async function handBackOutput() {
 // `message` overrides the default when the failure is not about the soundscape:
 // for a remote device that will not start, "pick another" would send the user
 // hunting through tracks for a fault that is in the room, not the file.
-function reportPlaybackFailure(logMessage, error, message) {
+function reportPlaybackFailure(logMessage, error, message, track = getCurrentTrack()) {
     console.warn(logMessage, error);
 
     if (isOutputPlaying()) return;
 
     showPlaybackError(message ?? (globalThis.navigator?.onLine === false
-        ? "You're offline and this soundscape hasn't been downloaded yet."
-        : "This soundscape could not be played. Try again, or pick another."));
+        ? `You're offline and ${track.title} hasn't been downloaded yet.`
+        : `${track.title} could not be played. Try again, or pick another.`));
 }
 
 // The error and the loading bar share one strip and never stand together;

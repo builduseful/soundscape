@@ -944,13 +944,11 @@ export class CastSdkController {
         // paused on the device then started the soundscape on this machine
         // instead of leaving it quiet.
         //
-        // Safe to mirror here, and deliberately not done on the media element
-        // path: there a track change fires a `pause` of its own for a cast that
-        // is not stopping. This transport reports the receiver's state rather
-        // than an element's — and the clear is narrowed further to a *settled*
-        // PAUSED, so a receiver merely buffering or between items is never
-        // mistaken for one somebody stopped. Only a receiver that is sitting
-        // paused says the room is no longer listening.
+        // The clear is narrowed to a *settled* PAUSED, so a receiver merely
+        // buffering or between items is never mistaken for one somebody
+        // stopped. The media element path mirrors the same intent but has to
+        // tell the two apart by readyState instead — see
+        // AirPlayController.handleTransportPlaybackChange.
         if (this.player?.isPaused === false) {
             this.playbackRequested = true;
         } else if (this.isReceiverPaused()) {

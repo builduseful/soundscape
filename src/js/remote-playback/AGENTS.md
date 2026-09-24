@@ -47,7 +47,7 @@ rules themselves, and the evidence you cannot get from reading the code.
   delete the directory and its test files, then the references, and the app
   boots, plays, and passes every non-remote test. Outside `script.js` the
   references are the `<remote-playback>` tag and `#remoteTransportElement` in
-  `index.html`, the `sw.js` precache entries, and the `.m4a` bypass. Run it on a
+  `index.html`, the `sw.js` precache entries, and its `cast/` bypass. Run it on a
   scratch branch before believing it again.
   - **The claim is about *files*, not lines, and `script.js` is where the
     difference shows.** Deleting the two imports is not enough: everything that
@@ -95,8 +95,8 @@ rules themselves, and the evidence you cannot get from reading the code.
   it. Chrome on desktop (121+) *remotes*: the browser demuxes locally and streams
   encoded frames over the Cast mirroring protocol — `MediaRouterDesktop::
   GetFlingingController` returns `nullptr`, so there is no flinging path there at
-  all. Safari (13.1+, which does implement the Remote Playback API — the AirPlay
-  backend is now a fallback for older WebKit only) drives AirPlay audio, where
+  all. Safari (13.1+, which implements the Remote Playback API —
+  `webkitPickerBackend` is a fallback for older WebKit only) drives AirPlay audio, where
   the Mac or iPhone decodes and streams to the speaker. Two of the three fetch
   the twin *through the page*, and only the first could loop without the browser.
 - Because the local element is parked on purpose, its own `play`/`pause` events

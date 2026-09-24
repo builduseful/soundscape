@@ -506,6 +506,9 @@ test("a failure that leaves the listener in silence is surfaced", async () => {
     assert.notEqual(navigator.mediaSession.playbackState, "playing");
     assert.equal(playbackError.hidden, false);
     assert.match(playbackError.textContent, /could not be played|offline/i);
+    // The skip rolled the title back, so the message has to name the soundscape
+    // that failed — "this soundscape" would read as the one now on screen.
+    assert.ok(playbackError.textContent.includes(tracks[1].title), playbackError.textContent);
     assert.equal(warnings.length, 1);
 
     // Recovering clears it again.
