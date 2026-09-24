@@ -78,16 +78,9 @@
     }
 }
 
-/* No colour eases into another while the theme is being swapped, and this is
-   what stops it. Every element fading its own colours meant two things at once:
-   they arrived out of step, each at whatever duration its own rule named, and
-   each pair of text and ground crossed through the middle where the two are the
-   same grey and the words disappear — light and dark here are inverses, so that
-   middle is exactly where the contrast goes. The change is animated by the
-   cross-fade above instead, which is one animation over the whole surface.
-
-   `theme-utils.js` puts `data-theme-switching` on the document for the frame the
-   swap happens in. */
+/* No colour eases on its own while the theme is swapped; the cross-fade above
+   animates it whole. `theme-utils.js` sets `data-theme-switching` for the frame
+   the swap happens in, and explains why. */
 :root[data-theme-switching],
 :root[data-theme-switching] *,
 :root[data-theme-switching] *::before,
@@ -485,9 +478,7 @@ textarea {
         }
     }
 
-    /* The dim/undim is a two-state change rather than a decorative loop, so it
-       stays visible under reduced motion too — only the fade transition
-       itself is gated here. */
+    /* Only the fade is gated; the dim itself is above, for everyone. */
     .track-title {
         transition: opacity 0.3s ease;
     }

@@ -30,7 +30,7 @@ without rebuilding:
 
 ```sh
 <container-engine> build --tag soundscape .
-<container-engine> container rm --force soundscape-server 2>$null  # Idempotent: tears down any prior container, running or stopped
+<container-engine> container rm --force soundscape-server 2>/dev/null  # Idempotent: tears down any prior container, running or stopped
 <container-engine> container run --detach \
     --publish 4321:80 \
     --volume ${PWD}:/app \

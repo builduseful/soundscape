@@ -55,7 +55,7 @@
         "input": {
             "provenance": "opus-decoded-placeholder",
             "file": "resources/soundscapes/opus/heavy-rain.opus",
-            "sha256": "cd7225158752a828a35fab2ecaf26ed377e7048e8e8ec38240fa5c06a2aa1fb2",
+            "sha256": "012d073b92231449c7785bb067aeae2a8fc0bc1de17d0fab288b068c17fc0576",
             "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
         },
         "transform": {
@@ -317,7 +317,7 @@
         "input": {
             "provenance": "opus-decoded-placeholder",
             "file": "resources/soundscapes/opus/heavy-rain.opus",
-            "sha256": "cd7225158752a828a35fab2ecaf26ed377e7048e8e8ec38240fa5c06a2aa1fb2",
+            "sha256": "012d073b92231449c7785bb067aeae2a8fc0bc1de17d0fab288b068c17fc0576",
             "note": "Read the published Opus directly; the opus-decoded-placeholder was decoded from it."
         },
         "transform": {

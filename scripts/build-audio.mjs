@@ -515,7 +515,7 @@ async function buildLocalAac(track, master) {
     // every wrap, forever.
     //
     // Dropping the remainder instead costs at most 1023 samples (21 ms) off a
-    // loop period of 15-30 seconds, and leaves the decoded length exactly equal
+    // loop period of roughly 15-65 seconds, and leaves the decoded length exactly equal
     // to the intended one.
     const alignedFrames = Math.floor(frameCount / AAC_FRAME_SAMPLES) * AAC_FRAME_SAMPLES;
 

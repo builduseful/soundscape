@@ -7,7 +7,8 @@
 
     <script>
         // Apply the saved theme before the first paint to avoid a flash of the
-        // default light theme. "system" is handled by CSS media queries.
+        // default light theme. "system" needs nothing: style.css's
+        // color-scheme already follows the OS.
         try {
             const theme = localStorage.getItem("soundscape.themePreference");
             if (theme === "dark" || theme === "light") {

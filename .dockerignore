@@ -22,10 +22,15 @@ opencode.json
 **/*.md
 docs/
 
-# Host-side helper scripts (media-key injection, icon/screenshot export) and
-# their devDependencies — npm test needs neither, it only imports src/js.
+# Host-side helper scripts (audio build, icon/screenshot export, media-key
+# injection) and their devDependencies — npm test needs neither, it only
+# imports src/js.
 scripts/
 node_modules/
+
+# Build inputs for scripts/build-audio.mjs, tens of megabytes of WAV. Never
+# served, and not all of it ours to redistribute — see masters/AGENTS.md.
+masters/
 
 # GitHub Pages deployment config — irrelevant inside the container
 src/CNAME
