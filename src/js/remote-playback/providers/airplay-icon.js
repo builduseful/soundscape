@@ -11,9 +11,9 @@
  * in Apple's ratio and the same sweep either side. Drawing them from two centres
  * is the easy mistake and shows as a gap that pinches towards the ends.
  *
- * Two numbers came from looking rather than from reasoning: the arcs have to be
- * short and close to the beam, and the stroke heavier than the 1.6 the app's
- * other line icons use. Widen or thin either and it becomes a wifi symbol.
+ * The arcs' length and spacing came from looking rather than from reasoning:
+ * they have to be short and close to the beam. Lengthen or spread them and it
+ * becomes a wifi symbol.
  */
 
 const AIRPLAY_GLYPH = /* html */ `

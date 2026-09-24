@@ -138,20 +138,14 @@ export class AppMenu extends HTMLElement {
                         cursor: pointer;
                         anchor-name: --app-menu-button;
                         -webkit-tap-highlight-color: transparent;
-                        tap-highlight-color: transparent;
                         transition:
                             color var(--color-change-duration),
                             background-color var(--color-change-duration);
                     }
 
-                    /* No hover state, deliberately, and it outlived the reason
-                       it was first given. A filled circle appearing the instant
-                       the pointer touched the button flashed on for whoever was
-                       only passing through; that mattered most while hovering
-                       also opened the panel, and it still reads as noise on a
-                       button that is one of two things in a header. The lit
-                       state below means the panel is open and nothing else, so
-                       a reader glancing at the header can trust it. */
+                    /* No hover state, deliberately: the lit state below means
+                       the panel is open and nothing else, so a reader glancing
+                       at the header can trust it. */
 
                     :scope > button:focus {
                         outline: none;
@@ -166,11 +160,8 @@ export class AppMenu extends HTMLElement {
                     /* Held down for as long as the panel is: the button is what
                        the panel belongs to, and a reader glancing back at the
                        header should see where it came from. Asked of
-                       :popover-open rather than of an attribute kept beside it,
-                       because that is the state itself — the rule this replaced
-                       asked whether anything inside had focus, which is a
-                       proxy, and it painted a panel the component believed was
-                       closed.
+                       :popover-open rather than of focus or an attribute kept
+                       beside it, because that is the state itself.
 
                        The panel drops flush *beneath* a button that stays
                        visible. Covering the button meant painting it
@@ -293,7 +284,6 @@ export class AppMenu extends HTMLElement {
                         text-align: center;
                         text-decoration: none;
                         -webkit-tap-highlight-color: transparent;
-                        tap-highlight-color: transparent;
                     }
 
                     .app-version:hover,
@@ -328,13 +318,11 @@ export class AppMenu extends HTMLElement {
                         text-align: left;
                         cursor: pointer;
                         -webkit-tap-highlight-color: transparent;
-                        tap-highlight-color: transparent;
                         transition:
                             color var(--color-change-duration),
                             background-color var(--color-change-duration);
                     }
 
-                    /* Overrides the generic svg rule above, sized for the toggle glyph. */
                     .menu-install svg {
                         width: 16px;
                         height: 16px;

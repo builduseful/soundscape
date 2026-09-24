@@ -2,11 +2,10 @@
  * Remote playback — the plugin's front door.
  *
  * Everything about playing the soundscape on something that is not this device
- * lives under this directory, and `script.js` reaches it only through here. That
- * is the whole point of the restructure: the core knows there *may be* another
- * output and knows nothing about what it is. Delete this directory and its two
- * lines in `script.js` and the app is a local player again, with no dangling
- * references and no dead branches.
+ * lives under this directory, and `script.js` reaches it only through here and
+ * `control.js`. The core knows there *may be* another output and knows nothing
+ * about what it is. Delete this directory and the references to it — the
+ * plugin's AGENTS.md lists them — and the app is a local player again.
  *
  * ## What this returns
  *
@@ -50,8 +49,6 @@ import { missingPlaybackOutputMembers } from "../playback-output.js";
 import { CAST_SDK_PROVIDER } from "./providers/cast-sdk.js";
 import { AIRPLAY_PROVIDER } from "./providers/airplay.js";
 
-export { REMOTE_FAILURE_MESSAGE } from "./messages.js";
-
 /**
  * The control is deliberately *not* re-exported here, and that is worth stating
  * because re-exporting it is the obvious tidy-up.
@@ -59,8 +56,7 @@ export { REMOTE_FAILURE_MESSAGE } from "./messages.js";
  * `control.js` declares `class RemotePlayback extends HTMLElement`, which is
  * evaluated at import time and does not exist outside a browser. Routing it
  * through this module would make the registry — pure logic, and the thing a new
- * provider is checked against — unloadable in Node without a DOM stub. The
- * registry's own tests found that immediately.
+ * provider is checked against — unloadable in Node without a DOM stub.
  *
  * So `script.js` imports the control from `./remote-playback/control.js`
  * directly. Two imports from one directory rather than one, which costs nothing:

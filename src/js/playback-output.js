@@ -35,16 +35,12 @@
  * "AudioPlayer's methods, plus whatever cast needed" — a member that exists for
  * one implementation is a branch in a costume.
  *
- * `setTrack` and `setPlaybackRequested` are on that second contract too, and
- * both were on this one until the conformance check said otherwise. Neither is
- * ever aimed at the local player. `setTrack` exists so an *idle* remote keeps a
- * current source — which is how a picker gets a header to read, and the local
- * player has no equivalent need; it would be a no-op accepted only for
- * symmetry's sake. `setPlaybackRequested` exists because a handover pushes
- * intent into the output it is handing *to*, and the local player's intent is
- * only ever set by playing or pausing it. Two members that would have been
- * carried by one implementation for the other's benefit — exactly the failure
- * this section names — caught by the check rather than by review.
+ * `setTrack` and `setPlaybackRequested` are on that second contract too, because
+ * neither is ever aimed at the local player. `setTrack` keeps an *idle* remote's
+ * source current, which is how a picker gets a header to read; the local player
+ * has no such need. `setPlaybackRequested` lets a handover push intent into the
+ * output it is handing *to*; the local player's intent is only ever set by
+ * playing or pausing it.
  *
  * **A loading state.** Casting has no local fetch or decode: the receiver pulls
  * the file itself. The local player's loading state is reported through an

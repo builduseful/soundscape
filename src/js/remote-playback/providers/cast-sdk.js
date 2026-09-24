@@ -33,9 +33,10 @@
  * AirPlay path in providers/airplay.js, which is the one platform where
  * that API is properly honoured.
  *
- * The script is fetched from gstatic.com and cannot be precached, which is why
- * nothing loads it until the cast button is actually pressed. A visitor who
- * never casts never contacts Google, and the app stays fully usable offline.
+ * The script is fetched from gstatic.com and cannot be precached. Nothing loads
+ * it until someone reaches for the cast button (see prepare) or a cast was live
+ * when the app was last closed (see start). A visitor who never casts never
+ * contacts Google, and the app stays fully usable offline.
  */
 
 import { REMOTE_FAILURE_MESSAGE } from "../messages.js";
@@ -45,7 +46,7 @@ import { remoteUrlFor } from "../track-source.js";
 const SDK_URL = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
 
 // The twins are AAC in MP4, which the Default Media Receiver lists as supported
-// (`audio/mp4; codecs="mp4a.40.2"`). One format for every path, as before.
+// (`audio/mp4; codecs="mp4a.40.2"`). One format for every path.
 const CAST_MIME = "audio/mp4";
 
 // requestSession() rejects with a bare string code rather than an Error. These
@@ -261,9 +262,9 @@ export class CastSdkController {
     //
     // That condition is the whole design. Loading unconditionally would rejoin
     // reliably but contact Google on every single visit, which is exactly what
-    // this module is written to avoid; loading never — which is what it did —
-    // means the rejoin can never happen at all, and reopening the app leaves it
-    // showing "idle" next to a speaker that is still playing.
+    // this module is written to avoid; loading never means the rejoin can never
+    // happen at all, and reopening the app leaves it showing "idle" next to a
+    // speaker that is still playing.
     start() {
         if (!this.isSupported()) return false;
 
@@ -332,12 +333,9 @@ export class CastSdkController {
         }
     }
 
-    // Every subscription initialise() takes out is released here, and the two
-    // lists have to stay in step. VOLUME_LEVEL_CHANGED was missing from this one
-    // for a while and nothing noticed, because nothing calls stopWatching in the
-    // app yet — the controller lives as long as the page. That stops being true
-    // the moment a provider can be detached, which is what the shared output
-    // contract's teardown case now pins.
+    // Every subscription initialise() takes out is released here; keep the two
+    // lists in step. The app never calls this — the controller lives as long as
+    // the page — so the contract suite's teardown case is what notices a miss.
     stopWatching() {
         const events = this.scope.cast?.framework;
 
@@ -546,7 +544,7 @@ export class CastSdkController {
             await this.ensureSdk();
             // Opens the browser's own picker and connects. There is no separate
             // disconnect call in the app: pressing the button again while
-            // connected is what offers "stop casting", exactly as before.
+            // connected is what offers "stop casting".
             await this.context.requestSession();
 
             return true;

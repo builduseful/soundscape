@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "1.21.0";
+const VERSION = "1.21.1";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -134,11 +134,9 @@ function isRemotePlaybackAsset(request) {
 }
 
 // Cache-first navigation, matched against the page that was actually asked
-// for. Answering every navigation with index.html — which this did until the
-// cast diagnostic page came along and could not be reached — makes the app the
-// only page the site has: any second page (an about page, a licence page)
-// silently serves the app instead, and only an uninstalled visitor with an
-// empty cache ever sees the real thing.
+// for. Answering every navigation with index.html would make the app the only
+// page the site has: any second page (an about page, a licence page) would
+// silently serve the app instead.
 //
 // index.html stays the *offline* fallback, which is the case it was written
 // for: a navigation to a page that was never cached, with no network to fetch
@@ -159,10 +157,24 @@ async function handleNavigation(request) {
 
         return response;
     } catch {
-        const indexKey = new URL("./index.html", self.location.origin).href;
-
-        return await cache.match(indexKey) ?? Response.error();
+        return offlineNavigation(request, cache);
     }
+}
+
+// index.html links its styles and modules relatively, so the shell only boots
+// at a URL in the worker's own directory. A deeper page that was never cached
+// is redirected there, rather than handed a shell whose every asset misses.
+//
+// Resolved against the worker rather than the site root, as the precache list
+// is, so this holds when the app is served from a subdirectory.
+async function offlineNavigation(request, cache) {
+    const scope = new URL("./", self.location.href);
+    const index = await cache.match(new URL("index.html", scope).href);
+
+    if (!index) return Response.error();
+    if (new URL("./", request.url).href !== scope.href) return Response.redirect(scope.href, 302);
+
+    return index;
 }
 
 // Cache-first for everything else. ignoreSearch keeps `script.js?v=...`

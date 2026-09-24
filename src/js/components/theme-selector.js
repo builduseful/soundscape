@@ -122,7 +122,6 @@ export class ThemeSelector extends HTMLElement {
                         transition: color var(--color-change-duration);
                         user-select: none;
                         -webkit-tap-highlight-color: transparent;
-                        tap-highlight-color: transparent;
                     }
 
                     svg {
@@ -156,7 +155,7 @@ export class ThemeSelector extends HTMLElement {
                         outline-offset: 2px;
                     }
 
-                    /* Only the thumb's slide. The labels are colour alone now,
+                    /* Only the thumb's slide: the labels change colour alone,
                        and --color-change-duration is already 0s here. */
                     @media (prefers-reduced-motion: reduce) {
                         .theme-selector::before {

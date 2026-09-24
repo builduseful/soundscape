@@ -15,10 +15,11 @@
 .vs/
 opencode.json
 
-# Documentation — runtime doesn't need it. Includes the remote-playback
-# plugin's AGENTS.md, which Caddy never serves (the Pages artifact uploads all
-# src/, so that copy of the doc still ships).
-*.md
+# Documentation — runtime doesn't need it. Anchored with **/ for the same
+# reason as .temp/ above: the AGENTS.md files beside the code under src/ would
+# otherwise be copied in and served. (The Pages artifact uploads all of src/, so
+# they still ship there.)
+**/*.md
 docs/
 
 # Host-side helper scripts (media-key injection, icon/screenshot export) and
@@ -27,7 +28,7 @@ scripts/
 node_modules/
 
 # GitHub Pages deployment config — irrelevant inside the container
-CNAME
+src/CNAME
 
 # Build file — not needed at runtime
 Dockerfile

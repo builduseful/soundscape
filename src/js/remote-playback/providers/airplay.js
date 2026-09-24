@@ -415,13 +415,12 @@ export class AirPlayController {
 
     // Nothing is fetched until the app says a person has touched the page.
     //
-    // The element has to be readable before the picker opens, because Safari
-    // rejects prompt() below HAVE_METADATA. It must not be loaded *by* prompt(),
-    // because a fresh src resets readyState and would break the very call it was
-    // meant to serve. A gesture is the earliest honest signal that a click on the
-    // button is possible, and it leaves a page that is opened and never touched
-    // costing nothing at all. (Chromium turns out to need the metadata too — the
-    // claim that it opened a picker at readyState 0 was wrong, and silently so.)
+    // The element has to be readable before the picker opens — see
+    // TRANSPORT_METADATA_WAIT_MS. It must not be loaded *by* prompt(), because a
+    // fresh src resets readyState and would break the very call it was meant to
+    // serve. A gesture is the earliest honest signal that a click on the button
+    // is possible, and it leaves a page that is opened and never touched costing
+    // nothing at all.
     allowTransportLoad() {
         if (this.transportAllowed) return false;
 
@@ -440,11 +439,10 @@ export class AirPlayController {
     }
 
     // This transport has no volume API at all, and cannot be given one. The
-    // element's own volume is not local while connected — Chromium forwards it
-    // to the receiver as a stream volume change, and on a Cast device that is
-    // the speaker's own level, which outlives the session — so driving it from
-    // here would mean connecting a cast quietly moved the room's volume to
-    // wherever this page's slider happened to sit.
+    // element's own volume is not local while connected — it is forwarded to
+    // the receiver as a stream volume change that outlives the session — so
+    // driving it from here would mean connecting quietly moved the room's
+    // volume to wherever this page's slider happened to sit.
     //
     // The Cast SDK path answers true: it has RemotePlayerController.setVolumeLevel,
     // which is an explicit, session-scoped request rather than a side effect.

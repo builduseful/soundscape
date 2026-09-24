@@ -364,8 +364,64 @@ test("navigations are served the page that was asked for, not always the app", a
     const [cacheLookup] = body.split("catch");
 
     assert.match(cacheLookup, /cache\.match\(request,\s*\{\s*ignoreSearch:\s*true\s*\}\)/);
-    assert.doesNotMatch(cacheLookup, /indexKey/, "the cached lookup must not be pinned to index.html");
-    assert.match(body, /catch[\s\S]*indexKey/, "index.html remains the offline fallback");
+    assert.doesNotMatch(cacheLookup, /index\.html/, "the cached lookup must not be pinned to index.html");
+    assert.match(body, /catch[\s\S]*offlineNavigation\(request, cache\)/, "index.html remains the offline fallback");
+});
+
+async function loadOfflineNavigation(workerUrl) {
+    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
+    const match = /async function offlineNavigation\(request, cache\) \{[\s\S]*?\n\}/u.exec(source);
+
+    assert.ok(match, "sw.js should define offlineNavigation");
+
+    const FakeResponse = {
+        error: () => ({ type: "error" }),
+        redirect: (url, status) => ({ type: "redirect", url, status }),
+    };
+
+    // eslint-disable-next-line no-new-func -- running the worker's own source is the point
+    return new Function("self", "Response", `${match[0]}\nreturn offlineNavigation;`)(
+        { location: { href: workerUrl } },
+        FakeResponse,
+    );
+}
+
+function cacheHolding(entries) {
+    return { match: async (key) => entries[key] };
+}
+
+// index.html's assets are relative, so the shell only boots in the worker's own
+// directory. Served at a deeper URL it would ask for js/script.js *there*, miss
+// the cache, and sit dead — so a deeper page is sent home instead.
+test("offline, an unknown page is answered by the app wherever the app can boot", async () => {
+    const index = { type: "index" };
+    const cache = cacheHolding({ "https://soundscape.test/app/index.html": index });
+    const offlineNavigation = await loadOfflineNavigation("https://soundscape.test/app/sw.js");
+    const navigate = (url) => offlineNavigation({ url }, cache);
+
+    assert.equal(await navigate("https://soundscape.test/app/"), index);
+    assert.equal(await navigate("https://soundscape.test/app/about"), index);
+    assert.deepEqual(await navigate("https://soundscape.test/app/a/b/page"), {
+        type: "redirect",
+        url: "https://soundscape.test/app/",
+        status: 302,
+    });
+    assert.deepEqual(await navigate("https://soundscape.test/elsewhere"), {
+        type: "redirect",
+        url: "https://soundscape.test/app/",
+        status: 302,
+    });
+});
+
+// Without a cached shell there is nothing to redirect to, and a redirect home
+// would only loop back here.
+test("offline with no cached shell, a navigation fails rather than redirecting", async () => {
+    const offlineNavigation = await loadOfflineNavigation("https://soundscape.test/sw.js");
+
+    assert.deepEqual(
+        await offlineNavigation({ url: "https://soundscape.test/a/b" }, cacheHolding({})),
+        { type: "error" },
+    );
 });
 
 function escapeRegExp(value) {

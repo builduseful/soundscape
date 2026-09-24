@@ -177,7 +177,7 @@ export class AudioPlayer {
      * Deliberately narrower than playTrack below, which it delegates to. The two
      * arguments it drops are not simplifications — they are dead from the app's
      * side. `loop` is passed `true` at every call site the app has, and
-     * `resetContext` only forces a media-element reload when the URL is
+     * `resetContext` only forces a media-element reload when the track is
      * unchanged, which never happens on a track change. Both stay on playTrack
      * because its own tests exercise them.
      *

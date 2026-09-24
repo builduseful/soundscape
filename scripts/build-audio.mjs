@@ -78,10 +78,11 @@ const OPUS_BITRATE = "64k";
 // No cast path performs a native wrap: Chrome desktop remotes the stream and
 // Safari drives AirPlay, and both implement `loop` in the browser as a seek back
 // to zero, which flushes the receiver's buffer and is audible. Chrome Android
-// does not loop at all (see AGENTS.md). Repeating the trimmed period inside the
-// file is bit-exact — every internal join is the same sample-adjacent seam the
-// crossfade already built — so the only audible seam is the one at the end of
-// the file, and length is what decides how often it comes round.
+// does not loop at all (see src/js/remote-playback/AGENTS.md). Repeating the
+// trimmed period inside the file is bit-exact — every internal join is the same
+// sample-adjacent seam the crossfade already built — so the only audible seam is
+// the one at the end of the file, and length is what decides how often it comes
+// round.
 //
 // Two minutes is the balance point: ~1 MB per twin at the bitrate above, and it
 // clears by a wide margin the 15 s floor below which Chromium refuses to remote

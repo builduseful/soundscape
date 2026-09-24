@@ -23,10 +23,9 @@
  * @element volume-control
  * @attr {string} value - Slider value between 0 and 1.
  * @attr {string} label - Accessible name for the control. Defaults to "Volume".
- * @attr {boolean} disabled - Inert and dimmed. Note the app no longer uses this
- *   for casting: a cast that can carry volume drives the device through the same
- *   slider, and one that cannot hides the control outright, because a disabled
- *   slider reads as broken rather than absent.
+ * @attr {boolean} disabled - Inert and dimmed, with the panel closed. Unused by
+ *   the app: a cast either drives the device through this slider or hides the
+ *   control, because a disabled slider reads as broken rather than absent.
  * @fires input - Mirrors the internal range input's current value.
  * @fires change - Mirrors committed range changes.
  */
@@ -169,19 +168,14 @@ export class VolumeControl extends HTMLElement {
                         cursor: pointer;
                         anchor-name: --volume-button;
                         -webkit-tap-highlight-color: transparent;
-                        tap-highlight-color: transparent;
                         transition:
                             color var(--color-change-duration),
                             background-color var(--color-change-duration);
                     }
 
                     /* No hover state, deliberately, as the app-menu button has
-                       none. It lit to the same --color-text the open state uses
-                       below, so a lit button meant either "the panel is open" or
-                       "a pointer is passing over this" and a reader could not
-                       tell which. The lit state now means the panel is open and
-                       nothing else. Hovering opens nothing here any more, so
-                       there is nothing for a hover to promise either. */
+                       none: the lit state below means the panel is open and
+                       nothing else, which a hover would blur. */
 
                     :scope > button:focus {
                         outline: none;
@@ -194,14 +188,8 @@ export class VolumeControl extends HTMLElement {
                     /* Lit for as long as the panel is, the way app-menu's button
                        is: the panel belongs to this button, and a reader glancing
                        back should see where it came from. Colour only — the
-                       button keeps its own shape throughout.
-
-                       It was briefly the bottom of a single pill that the panel
-                       completed, which looked well but asked two boxes to meet
-                       on an invisible seam: a pixel of misplacement showed as a
-                       broken join, the shape changed under the reader on every
-                       open, and the round-trip back to a circle on close was
-                       visible. They are two objects, so they look like two.
+                       button and panel are two objects, so they look like two;
+                       the contract test says what a shared shape cost.
 
                        Asked of :popover-open rather than of an attribute kept
                        beside it, because that is the state itself. */
@@ -210,10 +198,6 @@ export class VolumeControl extends HTMLElement {
                         background-color: var(--color-surface-muted);
                     }
 
-                    /* The speaker glyph's bounding box is horizontally
-                       symmetric, but the solid cone reads heavier than the
-                       thin sound-wave strokes, so a box-centered icon looks
-                       optically left-heavy. Nudge it right to compensate. */
                     svg {
                         width: 22px;
                         height: 22px;
@@ -318,11 +302,7 @@ export class VolumeControl extends HTMLElement {
                         }
                     }
 
-                    /* One ring round one box, now that the panel is the whole of
-                       what the slider lives in. While the panel was half a pill
-                       this had to be drawn in two pieces that met at the seam,
-                       and getting that join right was fiddly for a shape nobody
-                       needed. */
+                    /* The slider's focus ring goes round the whole panel. */
                     .volume-panel:has(input[type="range"]:focus-visible) {
                         box-shadow: var(--shadow-elevated), 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
                     }
@@ -361,7 +341,6 @@ export class VolumeControl extends HTMLElement {
                         user-select: none;
                         -webkit-user-drag: none;
                         -webkit-tap-highlight-color: transparent;
-                        tap-highlight-color: transparent;
                         writing-mode: vertical-lr;
                     }
 
@@ -569,9 +548,8 @@ export class VolumeControl extends HTMLElement {
         if (sliderLabel) sliderLabel.textContent = label;
     }
 
-    // Disabled means another output owns the level, so the panel is closed as
-    // well as inert — leaving a slider on screen that moves nothing would be a
-    // control that lies.
+    // Closed as well as inert: a slider left on screen that moves nothing would
+    // be a control that lies.
     syncDisabled() {
         const disabled = this.hasAttribute("disabled");
         const button = this.querySelector("button");

@@ -323,10 +323,9 @@ rules themselves, and the evidence you cannot get from reading the code.
   also be `.m4a`, and that one must stay cacheable or offline playback
   disappears for exactly the browsers needing the fallback. It is not a caching
   preference: `cacheIfOk` buffers the whole body and `handleRangeRequest`
-  upgrades a range miss to a full
-  fetch, so every partial read the transport element makes would become a whole
-  megabyte. Passing them through leaves the browser fetching the bytes it
-  actually asked for. `tests/pwa.test.js` excludes everything under
+  upgrades a range miss to a full fetch, so every partial read the transport
+  element makes would become a whole megabyte. Passing them through leaves the
+  browser fetching the bytes it actually asked for. `tests/pwa.test.js` excludes everything under
   `resources/soundscapes/` from the precache, and separately proves the
   exemption admits `cast/` and refuses both local variants. The consequence to
   accept: casting needs the network, which is true of the Android path

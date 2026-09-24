@@ -76,7 +76,7 @@ async function captureShot(browser, url, shot) {
         const page = await context.newPage();
         await page.goto(url, { waitUntil: "networkidle" });
         await page.waitForSelector("#playPauseButton");
-        // Let the 420ms title-swap animation (see AGENTS.md) fully settle before capturing.
+        // Let the 420ms title-swap animation fully settle before capturing.
         await page.waitForTimeout(600);
         return await page.screenshot();
     } finally {

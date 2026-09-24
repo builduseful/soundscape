@@ -15,8 +15,8 @@
  *
  * The element renders hidden and stays that way until `attach()` is called, and
  * `detach()` removes it from the document outright. A browser with no way to
- * cast therefore ships no remote markup at all,
- * rather than markup kept permanently hidden. Nothing here is wired before
+ * cast therefore ships no remote markup at all, rather than markup kept
+ * permanently hidden. Nothing here is wired before
  * `attach()`: no listeners, no facade, nothing to press.
  *
  * That is also why the visibility is decided once. A browser either has a way to
@@ -274,8 +274,7 @@ export class RemotePlayback extends HTMLElement {
                        leaning on the provider's connected drawing — a mark may
                        be the same in both states, and a shape change alone is
                        small to read at 22px. Connecting takes the weight but
-                       keeps the
-                       idle drawing: nothing is playing elsewhere yet. Not
+                       keeps the idle drawing: nothing is playing elsewhere yet. Not
                        --color-primary: the palette is monochrome and defines it
                        as the same ink as --color-text, so the contrast has to
                        come from stepping off the muted idle colour. */

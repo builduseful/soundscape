@@ -303,6 +303,24 @@ test("global keyboard shortcuts ignore repeats and editable controls", async () 
     assert.equal(navigator.mediaSession.playbackState, "none");
 });
 
+// A modified key belongs to the browser or the OS. Alt+Left is Back on Windows
+// and Linux, and taking it for "previous track" would trap the listener on the
+// page.
+test("global keyboard shortcuts leave modified keys alone", async () => {
+    const { audioElement, navigator } = await startAppTestEnvironment();
+
+    for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+        for (const key of [" ", "ArrowRight", "ArrowLeft"]) {
+            const event = await document.dispatch("keydown", { key, repeat: false, [modifier]: true });
+
+            assert.equal(event.defaultPrevented, false, `${modifier} + ${JSON.stringify(key)} should be left alone.`);
+        }
+    }
+
+    assert.equal(audioElement.playCalls, 0);
+    assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
+});
+
 test("track title changes animate and settle after animationend", async () => {
     const { elements, mediaActions, navigator } = await startAppTestEnvironment();
     const { current, incoming, title } = getTitleParts(elements);
@@ -723,6 +741,35 @@ test("starting a new load takes down a previous failure notice", async () => {
     await retry;
     assert.equal(trackLoading.hidden, true);
     assert.equal(playbackError.hidden, true);
+});
+
+// The other direction. A cast press that reaches no picker reports at once, and
+// can land while a slow track is still loading; the notice is the newer news, so
+// it takes the bar down rather than sitting under it. The dimmed title still
+// says audio is on its way.
+test("a failure notice posted mid-load takes down the loading bar", async () => {
+    const gatedFetch = installGatedFetch();
+    const { elements, mediaActions, timeoutLog, triggerTimeout } = await startAppTestEnvironment({
+        castDevices: true,
+        fetch: () => gatedFetch.fetch(),
+    });
+    const trackLoading = elements.get("trackLoading");
+    const playbackError = elements.get("playbackError");
+    const title = elements.get("title");
+
+    const play = mediaActions.play();
+    await showLoadingIndicator(timeoutLog, triggerTimeout);
+    assert.equal(trackLoading.hidden, false);
+
+    elements.get("remotePlaybackUi").facade.onUnavailable("Couldn't open the device list yet.");
+
+    assert.equal(playbackError.hidden, false);
+    assert.equal(trackLoading.hidden, true, "the loading bar should not sit over a failure notice");
+    assert.equal(title.classList.contains("is-loading"), true);
+
+    gatedFetch.release();
+    await play;
+    assert.equal(title.classList.contains("is-loading"), false);
 });
 
 test("media play failures after a track switch keep the switched track selected", async () => {

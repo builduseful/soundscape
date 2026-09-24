@@ -119,11 +119,9 @@
              cannot test. Its location is the plugin's business; its existence
              is not worth a Safari regression to tidy.
 
-             preload is "metadata" because macOS Safari refuses to open its
-             picker on an element below HAVE_METADATA, so the header has to have
-             been read before the button is pressed. Chromium does not need it —
-             verified opening its picker at readyState 0 — but one rule for both
-             is simpler.
+             preload is "metadata" because neither Safari nor Chromium will open
+             a picker on an element below HAVE_METADATA, so the header has to
+             have been read before the button is pressed.
 
              It is a hint, not a budget: Chrome reads well past the header on a
              file this small. What actually keeps that off the wire is that the

@@ -179,7 +179,6 @@ body {
     letter-spacing: 0.02em;
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
-    tap-highlight-color: transparent;
 }
 
 .app-byline:hover,
@@ -391,11 +390,6 @@ button.play[data-playing="true"] .play-icon--play {
 button.play[data-playing="true"] .play-icon--pause {
     display: block;
 }
-
-/* The remote playback button and its announcement styled themselves out of this
-   file in 1.14.3 — including the only .sr-only rule the app had, which existed
-   for that announcement alone. Both now live inside remote-playback/control.js
-   with the markup they style. */
 
 @media (max-width: 520px) {
     .container {

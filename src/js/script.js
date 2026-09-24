@@ -34,7 +34,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "1.21.0";
+const VERSION = "1.21.1";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -109,15 +109,14 @@ const localOutput = new AudioPlayer(audioElement, {
 // Which provider was chosen is deliberately not knowable from this file. The
 // registry decides once, from the browser alone, and nothing downstream branches
 // on the answer.
-//
-// A pause pressed on the receiving device itself is the app's only word that the room
-// went quiet. Re-read rather than trust: the answer is whatever the transport
-// says right now, which is also what makes this safe to receive during the
-// app's own transitions.
 const remotePlayback = createRemotePlayback({
     element: remoteTransportElement,
     tracks,
     onChange: handleRemoteConnectionChange,
+    // A pause pressed on the receiving device is the app's only word that the
+    // room went quiet. Re-read rather than trusted: the answer is whatever the
+    // transport says right now, which also makes this safe to receive during
+    // the app's own transitions.
     onPlaybackChange: () => syncPlaybackState(isOutputPlaying()),
     onTrackAdopted: adoptRemoteTrack,
     onVolumeChange: adoptRemoteVolume,
@@ -134,8 +133,8 @@ function activeOutput() {
 
 // Some paths legitimately need the local player specifically rather than
 // whichever output is active — the media element's own play/pause events,
-// visibility, and the volume the app is allowed to remember. Named so those
-// stay findable, and stay few.
+// visibility, the volume the app is allowed to remember, and syncPlaybackState's
+// paused-or-none question. Named so those stay findable, and stay few.
 function isRemoteActive() {
     return activeOutput() !== localOutput;
 }
@@ -226,6 +225,10 @@ function handleDocumentKeyup(event) {
 }
 
 function shouldIgnoreGlobalShortcut(event) {
+    // A modified key is the browser's or the OS's shortcut, not ours: Alt+Left
+    // is Back, for one.
+    if (event.altKey || event.ctrlKey || event.metaKey) return true;
+
     const target = event.target instanceof Element ? event.target : null;
 
     if (!target) return false;
@@ -501,9 +504,8 @@ function applyVolume(volume) {
     localOutput.setVolume(volume);
 }
 
-// A disabled slider that does not read as disabled is the worst of the three
-// options — it looks broken rather than absent, and gives no clue why. So the
-// control now takes one of two honest shapes while a remote is active:
+// A disabled slider looks broken rather than absent, and gives no clue why. So
+// while a remote is active the control takes one of two honest shapes:
 //
 //   - The transport can carry volume: the slider drives the device, relabelled
 //     so it is clear whose level moves.
@@ -580,10 +582,7 @@ function initRemotePlayback() {
         // while audio is playing, which is the usual moment someone reaches for
         // this button, and the soundscape playing on is no consolation for a
         // device list that will not appear.
-        onUnavailable: (message) => {
-            playbackError.textContent = message;
-            playbackError.hidden = false;
-        },
+        onUnavailable: showPlaybackError,
     });
 
     // Capture, so a handler that stops propagation cannot hide the gesture. The
@@ -631,15 +630,12 @@ function adoptRemoteTrack(track) {
 // and there is deliberately only one.
 //
 // Its two pieces of state — remoteWasConnected and remoteTransitionId — are
-// declared with the rest of the module's state near the top of the file, rather
-// than here beside their only readers, which would be the better place.
-//
-// The reason is a hoisting rule: a `let` cannot be read at all until its own
-// statement has run (its "temporal dead zone"), even from code further down the
-// file. initRemotePlayback() runs in the boot block above this point, so if the
-// declarations sat here, a provider reporting a connection during start() — a
-// session rejoined from a previous page load does exactly that — would reach
-// the handler before either binding existed, and throw. Two tests caught it.
+// declared near the top of the file rather than here beside their only readers.
+// A `let` cannot be read until its own statement has run (its "temporal dead
+// zone"), and initRemotePlayback() runs in the boot block above this point: a
+// provider reporting a connection during start() — a session rejoined from a
+// previous page load does exactly that — would reach the handler before either
+// binding existed, and throw.
 // ---------------------------------------------------------------------------
 
 // Connection governs which output owns the soundscape, and only a change in it
@@ -760,9 +756,9 @@ async function handBackOutput() {
     }
 
     // Resume through the ordinary play path rather than driving the local player
-    // directly, so ending a remote session continues the audio rather than dropping the
-    // room into silence — and so it lands on whatever activeOutput() now says,
-    // which is the local player by the time this runs.
+    // directly, so ending a remote session continues the audio rather than
+    // dropping the room into silence — and so it lands on whatever
+    // activeOutput() now says, which is the local player by the time this runs.
     //
     // This is the one place playback starts without a user gesture behind it: if
     // the session began on the remote, there is no AudioContext yet and the
@@ -779,18 +775,33 @@ async function handBackOutput() {
 // soundscape keeps going and pressing next again just works — so surfacing it
 // would put a warning over music that never stopped. Those stay console-only,
 // which is where a developer wants them anyway.
-// `message` overrides the default when the failure is not about the soundscape.
-// A remote device that will not start is the case that matters: "pick another" sends the
-// user hunting through tracks for a fault that is in the room, not the file.
+//
+// `message` overrides the default when the failure is not about the soundscape:
+// for a remote device that will not start, "pick another" would send the user
+// hunting through tracks for a fault that is in the room, not the file.
 function reportPlaybackFailure(logMessage, error, message) {
     console.warn(logMessage, error);
 
     if (isOutputPlaying()) return;
 
-    playbackError.textContent = message ?? (globalThis.navigator?.onLine === false
+    showPlaybackError(message ?? (globalThis.navigator?.onLine === false
         ? "You're offline and this soundscape hasn't been downloaded yet."
-        : "This soundscape could not be played. Try again, or pick another.");
+        : "This soundscape could not be played. Try again, or pick another."));
+}
+
+// The error and the loading bar share one strip and never stand together;
+// whichever arrives later wins. A bar that appears clears an older error (see
+// syncLoadingIndicator), and an error that appears takes the bar down. The title
+// stays dimmed, so a load still running still shows.
+function showPlaybackError(message) {
+    hideLoadingBar();
+    playbackError.textContent = message;
     playbackError.hidden = false;
+}
+
+function hideLoadingBar() {
+    trackLoadingLabel.textContent = "";
+    trackLoading.hidden = true;
 }
 
 function syncLoadingIndicator(isLoading) {
@@ -799,8 +810,7 @@ function syncLoadingIndicator(isLoading) {
 
     if (!isLoading) {
         title.classList.remove("is-loading");
-        trackLoadingLabel.textContent = "";
-        trackLoading.hidden = true;
+        hideLoadingBar();
         return;
     }
 
@@ -861,7 +871,6 @@ function updateThemePreference(value, shouldSave = true) {
 // --- Playback -------------------------------------------------------------
 
 async function playCurrentTrack(trackChangeId, direction = "next") {
-    // Load the current soundscape
     const track = getCurrentTrack();
     // Decide from playback intent, not the media element's transient paused
     // state: during a track swap the element is briefly paused (src set +
@@ -959,8 +968,8 @@ async function pauseAudio() {
 }
 
 // The local media element's play/pause events mirror app state back into the
-// app. While a remote is active it is deliberately parked and paused, so its events say
-// nothing about what the listener is hearing and must not steer playback.
+// app. While a remote is active the element is parked on purpose, so its events
+// say nothing about what the listener is hearing and must not steer playback.
 async function handleBrowserPlaybackStart() {
     if (localOutput.isBrowserPlaybackSyncSuppressed() || isRemoteActive()) return;
 
