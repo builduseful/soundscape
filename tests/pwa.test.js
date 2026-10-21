@@ -205,53 +205,6 @@ test("manifest exposes an installable standalone app with any and maskable icons
 
 // Chrome/Android only shows the rich install dialog (vs. a bare one-line
 // prompt) when the manifest carries at least one screenshot per form_factor.
-// The cast exemption, executed rather than pattern-matched.
-//
-// This used to be an extension test (`.endsWith(".m4a")`), which stops being
-// correct the moment a *local* fallback is also .m4a: that file must stay
-// cacheable, or offline playback quietly disappears for exactly the browsers
-// that need the fallback. The boundary is now the directory, and it is worth a
-// real call rather than a regex on the source.
-async function loadIsRemotePlaybackAsset(scope) {
-    const source = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
-    const match = /function isRemotePlaybackAsset\(request\) \{[\s\S]*?\n\}/u.exec(source);
-
-    assert.ok(match, "sw.js should define isRemotePlaybackAsset");
-
-    // eslint-disable-next-line no-new-func -- running the worker's own source is the point
-    return new Function("registration", `${match[0]}\nreturn isRemotePlaybackAsset;`)({ scope });
-}
-
-test("only cast audio bypasses the service worker", async () => {
-    const isRemotePlaybackAsset = await loadIsRemotePlaybackAsset("https://soundscape.test/");
-    const asks = (url) => isRemotePlaybackAsset({ url });
-
-    assert.equal(asks("https://soundscape.test/resources/soundscapes/cast/rain.m4a"), true);
-
-    // Both local variants stay with the worker. The .m4a is the case the old
-    // extension test got wrong.
-    assert.equal(asks("https://soundscape.test/resources/soundscapes/opus/rain.opus"), false);
-    assert.equal(asks("https://soundscape.test/resources/soundscapes/aac/rain.m4a"), false);
-
-    assert.equal(asks("https://soundscape.test/index.html"), false);
-    assert.equal(asks("https://soundscape.test/js/script.js"), false);
-});
-
-// A path anchored with a leading slash would silently stop matching if the app
-// were ever served from a subdirectory — every cast file would then be cached
-// whole on a range request, which is the exact cost the exemption avoids.
-test("the cast exemption follows the worker's scope rather than the site root", async () => {
-    const isRemotePlaybackAsset = await loadIsRemotePlaybackAsset("https://example.test/soundscape/");
-    const asks = (url) => isRemotePlaybackAsset({ url });
-
-    assert.equal(asks("https://example.test/soundscape/resources/soundscapes/cast/rain.m4a"), true);
-    assert.equal(asks("https://example.test/soundscape/resources/soundscapes/opus/rain.opus"), false);
-
-    // Outside the scope entirely: another app's cast directory on the same host
-    // is not this worker's business.
-    assert.equal(asks("https://example.test/other/resources/soundscapes/cast/rain.m4a"), false);
-});
-
 test("manifest carries narrow and wide install screenshots", async () => {
     const source = await readFile(new URL("../src/manifest.webmanifest", import.meta.url), "utf8");
     const manifest = JSON.parse(source);
@@ -350,7 +303,7 @@ test("service worker keys non-range cache lookups on the original request", asyn
 
 // This answered every navigation with index.html, whatever was asked for, so
 // the site could only ever have one page: a second one — an about page, a
-// licence page, the cast diagnostic that found this — served the app instead,
+// licence page, a diagnostic page — served the app instead,
 // and only a visitor with an empty cache saw the real thing. index.html stays
 // the fallback for a page that is neither cached nor reachable, which is the
 // case it was written for.
@@ -452,10 +405,9 @@ test("every deployable asset is precached by the service worker", async () => {
         // a deployment artefact the browser never requests. Screenshots are
         // only ever fetched by the OS install UI before the app is installed,
         // so offline precaching buys nothing. Markdown is documentation that
-        // happens to sit beside the code it documents (remote-playback/AGENTS.md
-        // ships with its plugin so deleting the directory takes the docs too) —
-        // the app never requests it, and precaching it would cost every visitor
-        // bytes for a file only a developer reads.
+        // sits beside the code it documents — the app never requests it, and
+        // precaching it would cost every visitor bytes for a file only a
+        // developer reads.
         .filter((path) => !/^\.\/(sw\.js|CNAME)$/.test(path))
         .filter((path) => !path.startsWith("./resources/soundscapes/"))
         .filter((path) => !path.startsWith("./resources/screenshots/"))

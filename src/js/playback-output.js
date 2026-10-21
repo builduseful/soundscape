@@ -1,21 +1,19 @@
 /**
  * PlaybackOutput — the shape of a thing that can be producing the soundscape.
  *
- * The app has more than one. `AudioPlayer` is the local one; a remote provider
- * (Chromecast, AirPlay) is another. **Exactly one drives playback at any
- * moment** — nothing in the browser can route an AudioContext to a cast target,
- * so the two are strictly exclusive rather than mixed. That rule is not cast
- * trivia; it is the fact every playback path in the app must respect, and this
- * interface is how the core respects it without knowing what any output is.
+ * Today there is one: `AudioPlayer`. The port is kept anyway, and the core
+ * reaches the player only through `activeOutput()` in `script.js`, because a
+ * second output has existed before — Chromecast and AirPlay, removed from the
+ * web app with the tag js/AGENTS.md names — and keeping the seam is what lets
+ * one come back as a plugin rather than as a rewrite of the core. If one does,
+ * **exactly one output drives playback at any moment**: nothing in the browser
+ * can route an AudioContext to a cast target, so outputs are exclusive, never
+ * mixed.
  *
- * The goal it serves, stated once so it does not drift: the core knows there
- * *may be more than one output*, and knows nothing about what any of them are.
- *
- * ## The members, and why each earns its place
+ * ## The members
  *
  *   isPlaying()               Is sound coming out right now. Always a live
  *                             re-read of the transport, never a cached flag.
- *   wantsPlayback()           Raw intent. Nothing ANDed in.
  *   isPlaybackRequested()     Intent *and* something to play.
  *   holdsTrack(track)         Is this the soundscape this output has loaded.
  *   startTrack(track, opts)   Be on this track, playing iff opts.wasPlaying.
@@ -24,58 +22,27 @@
  *   getVolume() / setVolume() Only meaningful while the above is true.
  *   canReportPosition()       Can this transport ever report a position.
  *   getMediaSessionPositionState()  The reading now, or null.
- *   failureMessage()          What to tell the user when this output fails.
+ *   failureMessage()          What to tell the user when this output fails,
+ *                             or null for the app's own wording.
  *
- * ## Three things that are deliberately NOT here
+ * ## Two things that are deliberately NOT here
  *
- * **The provider interface.** `isSupported`, `start`, `stopWatching`, `prompt`,
- * `prepare`, `allowTransportLoad`, `isTransportReady`, `backendName` are how a
- * *remote* output is discovered, opened and torn down. They are a second,
- * remote-only contract. Keeping them out is what stops this port drifting into
- * "AudioPlayer's methods, plus whatever cast needed" — a member that exists for
- * one implementation is a branch in a costume.
- *
- * `setTrack` and `setPlaybackRequested` are on that second contract too, because
- * neither is ever aimed at the local player. `setTrack` keeps an *idle* remote's
- * source current, which is how a picker gets a header to read; the local player
- * has no such need. `setPlaybackRequested` lets a handover push intent into the
- * output it is handing *to*; the local player's intent is only ever set by
- * playing or pausing it.
- *
- * **A loading state.** Casting has no local fetch or decode: the receiver pulls
- * the file itself. The local player's loading state is reported through an
- * `onLoadingChange` callback it is constructed with, not polled through here, so
- * there is no branch for the core to take. If someone ever tries to make the
- * remotes report loading "for symmetry", this port has failed.
+ * **A loading state.** The local player reports loading through the
+ * `onLoadingChange` callback it is constructed with, not through this port, so
+ * an output that has nothing to fetch need not pretend to.
  *
  * **A supersession answer.** `startTrack` resolves; whether a newer track change
  * has overtaken it is not its business. The generation counter that decides that
- * is owned by the core (`currentTrackChangeId`), and asking every output to
- * reconstruct it is what would make it forgettable per-provider. The core checks
- * once, for every output. `AudioPlayer`'s own internal request guard stays — it
- * stops an older decode overwriting the active source, which is a different
- * concern from whether the caller may write OS metadata.
- *
- * ## The one invariant relating two members
- *
- *     isPlaybackRequested()  ⇒  wantsPlayback()
- *
- * `wantsPlayback()` is the raw intent; `isPlaybackRequested()` ANDs in "there is
- * something to play". On `AudioPlayer` they genuinely differ, and the difference
- * is load-bearing: a device connecting while the very first track is still
- * decoding finds nothing loaded, and a handover reading the ANDed answer would
- * take that for "the user wasn't playing" and hand the receiver silence after an
- * explicit press of play. On a remote they answer identically, because a remote
- * has no "nothing has ever loaded" state — an honest coincidence, not a
- * collapse. Keep the two callers apart; the contract suite pins the implication
- * for every implementation.
+ * is owned by the core (`currentTrackChangeId`) and checked once, for every
+ * output. `AudioPlayer`'s own internal request guard stays — it stops an older
+ * decode overwriting the active source, which is a different concern from
+ * whether the caller may write OS metadata.
  *
  * ## On reporting
  *
  * An output must have settled its own state *before* it reports a change. The
- * core reads ownership live, so a provider that announced a connection before
- * `isConnected()` agreed would have the core read the previous owner and the
- * whole design would invert.
+ * core reads state live, so an output that announced a change before its own
+ * getters agreed would have the core read the previous state.
  */
 
 /**
@@ -84,11 +51,10 @@
  * This exists so the contract can be checked rather than asserted. A registry
  * that accepts plugins should be able to reject a malformed one at the boundary,
  * where the fault is still attributable — not three interactions later when
- * something returns undefined in the middle of a handover.
+ * something returns undefined mid-playback.
  */
 export const PLAYBACK_OUTPUT_MEMBERS = [
     "isPlaying",
-    "wantsPlayback",
     "isPlaybackRequested",
     "holdsTrack",
     "startTrack",

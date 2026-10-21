@@ -13,8 +13,7 @@ import { loadComponent } from "./helpers/popover-fakes.js";
  *
  * The markup and CSS `render()` writes are not covered here, because a fake DOM
  * that parsed HTML would be a browser. That half is checked as source by
- * component-contract.test.js, the same split `remote-playback-control.test.js`
- * uses and for the same reason.
+ * component-contract.test.js.
  */
 
 /** A menu with `render()` stubbed out, since a fake DOM cannot parse its template. */

@@ -176,36 +176,36 @@ the box is ticked here.
 ### Phase 1 — Web: remove casting (on the current layout)
 Done before the move, so the move carries less and the tag points at a clean
 pre-removal state.
-- [ ] Propose the tag for the last casting commit, and create it on a yes.
-- [ ] Delete `src/js/remote-playback/` and its tests:
+- [x] Propose the tag for the last casting commit, and create it on a yes.
+- [x] Delete `src/js/remote-playback/` and its tests:
   - `app-cast-sdk`
   - `app-remote-playback`
   - `remote-playback-*`
   - `providers/`
   - `helpers/fake-remote-playback.js`
   - `helpers/remote-transport-fakes.js`
-- [ ] Remove from `index.html`: `<remote-playback>`, `#remoteTransportElement`,
+- [x] Remove from `index.html`: `<remote-playback>`, `#remoteTransportElement`,
       and the opt-out attributes whose only reason was casting (keep them if the
       reason still stands; see the decision note below).
-- [ ] `script.js`:
+- [x] `script.js`:
   - Delete the handover, the remote wiring, `adoptRemote*` and
     `syncVolumeControlForRemote`.
   - `activeOutput()` stays, returning `localOutput`.
   - Keep `isRemoteActive()` only if a reader needs it; otherwise collapse it.
-- [ ] `audio-player.js` / `playback-output.js`: remove the handover-only members
+- [x] `audio-player.js` / `playback-output.js`: remove the handover-only members
       (`pauseForHandover`, `wantsPlayback`) and update the contract suite.
-- [ ] `sw.js`: remove the cast bypass and the precache entries. Update
+- [x] `sw.js`: remove the cast bypass and the precache entries. Update
       `pwa.test.js`.
-- [ ] Delete `resources/soundscapes/cast/`, the `--cast` role in
+- [x] Delete `resources/soundscapes/cast/`, the `--cast` role in
       `build-audio.mjs`, and the `cast/*` entries in `build-manifest.json`.
-- [ ] Update the docs: README, root AGENTS.md, `src/js/AGENTS.md`,
+- [x] Update the docs: README, root AGENTS.md, `src/js/AGENTS.md`,
       `components/AGENTS.md`, `tests/AGENTS.md`, `scripts/AGENTS.md`. Leave one
       line pointing at the tag.
-- [ ] List the remaining clean-up candidates for the maintainer (above). Do
+- [x] List the remaining clean-up candidates for the maintainer (above). Do
       none unasked.
-- [ ] `npm test` green. Run in a browser in both themes, then play, skip, change
+- [x] `npm test` green. Run in a browser in both themes, then play, skip, change
       volume and use the menu.
-- [ ] Propose the version bump.
+- [x] Propose the version bump.
 
 > **Decision note:** `disableremoteplayback` / `x-webkit-airplay="deny"` on
 > `#audioElement` still protect against the *browser's own* cast and AirPlay

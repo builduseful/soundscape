@@ -3,8 +3,11 @@
 Rules that must stay true of playback. Read before changing `audio-player.js`,
 `playback-output.js`, `media-session.js`, or the playback paths in `script.js`.
 
-Chromecast and AirPlay have their own invariants — see
-[`remote-playback/AGENTS.md`](remote-playback/AGENTS.md).
+**Casting was removed, not lost.** Chromecast and AirPlay were a detachable
+plugin until the tag `last-with-casting` (commit `cc7e6b8`). Its
+`src/js/remote-playback/AGENTS.md` there holds measured platform behaviour —
+silent picker rejections, codec limits, device-only failures — that no test
+can show you. Read it before bringing casting back in any form.
 
 ## Two coordinated surfaces
 
@@ -21,13 +24,11 @@ buffers for audible playback.
 - Audible looping comes from decoded `AudioBufferSourceNode`s. These ambience
   tracks need seamless loop points, and native `HTMLAudioElement.loop` has
   produced audible gaps or discontinuities on short loops.
-- **Neither `<audio>` element may cross into the other's job.** `#audioElement`
-  goes through `createMediaElementSource`, so it is unusable as a cast transport
-  and carries `disableremoteplayback` / `x-webkit-airplay="deny"` — a browser
-  offering it as a cast source would hand the user a route the app knows nothing
-  about while the decoded buffer kept playing locally. `#remoteTransportElement`
-  is the cast transport and must never be passed to `createMediaElementSource`.
-  Both halves prevent the same thing: audio in two places at once.
+- **`#audioElement` opts out of the browser's own cast and AirPlay buttons**
+  (`disableremoteplayback` / `x-webkit-airplay="deny"`). It goes through
+  `createMediaElementSource`, so a browser offering it as a cast source would
+  hand the user a route the app knows nothing about while the decoded buffer
+  kept playing locally — audio in two places at once.
 
 ## Playback flow
 
@@ -37,15 +38,14 @@ buffers for audible playback.
   the result of a track change that has since been superseded. Fetching and
   decoding audio can finish out of order, and an older request must never
   replace newer playback.
-- `AudioPlayer` is one implementation of `PlaybackOutput`, not the only one.
-  Anything the app does to "the thing that is playing" goes through
-  `activeOutput()` in `script.js`. Few paths may reach for the local player by
-  name — its media element's own `play`/`pause` events, visibility, the volume
-  the app may persist, and the paused-or-none question in `syncPlaybackState` —
-  and each says so by asking `isRemoteActive()` first. What makes one of them
-  legitimate is that it is *about that element* rather than about whatever is
-  making sound; keep any new one to that test. The handover is not among them:
-  it is the one place ownership moves, so naming both outputs is its job.
+- **Everything the app does to "the thing that is playing" goes through
+  `activeOutput()`** in `script.js`, even though `AudioPlayer` is today the only
+  `PlaybackOutput`. That seam is what lets a second output come back as a
+  plugin. Few paths may name the local player directly — its media element's
+  own `play`/`pause` events, visibility, and the paused-or-none question in
+  `syncPlaybackState` — and what makes one legitimate is that it is *about that
+  element* rather than about whatever is making sound. Keep any new one to that
+  test.
 - Re-register Media Session action handlers after every track change. Some
   browsers drop the Media Session association when the long-lived `<audio>`
   element's `src` changes, so refreshing the handlers (and metadata) inside
@@ -78,14 +78,9 @@ with a test behind it:
 ## Files
 
 - **A track names no file.** A catalog entry is an id and a title;
-  `local-source.js` chooses the local encoding for *this browser* and
-  `remote-playback/track-source.js` names the cast twin. Local playback prefers
+  `local-source.js` chooses the local encoding for *this browser*. Local playback prefers
   Ogg Opus and falls back to AAC for Safari/iOS before 18.4, which cannot read
   the Ogg container. The choice is made once per page and may step down exactly
   once, on a confirmed decode failure — safe only because identity is the track
   id and the buffer cache is keyed by resolved URL. Force the fallback with
   `?codec=aac`.
-- **The local AAC fallback and the cast twin are both `.m4a` and are not
-  interchangeable.** The local one is a single loop period the app crossfades at
-  runtime; the cast one has the crossfade baked in and repeats to ~120s. The
-  service worker tells them apart by directory, never by extension.

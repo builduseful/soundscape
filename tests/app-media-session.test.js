@@ -139,27 +139,15 @@ test("restores saved track, volume, and theme before the first play", async () =
     await mediaActions.pause();
 });
 
+// The long-lived media element goes through createMediaElementSource — silent,
+// zero-gain — so the platform sees playback while the decoded buffer is what is
+// heard. It is the only element that may: js/AGENTS.md says why.
 test("only the local element is ever routed through the audio graph", async () => {
-    const { audioContexts, audioElement, mediaActions, remoteTransportElement } = await startAppTestEnvironment({
-        castDevices: true,
-    });
+    const { audioContexts, audioElement, mediaActions } = await startAppTestEnvironment();
 
-    // Neither element may cross into the other's job: the long-lived media
-    // element goes through createMediaElementSource (silent, zero-gain) so the
-    // platform sees playback; the remote transport must never do, or audio
-    // would play in two places at once.
     await mediaActions.play();
 
-    const context = audioContexts[0];
-    assert.ok(Array.isArray(context.mediaElementSources), "harness should record graph sources");
-    assert.ok(
-        context.mediaElementSources.includes(audioElement),
-        "the local audio element should be the only source in the graph",
-    );
-    assert.ok(
-        !context.mediaElementSources.includes(remoteTransportElement),
-        "the cast transport element must never cross into the local audio graph",
-    );
+    assert.deepEqual(audioContexts[0].mediaElementSources, [audioElement]);
 
     await mediaActions.pause();
 });
@@ -744,35 +732,6 @@ test("starting a new load takes down a previous failure notice", async () => {
     await retry;
     assert.equal(trackLoading.hidden, true);
     assert.equal(playbackError.hidden, true);
-});
-
-// The other direction. A cast press that reaches no picker reports at once, and
-// can land while a slow track is still loading; the notice is the newer news, so
-// it takes the bar down rather than sitting under it. The dimmed title still
-// says audio is on its way.
-test("a failure notice posted mid-load takes down the loading bar", async () => {
-    const gatedFetch = installGatedFetch();
-    const { elements, mediaActions, timeoutLog, triggerTimeout } = await startAppTestEnvironment({
-        castDevices: true,
-        fetch: () => gatedFetch.fetch(),
-    });
-    const trackLoading = elements.get("trackLoading");
-    const playbackError = elements.get("playbackError");
-    const title = elements.get("title");
-
-    const play = mediaActions.play();
-    await showLoadingIndicator(timeoutLog, triggerTimeout);
-    assert.equal(trackLoading.hidden, false);
-
-    elements.get("remotePlaybackUi").facade.onUnavailable("Couldn't open the device list yet.");
-
-    assert.equal(playbackError.hidden, false);
-    assert.equal(trackLoading.hidden, true, "the loading bar should not sit over a failure notice");
-    assert.equal(title.classList.contains("is-loading"), true);
-
-    gatedFetch.release();
-    await play;
-    assert.equal(title.classList.contains("is-loading"), false);
 });
 
 test("media play failures after a track switch keep the switched track selected", async () => {

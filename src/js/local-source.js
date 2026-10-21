@@ -6,10 +6,8 @@
  * and an AAC fallback — and choosing between them is a fact about the
  * *browser*, not about the soundscape.
  *
- * The mirror of this module is remote-playback/track-source.js, which answers
- * the same question for a cast receiver. Neither may answer for the other: a
- * local fallback and a cast asset are different products, built differently
- * (see scripts/build-audio.mjs), and handed to different consumers.
+ * Another output — a cast receiver, say — would answer the same question for
+ * itself, in its own module. This one answers only for this browser.
  */
 
 /**
@@ -96,7 +94,7 @@ export function selectLocalCodec(audioElement, override) {
  *   post-downgrade encodings occupy separate entries and neither is ever served
  *   for the other.
  * - `holdsTrack()` compares the track id, so re-resolving a track to a different
- *   encoding leaves it the same track, and identity, handover and the media
+ *   encoding leaves it the same track, and identity and the media
  *   session cannot desynchronise.
  *
  * Without both of those the downgrade would be a bug. With them it is one extra

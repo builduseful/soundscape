@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 // Builds every published audio derivative from the masters.
 //
-// One soundscape has one identity and three output roles, and this script owns
-// all of them:
+// One soundscape has one identity and two output roles, and this script owns
+// both:
 //
 //   opus/<id>.opus   local primary   one loop period, no baked crossfade
 //   aac/<id>.m4a     local fallback  one loop period, no baked crossfade
-//   cast/<id>.m4a    remote playback crossfade baked in, repeated to ~120s
 //
-// The first two are the same product in two containers: the app decodes them
-// and applies its own loop crossfade at runtime, so baking one in would apply
-// it twice. The third is a different product entirely — nothing on the far side
-// of a cast reads loopStart/loopEnd, and no cast path wraps natively — which is
-// why it cannot be produced by transcoding either of the others.
+// They are the same product in two containers: the app decodes them and applies
+// its own loop crossfade at runtime, so baking one in would apply it twice.
+//
+// A third role, cast/<id>.m4a, existed while the web app could cast; it went
+// with that feature. src/js/AGENTS.md says where to find it.
 //
 // Requires ffmpeg/ffprobe on PATH. Host-only — not part of npm test or the
 // Docker image. See masters/AGENTS.md for where the inputs come from.
@@ -21,7 +20,6 @@
 //   npm run audio                    every applicable target
 //   npm run audio -- --opus          local primary only
 //   npm run audio -- --aac           local fallback only
-//   npm run audio -- --cast          cast twins only
 //   npm run audio -- --placeholders  (re)generate the stand-in masters
 //   npm run audio -- --masters <dir> read masters from somewhere else
 
@@ -31,9 +29,7 @@ import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/pro
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { applyLoopCrossfade } from "../src/js/audio-player.js";
 import { localSourceFor } from "../src/js/local-source.js";
-import { remoteUrlFor } from "../src/js/remote-playback/track-source.js";
 import { tracks } from "../src/js/tracks.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,7 +37,6 @@ const repoRoot = path.join(__dirname, "..");
 const soundscapeDir = path.join(repoRoot, "src", "resources", "soundscapes");
 const opusDir = path.join(soundscapeDir, "opus");
 const aacDir = path.join(soundscapeDir, "aac");
-const castDir = path.join(soundscapeDir, "cast");
 
 // Outside src/, so masters are never deployed. Their bytes are gitignored; the
 // two JSON records beside them are tracked, because provenance that only exists
@@ -59,108 +54,17 @@ const MASTER = "master";
 
 // --- Encoding profile ------------------------------------------------------
 
-// Matched to the sources, which are 56-75 kbps mono Opus. Encoding above that
-// spends bytes on detail the Opus encoder already discarded — AAC cannot
-// reconstruct it — so a higher rate costs size and buys nothing audible. The
-// bytes saved go into REPEAT_TO_SECONDS instead, where they are audible.
-const AAC_BITRATE = "64k";
-
-// The local fallback carries one loop period rather than two minutes of
-// repeats, so it can afford a little more per second than the cast twin.
+// Matched to the sources, which are 56-75 kbps mono Opus: encoding much above
+// that spends bytes on detail the Opus encoder already discarded, which AAC
+// cannot reconstruct.
 const LOCAL_AAC_BITRATE = "80k";
 
 // Only ever used for a real master. While the input is a placeholder the
 // published Opus stays exactly as it is — see buildOpus.
 const OPUS_BITRATE = "64k";
 
-// The loop is written out repeatedly rather than once.
-//
-// No cast path performs a native wrap: Chrome desktop remotes the stream and
-// Safari drives AirPlay, and both implement `loop` in the browser as a seek back
-// to zero, which flushes the receiver's buffer and is audible. Chrome Android
-// does not loop at all (see src/js/remote-playback/AGENTS.md). Repeating the
-// trimmed period inside the file is bit-exact — every internal join is the same
-// sample-adjacent seam the crossfade already built — so the only audible seam is
-// the one at the end of the file, and length is what decides how often it comes
-// round.
-//
-// Two minutes is the balance point: ~1 MB per twin at the bitrate above, and it
-// clears by a wide margin the 15 s floor below which Chromium refuses to remote
-// a file at all. Raising it is one constant and costs only bytes.
-const REPEAT_TO_SECONDS = 120;
-
-// AAC codes in 1024-sample frames. A loop period that is not a whole number of
-// frames leaves a partial final frame, which the encoder pads with silence —
-// and that padding lands exactly on the loop seam, so a receiver that does not
-// honour the container's edit list plays ~5 ms of silence and a click on every
-// wrap. Stretching the crossfade to the next frame boundary removes the partial
-// frame entirely; measured, it takes the padding from ~224 samples to 0.
+// AAC codes in 1024-sample frames; see buildLocalAac for why that matters here.
 const AAC_FRAME_SAMPLES = 1024;
-const MIN_CROSSFADE_MS = 10;
-
-// The seam at the end of the file is not a waveform problem and cannot be fixed
-// like one. Every join *inside* the file is sample-adjacent and inaudible; the
-// one the listener hears is where the receiver reaches the end and starts over,
-// and Chromecast has never done that gaplessly — the device tears down and
-// re-initialises its pipeline, which no amount of matching either side of the
-// join can prevent.
-//
-// So the goal changes from "remove the gap" to "stop it being a click". Cutting
-// from full amplitude to a gap and back is a step discontinuity, which is what
-// makes it read as harsh; ramping the first and last few milliseconds to zero
-// turns the same interruption into a brief dip. On broadband ambience — rain,
-// noise, crackle — a 40 ms dip is very hard to hear, while the step is not.
-const EDGE_FADE_MS = 40;
-
-// Encoder delay at the head is the other half of AAC's gapless problem, and it
-// is not ours to remove: it is intrinsic to the codec, which is why the edit
-// list exists. Every gapless-aware receiver honours it.
-function frameAlignedOverlap(frameCount, sampleRate) {
-    let overlap = Math.max(1, Math.round((MIN_CROSSFADE_MS * sampleRate) / 1000));
-
-    while ((frameCount - overlap) % AAC_FRAME_SAMPLES !== 0) {
-        overlap++;
-    }
-
-    return overlap;
-}
-
-function applyEdgeFade(audio, channels, sampleRate) {
-    const fadeFrames = Math.min(
-        Math.round((EDGE_FADE_MS * sampleRate) / 1000),
-        Math.floor(audio.length / channels / 2),
-    );
-
-    if (fadeFrames <= 0) return;
-
-    for (let frame = 0; frame < fadeFrames; frame++) {
-        // Equal-power rather than linear: the same curve the runtime crossfade
-        // uses, and it holds perceived loudness steadier through the ramp.
-        const gain = Math.sin((frame / fadeFrames) * (Math.PI / 2));
-        const head = frame * channels;
-        const tail = audio.length - head - channels;
-
-        for (let channel = 0; channel < channels; channel++) {
-            audio[head + channel] *= gain;
-            audio[tail + channel] *= gain;
-        }
-    }
-}
-
-// applyLoopCrossfade only ever calls createBuffer on the context it is given,
-// so this is the whole of the Web Audio surface it needs outside a browser.
-const offlineAudioContextShim = {
-    createBuffer(numberOfChannels, length, sampleRate) {
-        const channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
-
-        return {
-            sampleRate,
-            numberOfChannels,
-            length,
-            getChannelData: (channel) => channels[channel],
-        };
-    },
-};
 
 // --- Process plumbing ------------------------------------------------------
 
@@ -227,31 +131,6 @@ async function probe(file) {
     if (!stream) throw new Error(`No audio stream in ${file}`);
 
     return { sampleRate: Number(stream.sample_rate), channels: Number(stream.channels) };
-}
-
-// ffmpeg writes interleaved frames; Web Audio buffers are planar.
-function deinterleave(interleaved, channels, frameCount) {
-    const planes = Array.from({ length: channels }, () => new Float32Array(frameCount));
-
-    for (let frame = 0; frame < frameCount; frame++) {
-        for (let channel = 0; channel < channels; channel++) {
-            planes[channel][frame] = interleaved[frame * channels + channel];
-        }
-    }
-
-    return planes;
-}
-
-function interleave(planes, channels, frameCount) {
-    const interleaved = new Float32Array(frameCount * channels);
-
-    for (let frame = 0; frame < frameCount; frame++) {
-        for (let channel = 0; channel < channels; channel++) {
-            interleaved[frame * channels + channel] = planes[channel][frame];
-        }
-    }
-
-    return interleaved;
 }
 
 async function decodeToFloat(file) {
@@ -502,9 +381,8 @@ async function buildLocalAac(track, master) {
     const source = sourceFor(track, master);
     const { interleaved, sampleRate, channels, frameCount } = await decodeToFloat(source);
 
-    // Trimmed to a whole number of AAC frames before encoding, for the same
-    // reason the cast build frame-aligns its crossfade — and it is worth being
-    // precise about which half of AAC's gapless problem this fixes.
+    // Trimmed to a whole number of AAC frames before encoding — and it is worth
+    // being precise about which half of AAC's gapless problem this fixes.
     //
     // Head priming is handled by the container's edit list and every decoder
     // honours it. The tail is not: a partial final frame is padded to 1024
@@ -555,101 +433,6 @@ async function buildLocalAac(track, master) {
             loopCrossfade: "runtime",
             frameAlignedSamples: alignedFrames,
             trimmedSamples: frameCount - alignedFrames,
-        },
-    };
-}
-
-/**
- * The cast twin: a different product, built the way a receiver needs it.
- *
- * Imports the app's own applyLoopCrossfade so the baked treatment and the
- * runtime one cannot drift.
- */
-async function buildCast(track, master) {
-    const outputFile = path.join(castDir, `${track.id}.m4a`);
-    const source = sourceFor(track, master);
-
-    const { interleaved, sampleRate, channels, frameCount } = await decodeToFloat(source);
-    const planes = deinterleave(interleaved, channels, frameCount);
-    const sourceBuffer = {
-        sampleRate,
-        numberOfChannels: channels,
-        length: frameCount,
-        getChannelData: (channel) => planes[channel],
-    };
-
-    const overlap = frameAlignedOverlap(frameCount, sampleRate);
-    const { buffer, loopEnd } = applyLoopCrossfade(
-        sourceBuffer,
-        offlineAudioContextShim,
-        (overlap * 1000) / sampleRate,
-    );
-    // applyLoopCrossfade returns a full-length buffer plus the loop period to
-    // play. A native loop has no loopEnd to honour, so the period becomes the
-    // file: everything past it is the pre-crossfade tail and must not ship.
-    const loopFrames = Math.round(loopEnd * sampleRate);
-
-    // The crossfade length is derived through milliseconds, so a rounding slip
-    // would silently reintroduce the partial frame this is all here to avoid.
-    if (loopFrames % AAC_FRAME_SAMPLES !== 0) {
-        throw new Error(`${track.id}: loop period ${loopFrames} is not a whole number of AAC frames`);
-    }
-
-    const trimmed = Array.from(
-        { length: channels },
-        (unused, channel) => buffer.getChannelData(channel).subarray(0, loopFrames),
-    );
-
-    // Repeating the period keeps frame alignment — a whole number of AAC frames
-    // times a whole number is still whole — so the encoder still has no partial
-    // final frame to pad, and every internal join is sample-adjacent.
-    const repeats = Math.max(1, Math.ceil((REPEAT_TO_SECONDS * sampleRate) / loopFrames));
-    const period = interleave(trimmed, channels, loopFrames);
-    const audio = new Float32Array(period.length * repeats);
-
-    for (let repeat = 0; repeat < repeats; repeat++) {
-        audio.set(period, repeat * period.length);
-    }
-
-    applyEdgeFade(audio, channels, sampleRate);
-
-    const { bytes } = await writeIfChanged(
-        outputFile,
-        (tempFile) => run("ffmpeg", [
-            "-v", "error",
-            "-f", "f32le",
-            "-ar", String(sampleRate),
-            "-ac", String(channels),
-            "-i", "-",
-            "-c:a", "aac",
-            "-b:a", AAC_BITRATE,
-            "-f", "mp4",
-            // Without this the index lands after the audio, so nothing can read
-            // the duration without reaching the end of the file. Two things
-            // depend on it: preload="metadata" on the cast element, which is
-            // what makes Chrome report a device at all, and the Android
-            // receiver, which otherwise hunts for the index before it can play.
-            "-movflags", "+faststart",
-            "-y", tempFile,
-        ], { input: Buffer.from(audio.buffer) }),
-        (next) => `(${(next.length / 1024).toFixed(0)} KiB,`
-            + ` ${(loopFrames / sampleRate).toFixed(2)}s loop × ${repeats}`
-            + ` = ${((loopFrames * repeats) / sampleRate).toFixed(0)}s,`
-            + ` ${(overlap / (sampleRate / 1000)).toFixed(1)}ms crossfade)`,
-    );
-
-    return {
-        outputFile,
-        bytes,
-        transform: {
-            codec: "aac",
-            bitrate: AAC_BITRATE,
-            sampleRate,
-            channels,
-            loopCrossfadeMs: Number(((overlap * 1000) / sampleRate).toFixed(3)),
-            edgeFadeMs: EDGE_FADE_MS,
-            repeats,
-            loopSeconds: Number((loopFrames / sampleRate).toFixed(3)),
         },
     };
 }
@@ -711,14 +494,14 @@ function parseArgs(argv) {
         throw new Error(`Unexpected argument: ${arg}`);
     }
 
-    const known = new Set(["opus", "aac", "cast", "placeholders"]);
+    const known = new Set(["opus", "aac", "placeholders"]);
     const unknown = [...flags].filter((flag) => !known.has(flag));
 
     if (unknown.length > 0) {
         throw new Error(`Unknown option(s): ${unknown.map((flag) => `--${flag}`).join(", ")}`);
     }
 
-    const requested = ["opus", "aac", "cast"].filter((target) => flags.has(target));
+    const requested = ["opus", "aac"].filter((target) => flags.has(target));
 
     return {
         mastersDir,
@@ -726,7 +509,7 @@ function parseArgs(argv) {
         requestedTargets: requested,
         // No target flag means every applicable target, which is what a bare
         // `npm run audio` should do.
-        targets: requested.length > 0 ? requested : ["opus", "aac", "cast"],
+        targets: requested.length > 0 ? requested : ["opus", "aac"],
     };
 }
 
@@ -740,14 +523,14 @@ if (options.placeholders) {
     await generatePlaceholders(options.mastersDir);
 
     if (options.requestedTargets.length === 0) {
-        console.log("\nDone. Masters only — pass --opus, --aac or --cast to build derivatives.");
+        console.log("\nDone. Masters only — pass --opus or --aac to build derivatives.");
         process.exit(0);
     }
 }
 
 const masters = await loadProvenance(options.mastersDir);
 const encoder = await encoderVersion();
-const builders = { opus: buildOpus, aac: buildLocalAac, cast: buildCast };
+const builders = { opus: buildOpus, aac: buildLocalAac };
 const manifest = await readJson(path.join(options.mastersDir, MANIFEST_FILE), {});
 
 for (const target of options.targets) {
@@ -787,7 +570,7 @@ console.log(`\nProvenance recorded in ${path.relative(repoRoot, path.join(option
 // that no longer exists, so flag orphans rather than silently leaving them.
 const ids = new Set(tracks.map((track) => track.id));
 
-for (const [directory, extension] of [[opusDir, ".opus"], [aacDir, ".m4a"], [castDir, ".m4a"]]) {
+for (const [directory, extension] of [[opusDir, ".opus"], [aacDir, ".m4a"]]) {
     const orphans = (await readdir(directory).catch(() => []))
         .filter((fileName) => fileName.endsWith(extension))
         .filter((fileName) => !ids.has(path.basename(fileName, extension)));
@@ -795,10 +578,4 @@ for (const [directory, extension] of [[opusDir, ".opus"], [aacDir, ".m4a"], [cas
     if (orphans.length > 0) {
         console.warn(`\nOrphaned audio in ${path.basename(directory)}/ with no track: ${orphans.join(", ")}`);
     }
-}
-
-// The cast path is imported from the app's own resolver rather than spelled
-// again here, so this fails loudly if the two ever stop agreeing.
-if (remoteUrlFor(tracks[0]) !== `resources/soundscapes/cast/${tracks[0].id}.m4a`) {
-    throw new Error("The cast resolver and this script disagree about where cast audio lives.");
 }

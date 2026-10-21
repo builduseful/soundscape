@@ -9,14 +9,11 @@ import {
     localSourcesFor,
     selectLocalCodec,
 } from "../src/js/local-source.js";
-import { remoteUrlFor } from "../src/js/remote-playback/track-source.js";
 import { tracks } from "../src/js/tracks.js";
 
 /**
- * The local resolver: which file *this browser* plays for a soundscape.
- *
- * Its counterpart is remote-playback/track-source.js, and the pair is the whole
- * reason the catalog names no files. These tests hold the two apart.
+ * The local resolver: which file *this browser* plays for a soundscape — the
+ * reason the catalog names no files.
  */
 
 test("every track resolves to an existing file in every local codec", async () => {
@@ -111,31 +108,4 @@ test("localSourceFor answers null rather than guessing when there is no track", 
     assert.equal(localSourceFor(undefined), null);
     assert.equal(localSourceFor({}), null);
     assert.equal(localSourceFor({ title: "Rain" }), null);
-});
-
-// The two resolvers answer the same question for different consumers and must
-// never converge. A local file handed to a receiver wraps audibly (no baked
-// crossfade, one loop period); a cast file played locally is two minutes of
-// repeats the app would loop at the wrong point.
-test("the local and remote resolvers never name the same file", () => {
-    for (const track of tracks) {
-        for (const source of localSourcesFor(track)) {
-            assert.notEqual(source.url, remoteUrlFor(track));
-        }
-    }
-});
-
-// Both are .m4a, which is exactly why the directory is the boundary and the
-// extension is not. The local one is a single loop period the app crossfades at
-// runtime; the cast one is two minutes of repeats with the crossfade already
-// baked in. Swapping them is silent — same container, same codec — and wrong in
-// both directions.
-test("the local AAC fallback is not the cast twin", () => {
-    for (const track of tracks) {
-        const fallback = localSourceFor(track, "aac");
-
-        assert.equal(fallback.url, `resources/soundscapes/aac/${track.id}.m4a`);
-        assert.notEqual(fallback.url, remoteUrlFor(track));
-        assert.ok(fallback.url.startsWith("resources/soundscapes/aac/"));
-    }
 });

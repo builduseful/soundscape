@@ -1,7 +1,4 @@
-// List of the soundscapes. Deliberately knows nothing about remote playback:
-// the AAC twins cast targets play are derived in
-// js/remote-playback/track-source.js, so deleting that directory leaves this
-// file exactly as it is.
+// List of the soundscapes.
 //
 // `id` is the track's immutable identity: the ?track= value, the manifest
 // shortcut target, the saved preference, and the resource basename under each
@@ -11,8 +8,7 @@
 //
 // A catalog entry is an id and a title, and nothing else. It names a soundscape;
 // it does not name a file. Which file to play is a question about the consumer —
-// this browser, or a cast receiver — and belongs to js/local-source.js and
-// js/remote-playback/track-source.js respectively.
+// this browser — and belongs to js/local-source.js.
 export const tracks = [
     // Nature
     { id: "rain", title: "Rain" },

@@ -24,8 +24,7 @@
  * @attr {string} value - Slider value between 0 and 1.
  * @attr {string} label - Accessible name for the control. Defaults to "Volume".
  * @attr {boolean} disabled - Inert and dimmed, with the panel closed. Unused by
- *   the app: a cast either drives the device through this slider or hides the
- *   control, because a disabled slider reads as broken rather than absent.
+ *   the app.
  * @fires input - Mirrors the internal range input's current value.
  * @fires change - Mirrors committed range changes.
  */

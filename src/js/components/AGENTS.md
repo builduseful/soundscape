@@ -1,20 +1,11 @@
 # Components, styling and theme
 
-App-owned custom elements live here, **with one deliberate exception**:
-`../remote-playback/control.js`. It lives with the feature it belongs to rather
-than with its siblings, because remote playback is a plugin that has to be
-deletable as a directory — a control filed under `components/` would leave the
-feature spread across two places and the deletion story a half-truth. The rule
-to take from this is the reason, not the exception: an element that belongs to
-one detachable feature goes with that feature; everything the app itself owns
-goes in `components/`. `component-contract.test.js` checks the exception by name
-rather than by scanning the directory — a sweep that finds elements by folder
-stops covering one the moment it moves, which is precisely what happened when
-this one did.
+App-owned custom elements live here, and `component-contract.test.js` finds
+them by this directory.
 
 ## Custom elements
 
-The rules below apply to every app custom element, wherever it sits.
+The rules below apply to every app custom element.
 
 - Build components in light DOM (ordinary markup in the page, visible to normal
   CSS and DevTools) with an inline `@scope` style block, which confines the

@@ -38,13 +38,6 @@
                 <a class="app-byline" href="https://builduseful.com" target="_blank" rel="noopener">by Build Useful.</a>
             </div>
             <div class="header-actions">
-                <!-- The remote playback control: its button, its glyph states
-                     and its announcement all live inside the component. It
-                     renders hidden and shows itself only once script.js hands it
-                     a provider — and removes itself outright when there is none,
-                     so a Firefox visitor is left with no remote markup at all
-                     rather than a control that flashes in and out on load. -->
-                <remote-playback id="remotePlaybackUi"></remote-playback>
                 <app-menu id="appMenu">
                     <theme-selector id="themeSelector" value="system"></theme-selector>
                     <button type="button" class="menu-install" id="installButton" hidden>
@@ -103,37 +96,10 @@
         </footer>
         <!-- Opted out of remote playback on purpose. This element's audio is
              diverted into the Web Audio graph by createMediaElementSource, so a
-             browser or OS offering it as a cast source would hand the user a
-             route the app knows nothing about — while the decoded buffer keeps
-             playing locally, which is the two-places-at-once the design forbids.
-             Casting has its own element below. -->
+             browser or OS offering it as a cast or AirPlay source would hand the
+             user a route the app knows nothing about — while the decoded buffer
+             keeps playing locally, sound in two places at once. -->
         <audio id="audioElement" preload="auto" disableremoteplayback x-webkit-airplay="deny"></audio>
-        <!-- The remote playback transport. Never pass this to
-             createMediaElementSource — see
-             js/remote-playback/providers/airplay.js for why that would
-             break casting outright.
-
-             It stays in the markup rather than being created by the provider
-             that uses it: `preload="metadata"` has to be honoured from parse
-             time on Safari, and moving the element's creation into JS would
-             change *when* the header is read on the one platform this repo
-             cannot test. Its location is the plugin's business; its existence
-             is not worth a Safari regression to tidy.
-
-             preload is "metadata" because neither Safari nor Chromium will open
-             a picker on an element below HAVE_METADATA, so the header has to
-             have been read before the button is pressed.
-
-             It is a hint, not a budget: Chrome reads well past the header on a
-             file this small. What actually keeps that off the wire is that the
-             element carries no src until someone touches the page, which
-             js/remote-playback/providers/airplay.js explains. Nothing here
-             is fetched on load.
-
-             x-webkit-airplay="allow" is Safari's default rather than a
-             requirement, but stating it keeps the opt-in explicit next to the
-             element it applies to. -->
-        <audio id="remoteTransportElement" preload="metadata" x-webkit-airplay="allow"></audio>
     </div>
 
     <script type="module" src="js/script.js"></script>

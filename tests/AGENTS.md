@@ -1,8 +1,6 @@
 # Running and testing
 
 Covers the unit suite, running the app locally, and driving it in a browser.
-The remote-playback tests have their own rules — see
-[`../src/js/remote-playback/AGENTS.md`](../src/js/remote-playback/AGENTS.md).
 CI, which gates the deploy on this suite, is in
 [`../src/AGENTS.md`](../src/AGENTS.md).
 
@@ -117,7 +115,7 @@ The `config.json` itself is gitignored: a fresh clone copies
   `playwright-cli click "#playPauseButton"` cannot drift that way — and every
   control the page itself owns has a stable id. The exception is a control that
   lives *inside* a component and so has no id of its own: reach those through
-  the host element, as in `click "remote-playback button"`. (It does **not**
+  the host element, as in `click "volume-control button"`. (It does **not**
   accept an accessible name: `click "Play"` fails with "does not match any
   elements".) If a ref is unavoidable, snapshot immediately before the click and
   use it immediately after; a ref that is even one command old is already

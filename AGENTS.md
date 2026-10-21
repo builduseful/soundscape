@@ -4,7 +4,7 @@
 
 Soundscape is a browser-based Progressive Web App (PWA) that plays looping ambient background audio — rain, thunderstorms, fireplace, open road, and white/pink/brown noise.
 
-It has play/pause/prev/next controls, a volume slider, light/dark/system themes, and it remembers your volume, theme and track. It works offline once installed, and it responds to the media keys on your keyboard and the playback controls your OS shows in its notification area. Where the browser allows it, playback can move to a Chromecast or an AirPlay device. The loops are gapless, which is harder than it sounds and is the reason for most of the audio rules.
+It has play/pause/prev/next controls, a volume slider, light/dark/system themes, and it remembers your volume, theme and track. It works offline once installed, and it responds to the media keys on your keyboard and the playback controls your OS shows in its notification area. The loops are gapless, which is harder than it sounds and is the reason for most of the audio rules.
 
 ## Where the rules live
 
@@ -17,7 +17,6 @@ before you touch it.
 | Run the tests, run the app, drive it in a browser | [`tests/AGENTS.md`](tests/AGENTS.md) |
 | Change how audio plays | [`src/js/AGENTS.md`](src/js/AGENTS.md) |
 | Change a custom element, styling, or the theme | [`src/js/components/AGENTS.md`](src/js/components/AGENTS.md) |
-| Change Chromecast/AirPlay | [`src/js/remote-playback/AGENTS.md`](src/js/remote-playback/AGENTS.md) |
 | Ship a change — version bump, cache, deploy | [`src/AGENTS.md`](src/AGENTS.md) |
 | Rebuild audio, icons or screenshots | [`scripts/AGENTS.md`](scripts/AGENTS.md) |
 | Supply a new audio master | [`masters/AGENTS.md`](masters/AGENTS.md) |
@@ -56,8 +55,8 @@ undo. Do not narrate what the code already shows.
 ```
 soundscape/
 ├── src/                   # Deploy folder (served at site root): index.html, style.css, sw.js, manifest
-│   ├── js/                # App modules; components/ and remote-playback/ each carry their own AGENTS.md
-│   └── resources/         # icons/, screenshots/, soundscapes/{opus,aac,cast}/
+│   ├── js/                # App modules; components/ carries its own AGENTS.md
+│   └── resources/         # icons/, screenshots/, soundscapes/{opus,aac}/
 ├── tests/                 # Unit suite (dependency-free), plus helpers/
 ├── scripts/               # Host-only generators: audio, icons, screenshots
 ├── masters/               # Build inputs: gitignored audio, tracked provenance records
@@ -70,19 +69,6 @@ soundscape/
 Directories only, and deliberately: a per-file listing here is a second copy of
 what `sw.js`'s precache list, the routing table above, and each nested
 `AGENTS.md` already say — and it is always the copy that goes stale.
-
-## Remote Playback
-
-Chromecast and AirPlay are a detachable plugin in `src/js/remote-playback/`.
-
-**Read [`src/js/remote-playback/AGENTS.md`](src/js/remote-playback/AGENTS.md)
-before changing anything in that directory, its tests, or the handover region of
-`script.js`.** It carries measured platform behaviour — silent picker rejections,
-codec limits, device-only failures — that the test suite cannot show you and that
-tidying will quietly undo.
-
-**Never cast to a real device from an automated run.** It plays audio in
-someone's room. Fakes cover everything except the manual checklist in its AGENTS.md.
 
 ## Agent Workflow
 

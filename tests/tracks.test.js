@@ -81,12 +81,9 @@ test("published track ids never change", () => {
     );
 });
 
-// The AAC twins are checked in remote-playback-assets.test.js. They are not the
-// catalog's business: a track is an id and a title, and the twin exists only
-// because remote targets cannot decode Ogg Opus. The catalog names no file at
-// all now — not even its local one — so there is nothing here for a remote
-// consumer to reach past its resolver and read.
-test("the catalog knows nothing about remote playback", () => {
+// A track is an id and a title. Which file plays it is the consumer's question
+// (js/local-source.js), so the catalog names no file at all.
+test("a catalog entry is an id and a title, and nothing else", () => {
     for (const track of tracks) {
         assert.deepEqual(Object.keys(track).sort(), ["id", "title"]);
     }
@@ -107,13 +104,15 @@ test("soundscape audio resources are all represented in the track catalog", asyn
     }
 });
 
-// The assets moved into role directories (opus/, cast/) from a flat folder. A
-// file left behind at the top level would be deployed, precached by neither list
-// and referenced by nothing — and both inventory tests above look inside one
-// directory each, so neither would ever see it.
-test("no audio is left loose in the soundscapes directory", async () => {
+// The soundscapes directory holds one directory per local codec and nothing
+// else. A file left at the top level, or a role directory nothing reads any
+// more — cast/ was one — would be deployed and referenced by nothing, and the
+// inventory test above looks only inside the directories it knows.
+test("the soundscapes directory holds only the local codec directories", async () => {
     const entries = await readdir(SOUNDSCAPES_DIR, { withFileTypes: true });
     const loose = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+    const directories = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 
     assert.deepEqual(loose, []);
+    assert.deepEqual(directories, localCodecs().map((codec) => LOCAL_DIRS[codec]).sort());
 });

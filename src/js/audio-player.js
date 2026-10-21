@@ -71,7 +71,7 @@ export class AudioPlayer {
         // is stable: `currentTrackId` names the soundscape, `currentTrackUrl`
         // names the file this browser resolved for it. Codec selection can give
         // two browsers different URLs for one track, so every identity question
-        // — holdsTrack, hasTrack, handover — must ask the id.
+        // — holdsTrack, hasTrack — must ask the id.
         this.currentTrackId = undefined;
         this.currentTrackUrl = undefined;
         this.mediaElementSourceNode = undefined;
@@ -117,22 +117,14 @@ export class AudioPlayer {
     }
 
     // Whether this output holds the given soundscape. A PlaybackOutput member,
-    // and the reason getTrackUrl() is not one: the caller would otherwise have
-    // to know that the local player names a local file while a remote names the
-    // AAC twin it derives — remote knowledge sitting in the core.
+    // and the reason getTrackUrl() is not one: which file an output resolves for
+    // a track is that output's business, not the core's.
     holdsTrack(track) {
         return Boolean(track) && this.currentTrackId === track.id;
     }
 
     isPlaybackRequested() {
         return this.playbackRequested && this.hasTrack();
-    }
-
-    // The intent on its own, before asking whether a track has finished loading.
-    // This is the reading a handover needs; playback-output.js explains why the
-    // two must stay apart, and the contract suite pins the implication.
-    wantsPlayback() {
-        return this.playbackRequested;
     }
 
     isBrowserPlaybackSyncSuppressed() {
@@ -604,37 +596,6 @@ export class AudioPlayer {
         await this.audioContext.suspend();
     }
 
-    // Park the element for a handover, without its own pause event being read
-    // back as a person pressing pause.
-    //
-    // The app already ignores this element's events while a remote owns the
-    // soundscape, by asking whether one is active when the event arrives. That
-    // question is answered live, and the answer can change first: a session that
-    // fails the moment it opens disconnects while this pause is still in flight,
-    // so by the time the event is delivered no remote is active, the handback has
-    // already resumed local playback, and the event — caused by this very call —
-    // reads as "the user paused" and stops the room. Suppressing at the source
-    // says the one thing the live read cannot: this pause carries no intent,
-    // whoever owns the output by the time anyone hears about it.
-    //
-    // The release is scheduled rather than awaited, and that is not a detail:
-    // the caller is a handover, and making it wait a task before the receiver
-    // may start would put a gap in the middle of moving the sound between two
-    // outputs. Awaiting the pause alone is exactly what it did before; only the
-    // suppression outlives the call, by the one task the pause event needs to be
-    // dispatched in.
-    async pauseForHandover() {
-        this.browserPlaybackSyncSuppressed = true;
-
-        try {
-            await this.pause();
-        } finally {
-            setTimeout(() => {
-                this.browserPlaybackSyncSuppressed = false;
-            }, 0);
-        }
-    }
-
     async refreshPausedBrowserPlaybackSurface() {
         if (!this.audioElement.paused) return;
 
@@ -655,10 +616,8 @@ export class AudioPlayer {
         }
     }
 
-    // Volume is a per-transport capability, because the two kinds of output
-    // answer differently for real reasons: the app owns its own output level,
-    // whereas on a cast the level being moved may be the speaker's own and
-    // outlive the session. Local playback is the unambiguous case.
+    // A PlaybackOutput member: whether this output's level is the app's to set.
+    // Local playback is the unambiguous case.
     canControlVolume() {
         return true;
     }
@@ -675,8 +634,7 @@ export class AudioPlayer {
 
     // Nothing to override: a local failure is about the soundscape — the file,
     // the network, the decode — which is exactly what the app's default wording
-    // already says. A remote returns its own, because "pick another track" sends
-    // someone hunting through the catalogue for a fault that is in the room.
+    // already says.
     failureMessage() {
         return null;
     }
