@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings only Android shows. Everything the web shows too comes from
+     shared/copy.json, generated. -->
+<resources>
+    <string name="stop">Stop</string>
+    <string name="playback_channel">Playback</string>
+</resources>

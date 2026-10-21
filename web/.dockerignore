@@ -1,0 +1,34 @@
+# Version control
+.git/
+.gitignore
+
+# Agent and tooling config — not needed at runtime
+.agents/
+.opencode/
+.playwright/
+.playwright-cli/
+# Anchored with **/ on purpose: a bare `.temp/` matches only the build context
+# root, and agent scratch has landed under src/ before (a browser profile left
+# in resources/soundscapes/, tens of megabytes of it) where it would otherwise
+# be copied into the image and served.
+**/.temp/
+.vs/
+opencode.json
+
+# Documentation — runtime doesn't need it. Anchored with **/ for the same
+# reason as .temp/ above: the AGENTS.md files beside the code under src/ would
+# otherwise be copied in and served. (The Pages artifact uploads all of src/, so
+# they still ship there.)
+**/*.md
+
+# Host-side helper scripts (icon/screenshot export, media-key injection) and
+# their devDependencies — npm test needs neither, it only
+# imports src/js.
+scripts/
+node_modules/
+
+# GitHub Pages deployment config — irrelevant inside the container
+src/CNAME
+
+# Build file — not needed at runtime
+Dockerfile

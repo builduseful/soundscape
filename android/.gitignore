@@ -1,0 +1,20 @@
+# Gradle: caches, build outputs, and the Kotlin compiler's working data.
+# build/ is anchored to the project and each module: unanchored, it would also
+# match source packages named `build`, as build-logic's is.
+.gradle/
+/build/
+/*/build/
+.kotlin/
+
+# Machine-specific: sdk.dir points at one person's SDK.
+local.properties
+
+# IDE state (Android Studio / IntelliJ).
+.idea/
+*.iml
+captures/
+
+# Signing keys never belong in the repository.
+*.jks
+*.keystore
+keystore.properties

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon's waves (ic_launcher_foreground.xml), alone, for the
+     status bar: the system draws only its shape. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:pathData="M80,200c44,-50 88,-50 132,0s88,50 132,0 88,-50 132,0"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="44" />
+    <path
+        android:pathData="M80,312c44,-50 88,-50 132,0s88,50 132,0 88,-50 132,0"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="44" />
+</vector>

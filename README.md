@@ -1,6 +1,6 @@
 # Soundscape
 
-Soundscape is a small browser-based ambience player for seamless looping background audio.
+Soundscape is a small ambience player for seamless looping background audio. It runs in the browser today, and a native Android app is on the way.
 
 Sounds include rain, thunderstorms, fireplace ambience, open road ambience, and white, pink, and brown noise.
 
@@ -13,11 +13,25 @@ It supports:
 - sample-accurate looping through Web Audio
 - installable as a PWA, and fully playable offline once installed
 
-## Prerequisites
+## Repository
+
+| Folder | What it is |
+|---|---|
+| `web/` | The web app (PWA), its tests and its container |
+| `android/` | The native Android app (in progress) |
+| `shared/` | What every platform agrees on: tracks, design tokens, wording |
+| `scripts/` | The audio build, which feeds every platform |
+| `masters/` | The audio build's inputs and their provenance |
+
+## Web app
+
+Run every command below from `web/`.
+
+### Prerequisites
 
 An OCI-compatible container engine (Docker, Podman, wslc, or similar). See `.config.md` for this project's specific engine; substitute `<container-engine>` below accordingly.
 
-## Running
+### Running
 
 ```sh
 <container-engine> build --tag soundscape .
@@ -37,11 +51,11 @@ The default image also bundles Node.js so it can run `npm test`. For a slim runt
 <container-engine> build --tag soundscape --target serve .
 ```
 
-## Testing
+### Testing
 
 ```sh
 <container-engine> build --tag soundscape .
 <container-engine> container run --rm \
-    --volume ${PWD}:/app \
+    --volume ${PWD}/..:/repo --workdir /repo/web \
     soundscape npm test
 ```

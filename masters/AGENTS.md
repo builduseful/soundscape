@@ -3,7 +3,7 @@
 The inputs `scripts/build-audio.mjs` reads. Everything the app ships is derived
 from what lives here; nothing here is ever deployed.
 
-`masters/` sits outside `src/`, so it is not in the deploy folder, not in the
+`masters/` sits outside `web/src/`, so it is not in the deploy folder, not in the
 service worker precache, and not in the Docker image.
 
 ## What is tracked, and what is not
@@ -30,7 +30,7 @@ Until the genuine originals are available, every master here is a
 Opus file.
 
 ```sh
-npm run audio -- --placeholders
+node scripts/build-audio.mjs --placeholders
 ```
 
 A placeholder is a *production input*, not a recovered original and not an
@@ -56,12 +56,12 @@ re-run would be unrecoverable from this repo.
 
 1. Prepare the file **finished**: 48 kHz mono PCM WAV, loop-ready, unclipped,
    and at the level you want it heard at relative to the other soundscapes.
-2. Save it as `masters/<track-id>.wav`, using the id from `src/js/tracks.js`.
+2. Save it as `masters/<track-id>.wav`, using the id from `web/src/js/tracks.js`.
 3. Update its entry in `provenance.json` — `"kind": "master"` and the file's
    SHA-256. The build refuses to run on a hash that disagrees with the file,
    because every derivative built past that point would carry a provenance
    record that is simply untrue.
-4. Rebuild: `npm run audio`.
+4. Rebuild: `node scripts/build-audio.mjs`.
 
 ### What the build will not do for you
 

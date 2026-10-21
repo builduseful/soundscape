@@ -1,23 +1,22 @@
-# Generators
+# Repo-wide generators
 
-`npm run audio`, `npm run screenshots` and `npm run icons` regenerate committed
-artefacts. All three are **host-only** — not part of `npm test` or the Docker
-image — and all three skip writing when the output is unchanged. See each
-script's header for how it works.
+`node scripts/build-audio.mjs`, run from the repository root, builds every
+published soundscape from the masters into
+`web/src/resources/soundscapes/{opus,aac}/`. That folder is the one copy of the
+audio: the web app serves it and every other platform reads it from there. It
+is **host-only** (not part of any test suite or container image), needs
+`ffmpeg` and the inputs in [`../masters/`](../masters/AGENTS.md), and skips
+writing when the output is unchanged. The script's header says how it works.
 
-| Script | Produces | Needs |
-|---|---|---|
-| `npm run audio` | `src/resources/soundscapes/{opus,aac}/` | `ffmpeg`, and the inputs in [`../masters/`](../masters/AGENTS.md) |
-| `npm run icons` | `src/resources/icons/*.png` | Playwright |
-| `npm run screenshots` | `src/resources/screenshots/*.png` | Playwright |
+- With no flags it builds both roles; `--opus` and `--aac` narrow it.
+- **Keep what it produces; never revert it.** Stale is the only failure mode
+  here, and the byte-identical skip means a routine run costs nothing.
+- New audio under `web/src/` is a deployed change, so it needs a web version
+  bump: see [`../web/src/AGENTS.md`](../web/src/AGENTS.md).
 
-- `npm run audio` builds both roles; `-- --opus` and `-- --aac` narrow it.
-- Re-run `icons` / `screenshots` after a change that affects the home page's
-  appearance or either icon SVG.
-- **Keep what a script produces; never revert it.** Stale is the only failure
-  mode here, and the byte-identical skip means a routine run costs nothing.
+`node scripts/generate-loop-crossfade-fixture.mjs` rewrites
+`shared/fixtures/loop-crossfade.json` from the formula in
+[`../shared/AGENTS.md`](../shared/AGENTS.md); it needs nothing but Node.
 
-## Screenshots
-
-Screenshots are excluded from the service worker precache; icons are not. See
-[`../src/AGENTS.md`](../src/AGENTS.md).
+The web app's own generators (icons, screenshots) are in
+[`../web/scripts/AGENTS.md`](../web/scripts/AGENTS.md).

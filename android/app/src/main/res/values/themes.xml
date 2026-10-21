@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A framework theme, not AppCompat or Material Components: Compose draws
+         everything, so the theme only has to paint the window while the app
+         starts. @color/page is generated per theme from the design tokens. -->
+    <style name="Theme.Soundscape" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/page</item>
+    </style>
+</resources>

@@ -1,0 +1,111 @@
+{
+    "color": {
+        "page": { "light": "#f6f7f9", "dark": "#111111" },
+        "surface": { "light": "#ffffff", "dark": "#1b1b1b" },
+        "surfaceMuted": { "light": "#eef1f4", "dark": "#242424" },
+        "surfaceSubtle": { "light": "#f4f6f8", "dark": "#202020" },
+        "text": { "light": "#171a1f", "dark": "#f1f1f1" },
+        "textMuted": { "light": "#626a76", "dark": "#b8b8b8" },
+        "textSoft": { "light": "#8a93a0", "dark": "#8f8f8f" },
+        "border": { "light": "#d9dee6", "dark": "#343434" },
+        "borderSubtle": { "light": "#e6e9ee", "dark": "#2a2a2a" },
+        "primary": { "light": "#171a1f", "dark": "#f1f1f1" },
+        "primaryHover": { "light": "#30343b", "dark": "#ffffff" },
+        "primaryText": { "light": "#ffffff", "dark": "#111111" },
+        "secondary": { "light": "#eceff3", "dark": "#242424" },
+        "secondaryHover": { "light": "#dfe4ea", "dark": "#303030" },
+        "secondaryText": { "light": "#2d333b", "dark": "#eeeeee" },
+        "danger": { "light": "#c73535", "dark": "#e05a5a" },
+        "dangerHover": { "light": "#ad2e2e", "dark": "#f06a6a" },
+        "dangerSoft": { "light": "#fff0f0", "dark": "#342020" },
+        "dangerText": { "light": "#b22d2d", "dark": "#ff9999" },
+        "success": { "light": "#2f9d63", "dark": "#49b77b" },
+        "info": { "light": "#2f78c4", "dark": "#5a9fe5" },
+        "focus": { "light": "#4f83ff", "dark": "#7da2ff" }
+    },
+    "shadow": {
+        "surface": [
+            { "y": 1, "blur": 2, "light": "rgba(15, 23, 42, 0.06)", "dark": "rgba(0, 0, 0, 0.28)" }
+        ],
+        "elevated": [
+            { "y": 1, "blur": 2, "light": "rgba(15, 23, 42, 0.06)", "dark": "rgba(0, 0, 0, 0.28)" },
+            { "y": 4, "blur": 12, "light": "rgba(15, 23, 42, 0.04)", "dark": "rgba(0, 0, 0, 0.18)" }
+        ]
+    },
+    "size": {
+        "narrowBreakpoint": 520,
+        "pagePadding": 26,
+        "pagePaddingNarrow": 18,
+        "headerGap": 26,
+        "brandGap": 2,
+        "playerGap": 34,
+        "playerMaxWidth": 980,
+        "transportGap": 15,
+        "playButton": 118,
+        "playButtonNarrow": 102,
+        "playIcon": 52,
+        "playIconNarrow": 46,
+        "skipButton": 60,
+        "skipIcon": 30,
+        "menuButton": 40,
+        "menuIcon": 22,
+        "menuPanelRadius": 16,
+        "menuPanelPadding": 14,
+        "menuPanelGap": 10,
+        "popoverOffset": 4,
+        "themeOption": 34,
+        "themeSelectorPadding": 4,
+        "themeIcon": 18,
+        "volumeButton": 50,
+        "volumeIcon": 22,
+        "volumePanelGap": 8,
+        "volumePanelPadding": 18,
+        "volumeSliderLength": 120,
+        "loadingBarWidth": 72,
+        "loadingBarHeight": 2,
+        "loadingOffset": 12,
+        "loadingOffsetReduced": 16,
+        "titleSlide": 12,
+        "titleMinWidthChars": 15,
+        "errorMaxWidthChars": 32,
+        "focusRing": 2
+    },
+    "type": {
+        "body": { "size": 18, "weight": 400, "lineHeight": 1.4 },
+        "appName": { "size": 20, "weight": 700, "lineHeight": 1.1 },
+        "byline": { "size": 11.2, "weight": 600, "letterSpacing": 0.02 },
+        "title": { "size": 20.48, "weight": 700, "lineHeight": 1.2 },
+        "loading": { "size": 13.6 },
+        "error": { "size": 14.4, "weight": 500 },
+        "menuLabel": { "size": 11.2, "weight": 600, "letterSpacing": 0.04, "uppercase": true },
+        "version": { "size": 12, "weight": 500, "letterSpacing": 0.02 }
+    },
+    "duration": {
+        "loopCrossfade": 10,
+        "trackCrossfade": 250,
+        "volumeRamp": 250,
+        "loadingIndicatorDelay": 450,
+        "titleChange": 420,
+        "titleDim": 300,
+        "loadingSweep": 1100,
+        "press": 120,
+        "colorChange": 180,
+        "themeFade": 200,
+        "themeThumb": 180,
+        "popoverFade": 160,
+        "volumeWipe": 240
+    },
+    "volume": {
+        "wheelStep": 0.05,
+        "mutedAtOrBelow": 0.001,
+        "mutedWaveOpacity": 0.22
+    },
+    "motion": {
+        "pressScale": 0.95,
+        "loadingDim": 0.3,
+        "loadingDash": 0.4,
+        "popoverScale": 0.98,
+        "emphasizedEasing": [0.22, 1, 0.36, 1],
+        "wipeEasing": [0.2, 0.8, 0.2, 1]
+    }
+}

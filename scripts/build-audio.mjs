@@ -11,17 +11,17 @@
 // its own loop crossfade at runtime, so baking one in would apply it twice.
 //
 // A third role, cast/<id>.m4a, existed while the web app could cast; it went
-// with that feature. src/js/AGENTS.md says where to find it.
+// with that feature. web/src/js/AGENTS.md says where to find it.
 //
 // Requires ffmpeg/ffprobe on PATH. Host-only — not part of npm test or the
 // Docker image. See masters/AGENTS.md for where the inputs come from.
 //
 // Usage:
-//   npm run audio                    every applicable target
-//   npm run audio -- --opus          local primary only
-//   npm run audio -- --aac           local fallback only
-//   npm run audio -- --placeholders  (re)generate the stand-in masters
-//   npm run audio -- --masters <dir> read masters from somewhere else
+//   node scripts/build-audio.mjs                every applicable target
+//   node scripts/build-audio.mjs --opus          local primary only
+//   node scripts/build-audio.mjs --aac           local fallback only
+//   node scripts/build-audio.mjs --placeholders  (re)generate the stand-in masters
+//   node scripts/build-audio.mjs --masters <dir> read masters from somewhere else
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -29,19 +29,24 @@ import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/pro
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { localSourceFor } from "../src/js/local-source.js";
-import { tracks } from "../src/js/tracks.js";
+import { localSourceFor } from "../web/src/js/local-source.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, "..");
-const soundscapeDir = path.join(repoRoot, "src", "resources", "soundscapes");
+// The web app's deploy folder. The published audio lives here, and every
+// platform reads it from here.
+const publishRoot = path.join(repoRoot, "web", "src");
+const soundscapeDir = path.join(publishRoot, "resources", "soundscapes");
 const opusDir = path.join(soundscapeDir, "opus");
 const aacDir = path.join(soundscapeDir, "aac");
 
-// Outside src/, so masters are never deployed. Their bytes are gitignored; the
+// Outside web/src/, so masters are never deployed. Their bytes are gitignored; the
 // two JSON records beside them are tracked, because provenance that only exists
 // on one laptop is not provenance.
 const defaultMastersDir = path.join(repoRoot, "masters");
+
+// The catalog every platform agrees on; shared/AGENTS.md says why it lives there.
+const { tracks } = JSON.parse(await readFile(path.join(repoRoot, "shared", "catalog.json"), "utf8"));
 
 const PROVENANCE_FILE = "provenance.json";
 const MANIFEST_FILE = "build-manifest.json";
@@ -271,7 +276,7 @@ async function generatePlaceholders(mastersDir) {
     const declared = await readJson(path.join(mastersDir, PROVENANCE_FILE), {});
 
     for (const track of tracks) {
-        const source = path.join(repoRoot, "src", localSourceFor(track).url);
+        const source = path.join(publishRoot, localSourceFor(track).url);
         const target = path.join(mastersDir, `${track.id}.wav`);
 
         // A real master is never overwritten by a stand-in. Losing one to a
@@ -447,7 +452,7 @@ async function buildLocalAac(track, master) {
  */
 function sourceFor(track, master) {
     return master.kind === PLACEHOLDER
-        ? path.join(repoRoot, "src", localSourceFor(track).url)
+        ? path.join(publishRoot, localSourceFor(track).url)
         : master.file;
 }
 
@@ -467,7 +472,7 @@ async function inputRecordFor(track, master, target) {
     return {
         provenance: master.kind,
         file: publishedOpus,
-        sha256: await sha256OfFile(path.join(repoRoot, "src", publishedOpus)),
+        sha256: await sha256OfFile(path.join(publishRoot, publishedOpus)),
         note: `Read the published Opus directly; the ${PLACEHOLDER} was decoded from it.`,
     };
 }
@@ -553,7 +558,7 @@ for (const target of options.targets) {
         manifest[key] = {
             id: track.id,
             role: target,
-            output: path.relative(path.join(repoRoot, "src"), result.outputFile).split(path.sep).join("/"),
+            output: path.relative(publishRoot, result.outputFile).split(path.sep).join("/"),
             outputSha256,
             input: await inputRecordFor(track, master, target),
             transform: result.transform,

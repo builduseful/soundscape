@@ -1,0 +1,19 @@
+{
+    "appName": "Soundscape",
+    "byline": "by Build Useful.",
+    "bylineUrl": "https://builduseful.com",
+    "sourceUrl": "https://github.com/builduseful/soundscape",
+    "playbackControls": "Playback controls",
+    "play": "Play",
+    "pause": "Pause",
+    "previousTrack": "Previous track",
+    "nextTrack": "Next track",
+    "volume": "Volume",
+    "menu": "Menu",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "loading": "Loading soundscape",
+    "playbackFailed": "{title} could not be played. Try again, or pick another."
+}

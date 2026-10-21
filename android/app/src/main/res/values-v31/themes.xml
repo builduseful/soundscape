@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12 draws its own splash screen; give it the page colour too, so
+         the hand-over to the first frame does not flash. -->
+    <style name="Theme.Soundscape" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/page</item>
+        <item name="android:windowSplashScreenBackground">@color/page</item>
+    </style>
+</resources>
