@@ -120,6 +120,8 @@ internal fun CubicBezier.easing(): Easing = CubicBezierEasing(x1, y1, x2, y2)
 internal fun TypeToken.style(color: Color) = TextStyle(
     color = color,
     fontSize = size.sp,
+    // The system's Roboto, not a bundled font: before Android 12 it has no 600,
+    // so a 600 is drawn bolder or lighter there. Judged not worth the APK size.
     fontWeight = FontWeight(weight),
     lineHeight = lineBox,
     // CSS spreads the extra line height evenly above and below the text.

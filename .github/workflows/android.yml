@@ -1,10 +1,13 @@
 name: Android
 
 # Only what the Android build reads: its own project, the contract it is
-# generated from, and the audio it bundles.
+# generated from, and the audio it bundles. A release tag runs whatever the
+# paths, since a tag push carries no paths to filter on.
 on:
   push:
     branches: [trunk]
+    # A minor or major Android release: android-v1.2.0, not android-v1.2.1.
+    tags: ['android-v*.*.0']
     paths: &android-paths
       - android/**
       - shared/**
@@ -13,12 +16,12 @@ on:
   pull_request:
     branches: [trunk]
     paths: *android-paths
+  # The whole matrix, on demand.
   workflow_dispatch:
 
 jobs:
   # JVM tests, lint (warnings are errors), a debug build, and the device suites
-  # compiled. Running those on emulators joins in Phase 12 of
-  # docs/native-apps-plan.md.
+  # compiled, so a change that breaks them fails here in minutes.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -39,5 +42,95 @@ jobs:
           distribution: microsoft
           java-version: 21
           cache: gradle
-      # The device suites need an emulator; compiling them here keeps them from rotting.
       - run: ./gradlew --console=plain :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :e2e:assembleDebug
+
+  # The instrumented and end-to-end suites on emulators: the lowest and highest
+  # level on every change, the whole matrix (docs/native-apps-plan.md) for a
+  # release or on demand. An emulator, not Gradle Managed Devices, which does
+  # not support API 26.
+  devices:
+    name: devices (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: android-devices-${{ matrix.name }}-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON((github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') && '[
+          {"name":"phone 26","image":"android-26","device":"pixel_6"},
+          {"name":"phone 29","image":"android-29","device":"pixel_6"},
+          {"name":"phone 30","image":"android-30","device":"pixel_6"},
+          {"name":"phone 31","image":"android-31","device":"pixel_6"},
+          {"name":"phone 33","image":"android-33","device":"pixel_6"},
+          {"name":"phone 34","image":"android-34","device":"pixel_6"},
+          {"name":"phone 35","image":"android-35","device":"pixel_6"},
+          {"name":"phone 37","image":"android-37.0","device":"pixel_6"},
+          {"name":"tablet 26","image":"android-26","device":"pixel_tablet"},
+          {"name":"tablet 37","image":"android-37.0","device":"pixel_tablet"},
+          {"name":"foldable 26","image":"android-26","device":"pixel_9_pro_fold"},
+          {"name":"foldable 37","image":"android-37.0","device":"pixel_9_pro_fold"}
+          ]' || '[
+          {"name":"phone 26","image":"android-26","device":"pixel_6"},
+          {"name":"phone 37","image":"android-37.0","device":"pixel_6"}
+          ]') }}
+    defaults:
+      run:
+        working-directory: android
+    env:
+      PACKAGE: system-images;${{ matrix.image }};google_apis;x86_64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: microsoft
+          java-version: 21
+          cache: gradle
+      # Hardware acceleration: without it an emulator is too slow to test on.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Start the emulator
+        run: |
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # `yes` ends on a broken pipe, which pipefail would count as a failure.
+          (yes || true) | "$SDKMANAGER" --licenses > /dev/null
+          "$SDKMANAGER" --install emulator platform-tools "$PACKAGE" > /dev/null
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+            --name test --package "$PACKAGE" --device ${{ matrix.device }}
+          nohup "$ANDROID_HOME/emulator/emulator" -avd test -no-window -no-audio \
+            -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+      # While it boots.
+      - run: ./gradlew --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :e2e:assembleDebug
+      - name: Wait for the boot
+        run: |
+          adb wait-for-device
+          timeout 600 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 5; done'
+          # What runs straight after a boot is slow enough to fail a test on its own.
+          sleep 30
+          adb shell getprop ro.build.version.sdk
+      - run: ./gradlew --console=plain :app:connectedDebugAndroidTest
+      - if: success() || failure()
+        run: ./gradlew --console=plain :e2e:connectedDebugAndroidTest
+      - if: failure()
+        run: |
+          mkdir -p build/device-logs
+          adb logcat -d -b main,system,crash,events > build/device-logs/logcat.txt || true
+          cp "$RUNNER_TEMP/emulator.log" build/device-logs/ || true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: device-results-${{ matrix.image }}-${{ matrix.device }}
+          path: |
+            android/app/build/outputs/androidTest-results/connected
+            android/app/build/reports/androidTests/connected
+            android/e2e/build/outputs/androidTest-results/connected
+            android/e2e/build/reports/androidTests/connected
+            android/build/device-logs

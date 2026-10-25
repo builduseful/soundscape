@@ -38,10 +38,15 @@ needs an account, a key, or a decision.
 ## Every release
 
 - [ ] Bump `versionCode` (every upload) and `versionName` in
-      `app/build.gradle.kts`.
-- [ ] Everything green on `trunk`: `:core:test`, `:app:lintDebug`, and the
-      instrumented and end-to-end suites on the lowest and highest API level
-      (`AGENTS.md`, "Build and test").
+      `app/build.gradle.kts`, and tag that commit on `trunk` with a matching
+      annotated `android-v<versionName>` (the web's `v<version>` tags are its
+      own). Push the tag.
+- [ ] Everything green on `trunk`. Every push runs the JVM tests, lint, and
+      the device suites on API 26 and 37; a minor or major tag
+      (`android-v1.2.0`, not `android-v1.2.1`) runs them on the whole matrix —
+      every level, and a tablet and foldable at each end. Wait for that run
+      before uploading. For a patch release, run it by hand if the change could
+      differ by level (Actions → Android → Run workflow).
 - [ ] Screenshots current: `node scripts/capture-store-screenshots.mjs`, then
       upload `store/screenshots/` (phone, 7-inch and 10-inch tablet, light and
       dark) if any changed.

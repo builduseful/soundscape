@@ -145,6 +145,10 @@ time to first frame are still to come.
 ./gradlew :e2e:connectedDebugAndroidTest   # end to end, on a running emulator
 ```
 
+CI (`.github/workflows/android.yml`) runs both device suites on an emulator
+at API 26 and 37 on every change, and on the whole matrix for a minor or major
+`android-v*` tag or by hand. A failed run uploads the results and logcat.
+
 Check a change on the lowest and highest API level in the matrix
 (`docs/native-apps-plan.md`), in both themes, before calling it done:
 
