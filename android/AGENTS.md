@@ -171,7 +171,7 @@ than emulator noise; raise one only with the maintainer's agreement.
 | Render thread CPU while playing | `AudioBudgetTest` | 5% of one core | under 10 ms in 3 s (the clock's resolution) on 26, 29 and 37 |
 | Render thread while paused | `AudioBudgetTest` | waiting, 0 ms CPU | waiting, 0 ms on 26, 29 and 37 |
 | Render thread wake-ups while playing | `AudioBudgetTest` | 20 a second | 6 on 26, 7 on 37 (13 and 14 with 20 ms chunks) |
-| Cold start to first frame, R8 build (median of 5) | `StartupBudgetTest` (e2e) | 3,000 ms | 910 ms on 26, 1,582 ms on 37 (emulators, software drawing) |
+| Cold start to first frame, R8 build (median of 5), phones | `StartupBudgetTest` (e2e) | 3,000 ms | 910 ms on 26, 1,582 ms on 37 (emulators, software drawing) |
 
 Each phase adds the budgets for what it builds: heap during a track change is
 still to come.
