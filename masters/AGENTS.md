@@ -1,7 +1,8 @@
 # Masters
 
-The inputs `scripts/build-audio.mjs` reads. Everything the app ships is derived
-from what lives here; nothing here is ever deployed.
+Every soundscape's master: the one source of its audio. The web's Opus and AAC
+are built from it by `scripts/build-audio.mjs`; the Android app bundles it as it
+is (`BundleLoops`, in `android/build-logic/`), so a master is a finished loop.
 
 `masters/` sits outside `web/src/`, so it is not in the deploy folder, not in the
 service worker precache, and not in the Docker image.
@@ -13,21 +14,17 @@ service worker precache, and not in the Docker image.
 | `AGENTS.md` | yes | This file. |
 | `provenance.json` | yes | What each master *is*, and its hash. |
 | `build-manifest.json` | yes | What was built from what. |
-| `*.wav` | **no** | Master audio. Large, and not all of it is ours to redistribute. |
+| `*.wav` | yes | The master audio. Android ships it, so a clone must hold it. |
 
-The bytes are gitignored but the records are not, which is the whole design: a
-fresh clone can always read what an input was claimed to be, and anyone actually
-holding the file can have that claim checked against a hash.
-
-The consequence to accept: **a clone cannot reproduce a build.** It can verify
-one, given the inputs. That is a property of holding masters outside the repo,
-not something the manifest can fix.
+Every master here is ours to publish: recorded by the maintainer or licensed for
+it. One that is not cannot be added, since git and the APK both hand it out.
 
 ## Placeholders
 
 Until the genuine originals are available, every master here is a
-**`opus-decoded-placeholder`**: PCM decoded straight back out of the published
-Opus file.
+**`opus-decoded-placeholder`**: PCM decoded back out of the published Opus file
+and made a finished loop with the web's own crossfade (`applyLoopCrossfade`),
+so the app loops as the web does.
 
 ```sh
 node scripts/build-audio.mjs --placeholders
@@ -49,19 +46,24 @@ Two rules keep that honest, and both are enforced in code:
   bitstream stays exactly as it is until a real master exists.
 
 `--placeholders` will not overwrite a master declared as `master` in
-`provenance.json`. Master bytes are not tracked, so losing one to a routine
-re-run would be unrecoverable from this repo.
+`provenance.json`.
 
 ## Supplying a real master
 
-1. Prepare the file **finished**: 48 kHz mono PCM WAV, loop-ready, unclipped,
-   and at the level you want it heard at relative to the other soundscapes.
-2. Save it as `masters/<track-id>.wav`, using the id from `web/src/js/tracks.js`.
+1. Prepare the file **finished**: 48 kHz mono 16-bit PCM WAV, unclipped, and at
+   the level you want it heard at relative to the other soundscapes.
+   **Loop-ready**: exactly one loop, its last sample running straight into its
+   first, since the app wraps from one to the other and adds nothing.
+   **No metadata**: only the `fmt` and `data` chunks, since tags are shipped
+   with the file (export with `-map_metadata -1 -fflags +bitexact`).
+2. Save it as `masters/<track-id>.wav`, using the id from `shared/catalog.json`.
 3. Update its entry in `provenance.json` — `"kind": "master"` and the file's
    SHA-256. The build refuses to run on a hash that disagrees with the file,
    because every derivative built past that point would carry a provenance
    record that is simply untrue.
-4. Rebuild: `node scripts/build-audio.mjs`.
+4. Rebuild: `node scripts/build-audio.mjs`. The Android build picks it up as
+   it is; `MastersTest` in `android/core` fails on a master with a step at its
+   seam, or with anything in it but 48 kHz mono 16-bit samples.
 
 ### What the build will not do for you
 

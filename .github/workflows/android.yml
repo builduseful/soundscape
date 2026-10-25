@@ -1,8 +1,8 @@
 name: Android
 
-# Only what the Android build reads: its own project, the contract it is
-# generated from, and the audio it bundles. A release tag runs whatever the
-# paths, since a tag push carries no paths to filter on.
+# Only what the Android build reads: its own project, the masters it bundles,
+# and the contract it is generated from. A release tag runs whatever the paths,
+# since a tag push carries no paths to filter on.
 on:
   push:
     branches: [trunk]
@@ -10,8 +10,8 @@ on:
     tags: ['android-v*.*.0']
     paths: &android-paths
       - android/**
+      - masters/**
       - shared/**
-      - web/src/resources/soundscapes/**
       - .github/workflows/android.yml
   pull_request:
     branches: [trunk]
@@ -20,8 +20,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # JVM tests, lint (warnings are errors), a debug build, and the device suites
-  # compiled, so a change that breaks them fails here in minutes.
+  # JVM tests, lint (warnings are errors), a debug and a minified build, and
+  # the device suites compiled, so a change that breaks them fails here in
+  # minutes.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -42,12 +43,16 @@ jobs:
           distribution: microsoft
           java-version: 21
           cache: gradle
-      - run: ./gradlew --console=plain :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :e2e:assembleDebug
+      - run: >-
+          ./gradlew --console=plain :core:test :app:testDebugUnitTest :app:lintDebug
+          :app:assembleDebug :app:assembleDebugAndroidTest
+          :app:assembleBenchmarkRelease :e2e:assembleBenchmarkRelease :baselineprofile:assembleBenchmarkRelease
 
   # The instrumented and end-to-end suites on emulators: the lowest and highest
   # level on every change, the whole matrix (docs/native-apps-plan.md) for a
   # release or on demand. An emulator, not Gradle Managed Devices, which does
-  # not support API 26.
+  # not support API 26. The foldable is the Pixel Fold: the runner's avdmanager
+  # predates the Pixel 9 Pro Fold the local matrix uses.
   devices:
     name: devices (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -72,8 +77,8 @@ jobs:
           {"name":"phone 37","image":"android-37.0","device":"pixel_6"},
           {"name":"tablet 26","image":"android-26","device":"pixel_tablet"},
           {"name":"tablet 37","image":"android-37.0","device":"pixel_tablet"},
-          {"name":"foldable 26","image":"android-26","device":"pixel_9_pro_fold"},
-          {"name":"foldable 37","image":"android-37.0","device":"pixel_9_pro_fold"}
+          {"name":"foldable 26","image":"android-26","device":"pixel_fold"},
+          {"name":"foldable 37","image":"android-37.0","device":"pixel_fold"}
           ]' || '[
           {"name":"phone 26","image":"android-26","device":"pixel_6"},
           {"name":"phone 37","image":"android-37.0","device":"pixel_6"}
@@ -111,8 +116,9 @@ jobs:
           nohup "$ANDROID_HOME/emulator/emulator" -avd test -no-window -no-audio \
             -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
       # While it boots.
-      - run: ./gradlew --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :e2e:assembleDebug
+      - run: ./gradlew --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleBenchmarkRelease :e2e:assembleBenchmarkRelease
       - name: Wait for the boot
+        id: boot
         run: |
           if ! timeout 600 sh -c 'adb wait-for-device && until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 5; done'; then
             cat "$RUNNER_TEMP/emulator.log"
@@ -123,13 +129,16 @@ jobs:
           adb shell getprop ro.build.version.sdk
       - run: ./gradlew --console=plain :app:connectedDebugAndroidTest
         timeout-minutes: 20
-      - if: success() || failure()
-        run: ./gradlew --console=plain :e2e:connectedDebugAndroidTest
+      # Whether or not the instrumented suite passed, once there is a device.
+      # Against the app as it ships, minified by R8.
+      - if: ${{ !cancelled() && steps.boot.outcome == 'success' }}
+        run: ./gradlew --console=plain :e2e:connectedBenchmarkReleaseAndroidTest
         timeout-minutes: 15
       - if: failure()
         run: |
           mkdir -p build/device-logs
-          adb logcat -d -b main,system,crash,events > build/device-logs/logcat.txt || true
+          # adb waits for a device that never came, so give it a limit.
+          timeout 60 adb logcat -d -b main,system,crash,events > build/device-logs/logcat.txt || true
           cp "$RUNNER_TEMP/emulator.log" build/device-logs/ || true
       - if: failure()
         uses: actions/upload-artifact@v7

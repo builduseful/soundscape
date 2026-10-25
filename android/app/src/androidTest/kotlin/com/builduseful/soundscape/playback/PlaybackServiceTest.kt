@@ -2,6 +2,8 @@ package com.builduseful.soundscape.playback
 
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.Context
+import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -33,6 +35,7 @@ class PlaybackServiceTest {
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private val audio = context.getSystemService(AudioManager::class.java)
     private val notifications = context.getSystemService(NotificationManager::class.java)
+    private val shortcutManager = context.getSystemService(ShortcutManager::class.java)
 
     @After
     fun stop() {
@@ -71,11 +74,10 @@ class PlaybackServiceTest {
 
     @Test
     fun aShortcutOpensTheAppAndPlaysItsTrack() {
-        val shortcuts = context.getSystemService(ShortcutManager::class.java).manifestShortcuts.sortedBy { it.rank }
+        val shortcuts = shortcutsShown(history = emptyMap())
         assertEquals(listOf("garden-rain", "fireplace", "rain-thunder"), shortcuts.map { it.id })
 
-        // Not the first shortcut, so the right one is shown to be chosen; and not
-        // the minute-long rain-thunder, whose decode on a busy emulator outlasts the wait.
+        // Not the first shortcut, so the right one is shown to be chosen.
         val shortcut = shortcuts.first { it.id == "fireplace" }
         assertEquals(title("fireplace"), shortcut.shortLabel)
         context.startActivity(Intent(shortcut.intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -85,11 +87,20 @@ class PlaybackServiceTest {
         }
     }
 
+    // ListeningHistoryTest proves the order; this, that the service publishes
+    // it from what is saved.
+    @Test
+    fun theShortcutsPutTheMostRecentlyListenedFirst() {
+        val now = System.currentTimeMillis()
+        val shortcuts = shortcutsShown(history = mapOf("track.white-noise" to "1,30000,${now - 1000}", "track.fireplace" to "2,60000,$now"))
+        assertEquals(listOf("fireplace", "white-noise", "garden-rain", "rain-thunder"), shortcuts.map { it.id })
+    }
+
     // With the activity gone and nothing bound, the service alone keeps the
     // sound going: it is in the foreground.
     @Test
     fun playbackOutlivesTheScreen() {
-        val shortcut = context.getSystemService(ShortcutManager::class.java).manifestShortcuts.minBy { it.rank }
+        val shortcut = shortcutsShown(history = emptyMap()).first()
         context.startActivity(Intent(shortcut.intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         // The service's word, not isMusicActive: that stays true a moment after
         // the last test's sound has stopped, and let this one leave too soon.
@@ -169,6 +180,17 @@ class PlaybackServiceTest {
         harness.playing("rain")
         SystemClock.sleep(3_000)
         assertTrue("still playing", harness.isSounding)
+    }
+
+    /** The shortcuts the service shows once created with [history] as what has been listened to. */
+    private fun shortcutsShown(history: Map<String, String>): List<ShortcutInfo> {
+        val saved = context.getSharedPreferences(PlaybackService.HISTORY, Context.MODE_PRIVATE).edit().clear()
+        history.forEach { (key, value) -> saved.putString(key, value) }
+        saved.commit()
+        shortcutManager.removeAllDynamicShortcuts()
+        harness.bind()
+        harness.waitUntil("the shortcuts to be shown") { shortcutManager.dynamicShortcuts.isNotEmpty() }
+        return shortcutManager.dynamicShortcuts.sortedBy { it.rank }
     }
 
     private fun press(code: Int) {

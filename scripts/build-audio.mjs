@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Builds every published audio derivative from the masters.
 //
-// One soundscape has one identity and two output roles, and this script owns
-// both:
+// One soundscape has one identity and two output roles, both the web's:
 //
-//   opus/<id>.opus   local primary   one loop period, no baked crossfade
-//   aac/<id>.m4a     local fallback  one loop period, no baked crossfade
+//   opus/<id>.opus   web primary     one loop period
+//   aac/<id>.m4a     web fallback    one loop period
 //
-// They are the same product in two containers: the app decodes them and applies
-// its own loop crossfade at runtime, so baking one in would apply it twice.
+// The web decodes them and applies its loop crossfade at runtime, which a lossy
+// encode needs even of a clean loop. Android bundles the masters themselves,
+// which are finished loops: see masters/AGENTS.md.
 //
 // A third role, cast/<id>.m4a, existed while the web app could cast; it went
 // with that feature. web/src/js/AGENTS.md says where to find it.
@@ -29,6 +29,7 @@ import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/pro
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { applyLoopCrossfade } from "../web/src/js/audio-player.js";
 import { localSourceFor } from "../web/src/js/local-source.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,10 +40,7 @@ const publishRoot = path.join(repoRoot, "web", "src");
 const soundscapeDir = path.join(publishRoot, "resources", "soundscapes");
 const opusDir = path.join(soundscapeDir, "opus");
 const aacDir = path.join(soundscapeDir, "aac");
-
-// Outside web/src/, so masters are never deployed. Their bytes are gitignored; the
-// two JSON records beside them are tracked, because provenance that only exists
-// on one laptop is not provenance.
+// Outside web/src/, so masters are never deployed.
 const defaultMastersDir = path.join(repoRoot, "masters");
 
 // The catalog every platform agrees on; shared/AGENTS.md says why it lives there.
@@ -127,7 +125,7 @@ async function probe(file) {
     const output = await run("ffprobe", [
         "-v", "error",
         "-select_streams", "a:0",
-        "-show_entries", "stream=sample_rate,channels",
+        "-show_entries", "stream=sample_rate,channels,sample_fmt",
         "-of", "json",
         file,
     ]);
@@ -135,7 +133,7 @@ async function probe(file) {
 
     if (!stream) throw new Error(`No audio stream in ${file}`);
 
-    return { sampleRate: Number(stream.sample_rate), channels: Number(stream.channels) };
+    return { sampleRate: Number(stream.sample_rate), channels: Number(stream.channels), sampleFormat: stream.sample_fmt };
 }
 
 async function decodeToFloat(file) {
@@ -243,8 +241,7 @@ async function loadProvenance(mastersDir) {
         if (actual === null) {
             throw new Error(
                 `Master ${track.id}.wav is missing from ${mastersDir}.`
-                + ` Its bytes are gitignored, so a fresh clone has none:`
-                + ` run \`npm run audio -- --placeholders\` or supply the originals.`,
+                + ` Run \`npm run audio -- --placeholders\` or supply the original.`,
             );
         }
 
@@ -263,7 +260,8 @@ async function loadProvenance(mastersDir) {
 }
 
 /**
- * Stand-in masters, decoded from the published Opus.
+ * Stand-in masters, decoded from the published Opus and made into finished
+ * loops with the web's own crossfade, so Android's loops sound as the web's do.
  *
  * These are a production input, not a recovered original: decoding a lossy file
  * to PCM restores none of what the encoder discarded. They exist so the pipeline
@@ -279,31 +277,51 @@ async function generatePlaceholders(mastersDir) {
         const source = path.join(publishRoot, localSourceFor(track).url);
         const target = path.join(mastersDir, `${track.id}.wav`);
 
-        // A real master is never overwritten by a stand-in. Losing one to a
-        // routine re-run would be unrecoverable from this repo, since master
-        // bytes are deliberately not tracked.
+        // A real master is never overwritten by a stand-in.
         if (declared[track.id]?.kind === MASTER) {
             console.log(`kept       ${track.id}.wav  (a real master, not overwritten)`);
             continue;
         }
 
+        const { interleaved, sampleRate, channels, frameCount } = await decodeToFloat(source);
+
+        assertProductionProfile(track, sampleRate, channels);
+
+        // The web's function wants an AudioBuffer and a context to make one;
+        // these are the two members it uses. The audio is mono (above).
+        const loop = applyLoopCrossfade(
+            { sampleRate, numberOfChannels: 1, length: frameCount, getChannelData: () => interleaved },
+            { createBuffer: (_channels, length) => {
+                const data = new Float32Array(length);
+                return { getChannelData: () => data };
+            } },
+        );
+        const loopFrames = Math.round(loop.loopEnd * sampleRate);
+        const audio = loop.buffer.getChannelData(0).subarray(0, loopFrames);
+
         await writeIfChanged(
             target,
             (tempFile) => run("ffmpeg", [
                 "-v", "error",
-                "-i", source,
+                "-f", "f32le",
+                "-ar", String(sampleRate),
+                "-ac", "1",
+                "-i", "-",
+                "-map_metadata", "-1",
+                // No encoder tag, so the same samples always make the same bytes.
+                "-fflags", "+bitexact",
                 "-c:a", "pcm_s16le",
                 "-f", "wav",
                 "-y", tempFile,
-            ]),
-            (bytes) => `(${(bytes.length / 1024).toFixed(0)} KiB placeholder)`,
+            ], { input: Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength) }),
+            (bytes) => `(${(bytes.length / 1024).toFixed(0)} KiB placeholder, ${(loopFrames / sampleRate).toFixed(2)}s loop)`,
         );
 
         declared[track.id] = {
             kind: PLACEHOLDER,
             sha256: await sha256OfFile(target),
             decodedFrom: localSourceFor(track).url,
-            note: "Decoded from the published Opus. Not an original; replace when one exists.",
+            note: "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists.",
         };
     }
 
@@ -318,7 +336,7 @@ async function generatePlaceholders(mastersDir) {
  * other soundscapes; both are editorial decisions belonging to whoever prepared
  * it, not to an encoder default. So this rejects rather than repairs.
  */
-function assertProductionProfile(track, sampleRate, channels) {
+function assertProductionProfile(track, sampleRate, channels, sampleFormat = "s16") {
     if (channels !== 1) {
         throw new Error(
             `Master for "${track.id}" has ${channels} channels. Masters must already be mono:`
@@ -328,6 +346,11 @@ function assertProductionProfile(track, sampleRate, channels) {
 
     if (sampleRate !== 48000) {
         throw new Error(`Master for "${track.id}" is ${sampleRate} Hz. Masters must be 48 kHz.`);
+    }
+
+    // Android plays a master's samples as they lie.
+    if (sampleFormat !== "s16") {
+        throw new Error(`Master for "${track.id}" is ${sampleFormat}. Masters must be 16-bit PCM.`);
     }
 }
 
@@ -347,9 +370,9 @@ async function buildOpus(track, master) {
     }
 
     const outputFile = path.join(opusDir, `${track.id}.opus`);
-    const { sampleRate, channels } = await probe(master.file);
+    const { sampleRate, channels, sampleFormat } = await probe(master.file);
 
-    assertProductionProfile(track, sampleRate, channels);
+    assertProductionProfile(track, sampleRate, channels, sampleFormat);
 
     const { bytes } = await writeIfChanged(
         outputFile,
@@ -446,9 +469,9 @@ async function buildLocalAac(track, master) {
  * Which file a derivative is actually built from.
  *
  * With a real master, that is the master. With a placeholder it is the published
- * Opus instead — the placeholder was decoded from exactly those samples, so
- * reading the Opus directly is the same audio with one less conversion, and it
- * keeps the build working on a clone that has no master bytes.
+ * Opus instead — the placeholder was decoded from it, so the Opus is the same
+ * audio with one less conversion, and without the crossfade the web applies at
+ * runtime already baked in.
  */
 function sourceFor(track, master) {
     return master.kind === PLACEHOLDER

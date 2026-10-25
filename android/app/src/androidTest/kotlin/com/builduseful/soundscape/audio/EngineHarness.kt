@@ -47,6 +47,14 @@ class EngineHarness : AutoCloseable {
         return (fields[11].toLong() + fields[12].toLong()) * 10
     }
 
+    /** How often the render thread has gone to sleep: each one is a wake-up later. */
+    fun renderSleeps(): Long {
+        val tid = engine.renderThreadId
+        check(tid != 0) { "the render thread has not started" }
+        val status = File("/proc/${Process.myPid()}/task/$tid/status").readLines()
+        return status.first { it.startsWith("voluntary_ctxt_switches:") }.substringAfter(':').trim().toLong()
+    }
+
     fun renderThreadState(): Thread.State =
         Thread.getAllStackTraces().keys.first { it.name == "soundscape-render" }.state
 
@@ -65,9 +73,8 @@ class EngineHarness : AutoCloseable {
 
         /** The load's failure, or null once it succeeded. */
         fun await(): Throwable? {
-            // A ceiling, as DecodeNow's, not a budget: on an emulator still busy
-            // after its boot, a long track's decode has taken 14 s.
-            check(latch.await(60, TimeUnit.SECONDS)) { "the load never finished" }
+            // A ceiling for a broken engine, not a budget: a load is a file mapped.
+            check(latch.await(10, TimeUnit.SECONDS)) { "the load never finished" }
             return error
         }
     }

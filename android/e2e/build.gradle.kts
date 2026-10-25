@@ -17,6 +17,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    buildTypes {
+        // The app as it ships, minified by R8 (made by the baselineprofile
+        // plugin): :e2e:connectedBenchmarkReleaseAndroidTest.
+        create("benchmarkRelease") {
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+        }
+    }
+
     // The wording the app must show, from the contract rather than the app's resources.
     sourceSets["main"].assets.directories += "../../shared"
 

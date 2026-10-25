@@ -25,10 +25,16 @@ package only delivers the OS's events to it and shows its state.
 - **The notification and session change only when what they show changes**:
   the track, playing, and (for the session) loading. Volume and the notice are
   the screen's.
-- **Shortcuts come from `shared/catalog.json`**, generated into
-  `res/xml/shortcuts.xml`. The action and extra they send are named once, in
-  `app/build.gradle.kts`, and read here through `BuildConfig`.
+- **Shortcuts follow listening.** `ListeningHistory` (in `core`) keeps, per
+  track, plays, time listened and when it was last listened to. A listen counts
+  as a play, and reorders the shortcuts, once it reaches 30 seconds. They are
+  totals only, in the `listening` preferences, saved each minute while playing
+  so a forced close loses at most a minute. `AppShortcuts` publishes them as
+  dynamic shortcuts, four as Android advises: most recent first, then
+  `shared/catalog.json`'s. It calls the system only when the order changes.
+  The action and extra they send are named once, in `app/build.gradle.kts`, and
+  read here through `BuildConfig`.
 
 `PlaybackServiceTest` drives the service as the OS does: the notification,
-media keys, a shortcut, playing on after leaving the app, unplugging, focus
+media keys, a shortcut and their order, playing on after leaving the app, unplugging, focus
 taken briefly and for good, and a key after stop.

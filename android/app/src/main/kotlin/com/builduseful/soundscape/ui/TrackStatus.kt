@@ -60,13 +60,13 @@ import com.builduseful.soundscape.core.playback.PlayerState
  * so a slow change cannot nudge the controls (the web's `.track-status`).
  */
 @Composable
-internal fun TrackStatus(state: PlayerState?, modifier: Modifier = Modifier) {
+internal fun TrackStatus(state: PlayerState, modifier: Modifier = Modifier) {
     val reduced = LocalReducedMotion.current
     val offset = (if (reduced) DesignTokens.Size.loadingOffsetReduced else DesignTokens.Size.loadingOffset).dp
     Layout(
         content = {
-            TrackTitle(state?.track?.title, state?.trackChange, dim = state?.isLoading == true)
-            if (state?.notice == Notice.Loading) LoadingIndicator()
+            TrackTitle(state.track.title, state.trackChange, dim = state.isLoading)
+            if (state.notice == Notice.Loading) LoadingIndicator()
         },
         modifier = modifier,
     ) { measurables, constraints ->
@@ -81,7 +81,7 @@ internal fun TrackStatus(state: PlayerState?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TrackTitle(title: String?, change: Direction?, dim: Boolean) {
+private fun TrackTitle(title: String, change: Direction?, dim: Boolean) {
     val palette = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val style = DesignTokens.Type.title.style(palette.text).copy(textAlign = TextAlign.Center)
@@ -96,7 +96,7 @@ private fun TrackTitle(title: String?, change: Direction?, dim: Boolean) {
 
     LaunchedEffect(title) {
         if (title == current && incoming == null) return@LaunchedEffect
-        if (change == null || reduced || current == null) {
+        if (change == null || reduced) {
             progress.snapTo(1f)
             current = title
             incoming = null
@@ -108,7 +108,7 @@ private fun TrackTitle(title: String?, change: Direction?, dim: Boolean) {
         direction = change
         progress.snapTo(0f)
         progress.animateTo(1f, tween(DesignTokens.Duration.titleChange.toInt(), easing = LinearEasing))
-        current = incoming
+        current = title
         incoming = null
     }
 
@@ -136,7 +136,7 @@ private fun TrackTitle(title: String?, change: Direction?, dim: Boolean) {
         // The web's keyframes: the old title leaves over the first 58%, the new
         // one arrives over the last 66%, each eased on its own stretch.
         BasicText(
-            current.orEmpty(),
+            current,
             Modifier.graphicsLayer {
                 val out = if (incoming == null) 0f else easing.transform((progress.value / 0.58f).coerceIn(0f, 1f))
                 this.alpha = 1f - out

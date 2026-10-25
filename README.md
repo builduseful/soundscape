@@ -20,8 +20,8 @@ It supports:
 | `web/` | The web app (PWA), its tests and its container |
 | `android/` | The native Android app (in progress) |
 | `shared/` | What every platform agrees on: tracks, design tokens, wording |
-| `scripts/` | The audio build, which feeds every platform |
-| `masters/` | The audio build's inputs and their provenance |
+| `scripts/` | The web's audio build and the repo-wide generators |
+| `masters/` | The audio: each soundscape as a finished loop, and its provenance |
 
 ## Web app
 
@@ -70,7 +70,7 @@ the emulators and the rest.
 ./gradlew :app:assembleDebug               # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :core:test :app:lintDebug        # JVM tests and lint, no device needed
 ./gradlew :app:connectedDebugAndroidTest   # instrumented tests, on a running emulator
-./gradlew :e2e:connectedDebugAndroidTest   # end-to-end tests, on a running emulator
+./gradlew :e2e:connectedBenchmarkReleaseAndroidTest   # end-to-end tests, on the minified build
 ```
 
 ## Keeping the platforms alike

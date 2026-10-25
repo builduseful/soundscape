@@ -1,27 +1,29 @@
+import soundscape.build.BundleLoops
 import soundscape.build.GenerateResources
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("soundscape.shared-contract")
+    alias(libs.plugins.baselineprofile)
 }
 
 val shared = rootProject.layout.projectDirectory.dir("../shared")
 val appId = "com.builduseful.soundscape"
-// What an app shortcut sends MainActivity: written into the generated
-// shortcuts.xml, and read through BuildConfig.
+// What an app shortcut sends MainActivity, read through BuildConfig.
 val playTrackAction = "$appId.action.PLAY_TRACK"
 val trackIdExtra = "trackId"
 
 val generateSharedResources = tasks.register<GenerateResources>("generateSharedResources") {
     copy = shared.file("copy.json")
     tokens = shared.file("design-tokens.json")
-    catalog = shared.file("catalog.json")
-    shortcutPackage = appId
-    shortcutActivity = "$appId.MainActivity"
-    shortcutAction = playTrackAction
-    shortcutTrackExtra = trackIdExtra
     outputDir = layout.buildDirectory.dir("generated/shared-resources")
+}
+
+val bundleLoops = tasks.register<BundleLoops>("bundleLoops") {
+    catalog = shared.file("catalog.json")
+    masters = rootProject.layout.projectDirectory.dir("../masters")
+    outputDir = layout.buildDirectory.dir("generated/loops")
 }
 
 android {
@@ -39,6 +41,16 @@ android {
         testInstrumentationRunnerArguments["notClass"] = "$appId.ui.ParityScreenshots"
         buildConfigField("String", "PLAY_TRACK_ACTION", "\"$playTrackAction\"")
         buildConfigField("String", "TRACK_ID_EXTRA", "\"$trackIdExtra\"")
+        buildConfigField("boolean", "DIAGNOSTICS", providers.gradleProperty("soundscape.diagnostics").getOrElse("false"))
+    }
+
+    buildTypes {
+        release {
+            // R8: smaller, and faster to start, chiefly for Compose.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
     }
 
     compileOptions {
@@ -51,19 +63,12 @@ android {
         buildConfig = true
     }
 
-    sourceSets["main"].assets.directories += "../../web/src/resources/soundscapes"
     // The instrumented tests hold the device to the same fixtures as every platform.
     sourceSets["androidTest"].assets.directories += "../../shared/fixtures"
 
-    // The decoder reads assets through a file descriptor, which needs them
-    // stored as they are. They are compressed audio already.
     androidResources {
-        noCompress += "opus"
-        // Only the Opus is bundled. The AAC is the web's fallback for Safari, and
-        // Android's AAC decoders are not gapless: API 26 ignores the MP4 edit
-        // list (1024 samples of priming at the head) and later ones drop up to
-        // 32 samples at the tail. See android/AGENTS.md.
-        ignoreAssetsPatterns += "<dir>aac"
+        // The engine maps each loop from the APK, which needs it stored as it is.
+        noCompress += "wav"
     }
 
     lint {
@@ -83,6 +88,7 @@ kotlin {
 androidComponents {
     onVariants { variant ->
         variant.sources.res?.addGeneratedSourceDirectory(generateSharedResources, GenerateResources::outputDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(bundleLoops, BundleLoops::outputDir)
     }
 }
 
@@ -92,6 +98,9 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
     implementation(libs.activity.compose)
+    // Installs the startup profile (baselineprofile/) where Play does not.
+    implementation(libs.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
 
     testImplementation(libs.junit)
 

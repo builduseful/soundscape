@@ -52,7 +52,7 @@ class SoundscapeAppTest {
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val rain = catalogTracks.first()
-    private var state by mutableStateOf<PlayerState?>(PlayerState(rain, null, isPlaying = false, volume = 1f, isLoading = false, notice = null))
+    private var state by mutableStateOf(PlayerState(rain, null, isPlaying = false, volume = 1f, isLoading = false, notice = null))
     private var theme by mutableStateOf(ThemePreference.System)
     private val player = RecordingPlayer()
 
@@ -90,7 +90,7 @@ class SoundscapeAppTest {
     fun thePlayButtonNamesItsAction() {
         show()
         tag(UiTags.PLAY_PAUSE).assertContentDescriptionEquals(string(R.string.play))
-        state = state!!.copy(isPlaying = true)
+        state = state.copy(isPlaying = true)
         tag(UiTags.PLAY_PAUSE).assertContentDescriptionEquals(string(R.string.pause))
     }
 
@@ -98,7 +98,7 @@ class SoundscapeAppTest {
     fun theTitleIsTheTrackOnScreen() {
         show()
         rule.onNodeWithText(rain.title).assertIsDisplayed()
-        state = state!!.copy(track = catalogTracks[1])
+        state = state.copy(track = catalogTracks[1])
         rule.onNodeWithText(catalogTracks[1].title).assertIsDisplayed()
     }
 
@@ -106,11 +106,11 @@ class SoundscapeAppTest {
     @Test
     fun loadingAndFailureNeverShowTogether() {
         show()
-        state = state!!.copy(isLoading = true, notice = Notice.Loading)
+        state = state.copy(isLoading = true, notice = Notice.Loading)
         tag(UiTags.LOADING).assertExists()
         tag(UiTags.ERROR).assertDoesNotExist()
 
-        state = state!!.copy(isLoading = false, notice = Notice.Failed(rain))
+        state = state.copy(isLoading = false, notice = Notice.Failed(rain))
         tag(UiTags.LOADING).assertDoesNotExist()
         rule.onNodeWithText(string(R.string.playback_failed, rain.title)).assertIsDisplayed()
     }
@@ -118,7 +118,7 @@ class SoundscapeAppTest {
     // Where motion is off a frozen sweep would read as stalled, so the words show.
     @Test
     fun withoutMotionLoadingIsSaidInWords() {
-        state = state!!.copy(isLoading = true, notice = Notice.Loading)
+        state = state.copy(isLoading = true, notice = Notice.Loading)
         show(reducedMotion = true)
         rule.onNodeWithText(string(R.string.loading), useUnmergedTree = true).assertIsDisplayed()
     }
@@ -240,7 +240,7 @@ class SoundscapeAppTest {
     // Opened from the keyboard, the slider takes focus and the arrows step it.
     @Test
     fun theKeyboardOpensAndStepsTheSlider() {
-        state = state!!.copy(volume = 0.5f)
+        state = state.copy(volume = 0.5f)
         show()
         press(Key.Tab, times = 6)
         press(Key.Enter)

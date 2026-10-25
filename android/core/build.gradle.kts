@@ -38,7 +38,9 @@ dependencies {
 tasks.test {
     // The tests read shared/ directly, to hold the generated code to it.
     inputs.dir(shared).withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs.dir(rootProject.layout.projectDirectory.dir("../web/src/resources/soundscapes/opus"))
-        .withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("soundscape.shared", shared.asFile.absolutePath)
+    // And the masters the app bundles, to hold each to being a finished loop.
+    val masters = rootProject.layout.projectDirectory.dir("../masters")
+    inputs.dir(masters).withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("soundscape.masters", masters.asFile.absolutePath)
 }

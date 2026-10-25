@@ -52,14 +52,22 @@ abstract class GenerateKotlinContract : DefaultTask() {
     private fun header() = "// Generated from shared/ by build-logic. Do not edit.\npackage ${packageName.get()}\n\n"
 
     private fun catalogSource(): String {
-        val tracks = json(catalog).require("tracks") as List<*>
+        val root = json(catalog)
+        val tracks = root.require("tracks") as List<*>
+        val ids = tracks.map { (it as Map<*, *>)["id"].toString() }
         val entries = tracks.joinToString(",\n") { entry ->
             val track = entry as Map<*, *>
             "    Track(id = ${quote(track["id"])}, title = ${quote(track["title"])})"
         }
+        val shortcuts = (root.require("shortcuts") as List<*>).joinToString(", ") { id ->
+            require(id.toString() in ids) { "Shortcut \"$id\" is not a track in shared/catalog.json" }
+            "catalogTracks[${ids.indexOf(id.toString())}]"
+        }
         return header() + "import ${trackClass.get()}\n\n" +
             "/** shared/catalog.json: every soundscape, in display order. */\n" +
-            "val catalogTracks: List<Track> = listOf(\n$entries,\n)\n"
+            "val catalogTracks: List<Track> = listOf(\n$entries,\n)\n\n" +
+            "/** shared/catalog.json: the app shortcuts offered before any listening has ordered them. */\n" +
+            "val catalogShortcuts: List<Track> = listOf($shortcuts)\n"
     }
 
     private fun tokensSource(): String {

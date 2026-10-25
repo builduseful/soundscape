@@ -70,12 +70,11 @@ interface PlayerActions {
 
 /**
  * The whole screen: one layout for every window, as the web has one page for
- * every viewport. [state] is null until the player is connected; the page is
- * drawn without a title until then.
+ * every viewport.
  */
 @Composable
 fun SoundscapeApp(
-    state: PlayerState?,
+    state: PlayerState,
     actions: PlayerActions,
     theme: ThemePreference,
     onTheme: (ThemePreference) -> Unit,
@@ -112,7 +111,7 @@ fun SoundscapeApp(
 
 @Composable
 private fun Page(
-    state: PlayerState?,
+    state: PlayerState,
     actions: PlayerActions,
     theme: ThemePreference,
     onTheme: (ThemePreference) -> Unit,
@@ -134,7 +133,7 @@ private fun Page(
                     verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.playerGap.dp),
                 ) {
                     TransportControls(
-                        isPlaying = state?.isPlaying == true,
+                        isPlaying = state.isPlaying,
                         narrow = narrow,
                         onPrevious = actions::previous,
                         onPlayPause = actions::playPause,
@@ -142,12 +141,12 @@ private fun Page(
                         modifier = Modifier.onFocusChanged { keys.transportFocused = it.hasFocus },
                     )
                     TrackStatus(state)
-                    (state?.notice as? Notice.Failed)?.let { PlaybackError(it.track.title) }
+                    (state.notice as? Notice.Failed)?.let { PlaybackError(it.track.title) }
                 }
             },
             footer = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    VolumeControl(panels, state?.volume ?: 1f, actions::setVolume)
+                    VolumeControl(panels, state.volume, actions::setVolume)
                 }
             },
             // Scrolls only when the window is too short to hold the page. The page's

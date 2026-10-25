@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ShortBuffer
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -13,7 +14,9 @@ class LoopMixerTest {
     private val fade = 1000
 
     /** A loop that is [level] throughout, so the output reads straight off as gain. */
-    private fun constant(level: Int) = LoopReader(ShortArray(100) { level.toShort() }, channels = 1, loopFrames = 100)
+    private fun constant(level: Int) = loop(ShortArray(100) { level.toShort() }, channels = 1)
+
+    private fun loop(pcm: ShortArray, channels: Int) = LoopReader(ShortBuffer.wrap(pcm), channels)
 
     private fun render(mixer: LoopMixer, frames: Int) = ShortArray(frames).also { mixer.render(it, frames) }
 
@@ -30,7 +33,7 @@ class LoopMixerTest {
         val pcm = ShortArray(10) { (it * 100).toShort() }
         val mixer = LoopMixer(channels = 1, crossfadeFrames = fade, maxFrames = 64)
         mixer.switchTo(constant(5000), crossfade = false)
-        mixer.switchTo(LoopReader(pcm, 1, 10), crossfade = false)
+        mixer.switchTo(loop(pcm, 1), crossfade = false)
 
         assertArrayEquals(ShortArray(25) { (it % 10 * 100).toShort() }, render(mixer, 25))
         assertFalse(mixer.isCrossfading)
@@ -96,8 +99,8 @@ class LoopMixerTest {
     @Test
     fun aCrossfadeRenderedInPiecesIsTheSameAsInOne() {
         fun mixer() = LoopMixer(channels = 2, crossfadeFrames = fade, maxFrames = 3 * fade).apply {
-            switchTo(LoopReader(ShortArray(2 * 37) { (it * 300 - 9000).toShort() }, 2, 37), crossfade = false)
-            switchTo(LoopReader(ShortArray(2 * 53) { (8000 - it * 200).toShort() }, 2, 53), crossfade = true)
+            switchTo(loop(ShortArray(2 * 37) { (it * 300 - 9000).toShort() }, 2), crossfade = false)
+            switchTo(loop(ShortArray(2 * 53) { (8000 - it * 200).toShort() }, 2), crossfade = true)
         }
         val whole = ShortArray(2 * 3 * fade).also { mixer().render(it, 3 * fade) }
 

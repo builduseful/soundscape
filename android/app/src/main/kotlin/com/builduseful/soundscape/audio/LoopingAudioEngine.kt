@@ -5,16 +5,16 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Handler
-import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import com.builduseful.soundscape.core.LoopMixer
 import com.builduseful.soundscape.core.LoopReader
 import com.builduseful.soundscape.core.Track
 import com.builduseful.soundscape.core.contract.DesignTokens
-import com.builduseful.soundscape.core.loopCrossfadeInPlace
 import com.builduseful.soundscape.core.playback.AudioEngine
+import com.builduseful.soundscape.diagnostics.Diagnostics
 import java.util.concurrent.CancellationException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -26,14 +26,13 @@ internal val mediaAttributes: AudioAttributes = AudioAttributes.Builder()
     .build()
 
 /**
- * The [AudioEngine] on the platform: bundled Opus decoded whole, looped
- * gaplessly, and streamed to one AudioTrack. See this directory's AGENTS.md.
+ * The [AudioEngine] on the platform: each bundled loop mapped from the APK as
+ * 16-bit PCM and streamed to one AudioTrack. See this directory's AGENTS.md.
  *
- * Three threads, each with one job. The main thread makes every call and gets
- * every callback. One decode thread loads tracks, one at a time, from the
- * codec's callbacks; a newer load cancels an older one mid-decode. One render thread owns the AudioTrack: it
- * mixes a chunk, blocks on write(), and while paused waits on [lock] — no
- * timers, and nothing runs at all.
+ * Two threads. The main thread makes every call, loads every track and gets
+ * every callback: a load only maps a file. One render thread owns the
+ * AudioTrack: it mixes a chunk, blocks on write(), and while paused waits on
+ * [lock] — no timers, and nothing runs at all.
  */
 class LoopingAudioEngine(
     private val assets: AssetManager,
@@ -48,12 +47,8 @@ class LoopingAudioEngine(
     private var volume = 1f
     private var onStopped: () -> Unit = {}
     private var loadId = 0
-    private val decodeThread = HandlerThread("soundscape-decode").apply { start() }
-    private val decodeHandler = Handler(decodeThread.looper)
-
-    // --- Decode thread only ---
-    /** The one decode in progress; a newer load cancels it. */
-    private var decoding: Decoding? = null
+    /** TEMPORARY diagnostics: when sound was last asked for. */
+    private var playRequestedAt = 0L
 
     // --- Shared with the render thread, guarded by [lock] ---
     private val lock = ReentrantLock()
@@ -71,26 +66,25 @@ class LoopingAudioEngine(
     override fun load(track: Track, play: Boolean, done: (Throwable?) -> Unit) {
         val id = ++loadId
         pendingPlay = play
-        if (track == loadedTrack) {
-            setPlaying(play)
-            main.post { done(if (id == loadId) null else CancellationException("load superseded")) }
-            return
-        }
-        decodeHandler.post {
-            decoding?.cancel()
-            decoding = AssetDecoder.decode(assets, "opus/${track.id}.opus", decodeHandler) { decoded ->
-                decoding = null
-                val result = decoded.mapCatching { audio ->
-                    audio to loopCrossfadeInPlace(
-                        audio.pcm, audio.channels, audio.sampleRate, DesignTokens.Duration.loopCrossfade.toInt(),
-                    )
+        val requestedAt = SystemClock.uptimeMillis()
+        // On the next turn, as the port promises: the caller finishes its own
+        // update first, and of two loads in one turn only the later is applied.
+        main.post {
+            when {
+                id != loadId -> done(CancellationException("load superseded"))
+                track == loadedTrack -> {
+                    setPlaying(pendingPlay)
+                    done(null)
                 }
-                main.post {
-                    if (id != loadId) {
-                        done(result.exceptionOrNull() ?: CancellationException("load superseded"))
-                        return@post
-                    }
-                    done(result.mapCatching { (audio, loopEnd) -> install(track, audio, loopEnd) }.exceptionOrNull())
+                else -> {
+                    val startedAt = SystemClock.uptimeMillis()
+                    val error = runCatching { install(track, mapLoop(assets, "soundscapes/${track.id}.wav")) }.exceptionOrNull()
+                    Diagnostics.log(
+                        if (error == null) "load" else "issue",
+                        "load ${track.id}: ${error ?: "mapped"} in ${SystemClock.uptimeMillis() - startedAt} ms, " +
+                            "${startedAt - requestedAt} ms after it was asked for",
+                    )
+                    done(error)
                 }
             }
         }
@@ -121,11 +115,6 @@ class LoopingAudioEngine(
     /** Stops playback for good and frees the output. The engine cannot be used again. */
     fun release() {
         loadId++
-        decodeHandler.post {
-            decoding?.cancel()
-            decoding = null
-        }
-        decodeThread.quitSafely()
         val thread = lock.withLock {
             released = true
             changed.signalAll()
@@ -138,16 +127,16 @@ class LoopingAudioEngine(
         }
     }
 
-    private fun install(track: Track, audio: DecodedAudio, loopEnd: Int) {
+    private fun install(track: Track, loop: LoopAsset) {
         lock.withLock {
-            val out = output ?: Output(audio.sampleRate, audio.channels).also {
+            val out = output ?: Output(loop.sampleRate, loop.channels).also {
                 it.track.setVolume(volume)
                 output = it
             }
-            check(out.sampleRate == audio.sampleRate && out.channels == audio.channels) {
-                "${track.id} is ${audio.sampleRate} Hz × ${audio.channels}; the output is ${out.sampleRate} Hz × ${out.channels}"
+            check(out.sampleRate == loop.sampleRate && out.channels == loop.channels) {
+                "${track.id} is ${loop.sampleRate} Hz × ${loop.channels}; the output is ${out.sampleRate} Hz × ${out.channels}"
             }
-            out.mixer.switchTo(LoopReader(audio.pcm, audio.channels, loopEnd), crossfade = wantPlaying && pendingPlay)
+            out.mixer.switchTo(LoopReader(loop.pcm, loop.channels), crossfade = wantPlaying && pendingPlay)
             out.start()
         }
         loadedTrack = track
@@ -157,7 +146,10 @@ class LoopingAudioEngine(
     private fun setPlaying(playing: Boolean) {
         isPlaying = playing && loadedTrack != null
         lock.withLock {
-            if (isPlaying && !wantPlaying) playRequest++
+            if (isPlaying && !wantPlaying) {
+                playRequest++
+                playRequestedAt = SystemClock.uptimeMillis()
+            }
             wantPlaying = isPlaying
             // Nothing is heard while paused, so a change still fading out can
             // end now, and its audio be let go.
@@ -168,7 +160,10 @@ class LoopingAudioEngine(
 
     /** The AudioTrack, its format, and the thread that feeds it. Created once, by the first load. */
     private inner class Output(val sampleRate: Int, val channels: Int) {
-        private val chunkFrames = sampleRate / 50 // 20 ms between writes
+        // 100 ms between writes. The thread sleeps until there is room for a
+        // whole chunk, so the larger it is the less often it wakes: half as
+        // often as 20 ms chunks, measured on API 26 and 37.
+        private val chunkFrames = sampleRate / 10
         val mixer = LoopMixer(
             channels,
             crossfadeFrames = (sampleRate * DesignTokens.Duration.trackCrossfade / 1000).toInt(),
@@ -187,9 +182,10 @@ class LoopingAudioEngine(
         private fun buildTrack(): AudioTrack {
             val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
             val minBytes = AudioTrack.getMinBufferSize(sampleRate, mask, AudioFormat.ENCODING_PCM_16BIT)
-            // About a tenth of a second: short enough that a skip is heard
-            // promptly, with room for the writer to be late now and then.
-            val bytes = maxOf(minBytes, sampleRate / 10 * channels * 2)
+            // About a quarter of a second: room for a chunk and a half besides
+            // the one being written, and still short enough that a skip is
+            // heard promptly.
+            val bytes = maxOf(minBytes, sampleRate / 4 * channels * 2)
             val track = AudioTrack.Builder()
                 .setAudioAttributes(mediaAttributes)
                 .setAudioFormat(
@@ -206,6 +202,11 @@ class LoopingAudioEngine(
                 track.release()
                 error("The audio output could not be opened")
             }
+            Diagnostics.log(
+                "output",
+                "opened: $sampleRate Hz × $channels, buffer ${track.bufferSizeInFrames} frames " +
+                    "(${bytes / (channels * 2)} asked for, ${minBytes / (channels * 2)} the least allowed), chunks of $chunkFrames",
+            )
             return track
         }
 
@@ -216,12 +217,14 @@ class LoopingAudioEngine(
             renderThreadId = Process.myTid()
             val chunk = ShortArray(chunkFrames * channels)
             var running = false
+            // TEMPORARY diagnostics: underruns so far, read afresh at each start as a flush may count as one.
+            var underruns = 0
             while (true) {
                 lock.withLock {
                     while (!wantPlaying && !released) {
                         if (running) {
                             // Flushed, so a track changed while paused does not
-                            // begin with the old one's last tenth of a second.
+                            // begin with the old one's last quarter of a second.
                             track.pause()
                             track.flush()
                             running = false
@@ -232,10 +235,21 @@ class LoopingAudioEngine(
                         if (running) track.stop()
                         return
                     }
-                    if (!running) running = startTrack(chunk)
+                    if (!running) {
+                        running = startTrack(chunk)
+                        underruns = track.underrunCount
+                    }
                     mixer.render(chunk, chunkFrames)
                 }
-                if (running) track.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
+                if (!running) continue
+                val written = track.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
+                if (!Diagnostics.ENABLED) continue
+                if (written != chunk.size) Diagnostics.log("glitch", "a write took $written of ${chunk.size} samples")
+                val now = track.underrunCount
+                if (now > underruns) {
+                    Diagnostics.log("glitch", "underrun: the output ran dry ${now - underruns} time(s), $now since it opened")
+                    underruns = now
+                }
             }
         }
 
@@ -248,6 +262,11 @@ class LoopingAudioEngine(
             }
             return try {
                 track.play()
+                if (Diagnostics.ENABLED) {
+                    val startedAt = SystemClock.uptimeMillis()
+                    val device = Diagnostics.deviceName(track.routedDevice)
+                    main.post { Diagnostics.log("output", "started ${startedAt - playRequestedAt} ms after play was asked for, to $device") }
+                }
                 true
             } catch (error: IllegalStateException) {
                 Log.w(TAG, "The audio output would not start", error)
@@ -260,6 +279,7 @@ class LoopingAudioEngine(
     }
 
     private fun outputStopped(request: Int) {
+        Diagnostics.log("issue", "the audio output would not start")
         if (request != lock.withLock { playRequest } || !isPlaying) return
         isPlaying = false
         pendingPlay = false

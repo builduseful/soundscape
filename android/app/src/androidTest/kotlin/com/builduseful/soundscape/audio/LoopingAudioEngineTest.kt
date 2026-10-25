@@ -13,7 +13,7 @@ import org.junit.runner.RunWith
 import java.util.concurrent.CancellationException
 
 // The engine on a real output. What the mixing does is proven on the JVM
-// (LoopMixerTest, LoopPcmTest); this proves the device side: the output is fed
+// (LoopMixerTest, LoopReaderTest); this proves the device side: the output is fed
 // without a gap through plays, changes and pauses, a superseded load never
 // wins, and nothing runs while paused.
 @RunWith(AndroidJUnit4::class)
@@ -48,8 +48,8 @@ class LoopingAudioEngineTest {
         assertEquals("the output ran dry after resuming", 0, afterResume)
     }
 
-    // Loads finish out of order: a long track asked for first and a short one
-    // second must still end on the second, whichever decode is quicker.
+    // Two loads in one turn — a skip and another before the first lands — must
+    // end on the second, and the first must say it was superseded.
     @Test
     fun aSupersededLoadNeverReplacesTheNewerOne() {
         for ((first, second) in listOf("heavy-thunderstorm" to "rain", "rain" to "heavy-thunderstorm")) {
@@ -64,22 +64,15 @@ class LoopingAudioEngineTest {
         }
     }
 
-    // The most audio the engine ever holds is the track playing, the one fading
-    // out, and one decoding. Skipping fast between the two longest tracks while
-    // playing reaches that, and must fit the smallest heap in the matrix.
+    // Skipping fast while playing, each change landing inside the last one's
+    // crossfade, interrupts a change mid-fade every time: the output stays fed.
     @Test
-    fun rapidChangesBetweenTheLongestTracksFitInMemory() {
+    fun rapidChangesKeepTheOutputFed() {
         harness.loaded("heavy-thunderstorm", play = true)
         repeat(6) { round ->
             harness.loaded(if (round % 2 == 0) "rain-thunder" else "heavy-thunderstorm", play = true)
             harness.sleep(100) // inside the crossfade
         }
-        val runtime = Runtime.getRuntime()
-        Log.i(
-            TAG,
-            "API ${Build.VERSION.SDK_INT}: heap limit ${runtime.maxMemory() / 1048576} MB, " +
-                "in use ${(runtime.totalMemory() - runtime.freeMemory()) / 1048576} MB",
-        )
         assertEquals(0, engine.underrunCount)
     }
 

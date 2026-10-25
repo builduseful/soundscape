@@ -13,10 +13,12 @@ needs an account, a key, or a decision.
 - [ ] **Release signing in Gradle**, reading the keystore's path and passwords
       from the environment or `~/.gradle/gradle.properties`, never from a
       tracked file. `app/build.gradle.kts` has no release `signingConfig` yet.
-- [ ] **Decide on R8** for the release build (`isMinifyEnabled` and
-      `isShrinkResources`). It is off today: the release APK is about 9 MB,
-      most of it the bundled audio. Turning it on means running the
-      instrumented and end-to-end suites against a minified build first.
+- [x] **R8** for the release build (`isMinifyEnabled` and
+      `isShrinkResources`), with a startup profile: the code went from 18 MB
+      of dex to 1.6 MB, and the APK is about 36 MB, nearly all of it the
+      bundled audio. The end-to-end suite runs against the minified build.
+- [ ] **Regenerate the startup profile** (`android/AGENTS.md`, Startup) if what
+      runs at launch has changed since it was last recorded.
 - [ ] **App content** in the Play Console:
   - Privacy policy: a URL Play requires. The app collects nothing, so it can
     say exactly that.

@@ -4,7 +4,6 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -16,21 +15,20 @@ import org.junit.runner.RunWith
 // wrong, not emulator noise. Raise one only with the maintainer's agreement.
 @RunWith(AndroidJUnit4::class)
 class AudioBudgetTest {
-    // Decoding keeps exactly one 16-bit copy of the track; every buffer the
-    // decoder used along the way is garbage once it returns.
+    // A loop is mapped from the APK, not copied: loading the longest track,
+    // 6 MB of PCM, keeps next to nothing on the heap.
     @Test
-    fun decodingKeepsOnlyThePcm() {
-        val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
+    fun loadingKeepsTheAudioOffTheHeap() = EngineHarness().use { harness ->
+        harness.loaded("rain", play = false) // the output, made once
         val before = usedHeap()
-        val decoded = decodeNow(assets, "opus/heavy-thunderstorm.opus")
+        harness.loaded("heavy-thunderstorm", play = false)
         val kept = usedHeap() - before
-        val pcmBytes = decoded.pcm.size * 2L
 
-        Log.i(TAG, "API ${Build.VERSION.SDK_INT}: PCM ${kb(pcmBytes)}, heap kept ${kb(kept)}")
-        assertTrue("kept ${kb(kept)} for ${kb(pcmBytes)} of PCM", kept <= pcmBytes + HEAP_SLACK_BYTES)
+        Log.i(TAG, "API ${Build.VERSION.SDK_INT}: heap kept by a load ${kb(kept)}")
+        assertTrue("a load kept ${kb(kept)}", kept <= HEAP_SLACK_BYTES)
     }
 
-    // Playing is a copy per 20 ms chunk and a blocking write: the render
+    // Playing is a copy per 100 ms chunk and a blocking write: the render
     // thread should be asleep nearly all the time.
     @Test
     fun playingCostsAlmostNoCpu() = EngineHarness().use { harness ->
@@ -45,6 +43,23 @@ class AudioBudgetTest {
 
         Log.i(TAG, "API ${Build.VERSION.SDK_INT}: render CPU $cpu ms of $wall ms while playing")
         assertTrue("render thread used $cpu ms of CPU in $wall ms", cpu <= wall * RENDER_CPU_SHARE)
+    }
+
+    // Each wake-up keeps the CPU out of its deepest sleep, for as long as
+    // sound plays: the render thread wakes when the output has room for a
+    // chunk, and no more often.
+    @Test
+    fun playingWakesRarely() = EngineHarness().use { harness ->
+        harness.loaded("rain", play = true)
+        harness.sleep(500) // past start-up
+
+        val sleepsStart = harness.renderSleeps()
+        val wallStart = SystemClock.elapsedRealtime()
+        harness.sleep(3_000)
+        val perSecond = (harness.renderSleeps() - sleepsStart) * 1000 / (SystemClock.elapsedRealtime() - wallStart)
+
+        Log.i(TAG, "API ${Build.VERSION.SDK_INT}: render wake-ups $perSecond a second while playing")
+        assertTrue("render thread woke $perSecond times a second", perSecond <= WAKEUPS_PER_SECOND)
     }
 
     // Paused means nothing runs: the render thread waits on a condition, so it
@@ -80,5 +95,6 @@ class AudioBudgetTest {
         const val TAG = "AudioBudgetTest"
         const val HEAP_SLACK_BYTES = 512 * 1024L
         const val RENDER_CPU_SHARE = 0.05
+        const val WAKEUPS_PER_SECOND = 20L
     }
 }

@@ -33,8 +33,8 @@ The web app is the reference. Every platform looks, sounds and behaves like it:
 the same tracks in the same order, the same controls, wording, colours, sizes
 and timings. A change to any of those lands on every platform in the same pull
 request, or it is not done. Platforms share **data, not code**: the contract in
-`shared/`, which each platform's tests check it against, and the published
-audio, which has one copy in `web/src/resources/soundscapes/`.
+`shared/`, which each platform's tests check it against, and the audio, whose
+one source is `masters/`.
 
 ## How To Work On This
 
@@ -80,7 +80,7 @@ soundscape/
 ├── android/               # The Android app: Gradle project, core/ and app/ (+ AGENTS.md)
 ├── shared/                # The cross-platform contract: catalog, tokens, copy, fixtures
 ├── scripts/               # Repo-wide generators: the audio build, the shared fixtures
-├── masters/               # Audio build inputs: gitignored audio, tracked provenance records
+├── masters/               # The audio: finished-loop masters and their provenance
 ├── docs/                  # Plans and decisions that span platforms
 ├── .opencode/skills/      # playwright-cli (browser testing), git-commit
 ├── .github/workflows/     # CI: web tests gate the Pages deploy; Android lint, tests, build
@@ -112,5 +112,6 @@ is always the copy that goes stale.
   Paths are relative to the repo root; per-person settings go in the gitignored
   `.config.md`, and the docs use a placeholder like `<container-engine>`.
 - **Binaries carry metadata too** — encoders copy tags from their input, so a
-  master tagged with someone's name ships that name in `web/src/`. Encode with
-  `-map_metadata -1`.
+  master tagged with someone's name ships that name in `web/src/`, and the
+  masters themselves are committed and in the APK. Encode with
+  `-map_metadata -1`; a master with tags in it fails `MastersTest`.

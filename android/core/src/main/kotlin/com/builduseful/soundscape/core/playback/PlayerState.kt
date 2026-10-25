@@ -19,7 +19,27 @@ data class PlayerState(
      * can never be shown together; whichever came later holds it.
      */
     val notice: Notice?,
-)
+) {
+    companion object {
+        /**
+         * Where a player starts: stopped, on the saved track (the first, if
+         * that is gone) at the saved volume. The screen draws this before the
+         * player is connected, so the first frame is already the right one.
+         */
+        fun restored(tracks: List<Track>, preferences: PreferenceStore): PlayerState {
+            require(tracks.isNotEmpty()) { "The catalog is empty" }
+            val saved = preferences.read(PlaybackController.TRACK_KEY)
+            return PlayerState(
+                track = tracks.firstOrNull { it.id == saved } ?: tracks.first(),
+                trackChange = null,
+                isPlaying = false,
+                volume = preferences.read(PlaybackController.VOLUME_KEY)?.toFloatOrNull()?.takeIf { it in 0f..1f } ?: 1f,
+                isLoading = false,
+                notice = null,
+            )
+        }
+    }
+}
 
 enum class Direction { Next, Previous }
 

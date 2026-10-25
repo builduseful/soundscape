@@ -8,10 +8,11 @@ Every command in this file runs from `android/`.
 
 | Module | Holds | May depend on |
 |---|---|---|
-| `core/` | The product's rules: catalog, loop crossfade, and the playback controller and audio-focus rules with their ports (`core/playback`). Plain Kotlin on the JVM. | Kotlin's standard library only |
+| `core/` | The product's rules: catalog, the loop and the change between tracks, and the playback controller and audio-focus rules with their ports (`core/playback`). Plain Kotlin on the JVM. | Kotlin's standard library only |
 | `app/` | Everything Android: activity, Compose UI, playback service, audio engine. | `core`, the libraries below |
 | `e2e/` | The end-to-end suite: the installed app driven from outside its process with UI Automator — the screen, the notification, a restart. | `core`, the test libraries |
-| `build-logic/` | Gradle tasks that generate code and resources from `../shared/`. | Gradle |
+| `baselineprofile/` | Records the startup profile the app ships, and times a cold start (see Startup). | Macrobenchmark, the test libraries |
+| `build-logic/` | Gradle tasks that generate code and resources from `../shared/`, and bundle the masters. | Gradle |
 
 Keep Android out of `core`: if a rule can be stated without the platform, it
 belongs there and is tested on the JVM, fast. `app` adapts it to the OS and
@@ -28,25 +29,25 @@ the controller; its rules are in
 
 `core` gets `catalogTracks` and `DesignTokens` as generated Kotlin; `app` gets
 `strings.xml` and the per-theme page colour as generated resources. Both come
-from [`../shared/`](../shared/AGENTS.md) on every build — never edit the
+from [`../shared/`](../shared/AGENTS.md) on every build, as the bundled loops
+come from [`../masters/`](../masters/AGENTS.md) — never edit the
 generated files, and never copy a value from `shared/` into code by hand. Read
-them through `DesignTokens` and `R.string`. The bundled audio is
-`../web/src/resources/soundscapes/`, added as an asset directory: one copy on
-disk for every platform.
+them through `DesignTokens` and `R.string`.
 
 ## Dependencies
 
 As few as possible, and first-party: Gradle, the Android Gradle Plugin,
-Kotlin, and AndroidX (Compose, Activity, Test). JUnit 4 is the one exception,
+Kotlin, and AndroidX (Compose, Activity, Test, and for startup ProfileInstaller,
+Macrobenchmark and the Baseline Profile plugin). JUnit 4 is the one exception,
 approved for tests only. **Ask the maintainer before adding any other
 library**, and prefer writing it ourselves when it can be made to work on every
 API level we support. Every version is pinned in `gradle/libs.versions.toml`.
 Espresso is only Compose's test rule's own dependency, pinned newer as a
 constraint: the 3.5 it brings fails on API 37.
 
-The audio path uses the platform directly — `MediaExtractor`, `MediaCodec`,
-`AudioTrack`, the framework `MediaSession` — not Media3 or ExoPlayer. Its rules
-(why Opus, why 16-bit, how the output is fed) are in
+The audio path uses the platform directly — a mapped file, `AudioTrack`, the
+framework `MediaSession` — not Media3 or ExoPlayer. Its rules (why WAV, how
+the output is fed) are in
 [`app/src/main/kotlin/com/builduseful/soundscape/audio/AGENTS.md`](app/src/main/kotlin/com/builduseful/soundscape/audio/AGENTS.md).
 
 ## Current Android, back to 8.0
@@ -90,18 +91,73 @@ a rotation, fold or resize keeps the screen's state.
 The root `AGENTS.md` asks for an app that is light on memory, CPU and battery,
 through plain code. Here that means:
 
-- **Audio is 16-bit PCM**, decoded once into an exactly sized buffer, with the
-  loop crossfade applied in place (`loopCrossfadeInPlace`). Float would double
-  a minute-long track to 12 MB.
-- **Hold as little audio as possible.** No decode cache: at most the track
-  playing, one fading out and one decoding. The API 29 image, with
-  `dalvik.vm.heapgrowthlimit` unset, has been seen to run apps with a 16 MB
-  limit (the decoder spike hit it with float buffers) and on other boots with
-  512 MB; do not count on either.
+- **Audio is 16-bit PCM, mapped from the APK**, never decoded or copied onto
+  the heap. The API 29 image, with `dalvik.vm.heapgrowthlimit` unset, has been
+  seen to run apps with a 16 MB limit and on other boots with 512 MB; do not
+  count on either.
 - **No polling and no timers while playing.** One render thread blocks on
   `AudioTrack.write`; nothing at all runs while paused.
 - **No allocation on the audio path**, and no recomposition while nothing on
   screen changes.
+- **Nothing before the first frame but the theme.** The service is bound, and
+  created, after it; the window is painted the page colour while the app
+  starts. EmojiCompat, which Compose brings, is not started (the manifest):
+  nothing here shows an emoji.
+
+### Startup
+
+The release build is minified by R8, and ships a startup profile
+(`app/src/release/generated/baselineProfiles/`) that the system compiles ahead
+of time on install, so a first launch runs compiled code. `baselineprofile/`
+records it by opening the app and pressing play and pause:
+
+```sh
+./gradlew :app:generateBaselineProfile     # on a running emulator, API 33 or later
+```
+
+Run it again when what runs at launch changes, and commit the result. The same
+module times a cold start to the first frame, without the profile and with it
+(`StartupBenchmark`). Macrobenchmark refuses an emulator, rightly: what it
+measures there is mostly the emulator's software GPU. Run it on a phone, or
+pass `-Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR`
+for a comparison only:
+
+```sh
+./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest
+```
+
+On the API 37 emulator: debug about 2.2 s; minified 1.37 s; with the profile
+1.29 s, of which some 650 ms is the emulator drawing the first frame in
+software. Not a gating budget: an emulator cannot measure it fairly.
+
+### Diagnostics log (temporary)
+
+While the app is tried out on a phone, the `diagnostics/` package appends what
+happened to a file, one `<time> <uptime ms> <area>: <event>` line each.
+Nothing leaves the phone. The file covers:
+
+- the device and how the previous run ended;
+- each launch (cold, warm or hot), the time to its first frame and to the
+  player, and frame jank while the screen is visible;
+- main-thread stalls, StrictMode violations and crashes;
+- every action and where it came from, audio focus, and output devices
+  appearing and going;
+- loads, the time to sound, underruns, and each play session's length, render
+  CPU, wake-ups, battery and memory;
+- how long each track was listened to;
+- how long the service took to shut down.
+
+Read it over USB, on any build:
+
+```sh
+adb pull /sdcard/Android/data/com.builduseful.soundscape/files/diagnostics.log
+```
+
+At 25 MB it starts again, keeping the previous file as `diagnostics.log.1`, so
+at most about 50 MB. `soundscape.diagnostics` in `gradle.properties` switches
+it: `false` builds it out of the app, with nothing watched or written. Once the
+trial is over, delete the `diagnostics/` package, every call into it and the
+flag.
 
 ### Performance budgets
 
@@ -111,12 +167,14 @@ than emulator noise; raise one only with the maintainer's agreement.
 
 | Budget | Test | Limit | Measured (API 26 / 37) |
 |---|---|---|---|
-| Heap a decode keeps | `AudioBudgetTest` | its PCM + 512 KB | PCM + 2 KB on 26, 29 and 37 |
+| Heap a load keeps | `AudioBudgetTest` | 512 KB | 0 KB on 26 and 37 |
 | Render thread CPU while playing | `AudioBudgetTest` | 5% of one core | under 10 ms in 3 s (the clock's resolution) on 26, 29 and 37 |
 | Render thread while paused | `AudioBudgetTest` | waiting, 0 ms CPU | waiting, 0 ms on 26, 29 and 37 |
+| Render thread wake-ups while playing | `AudioBudgetTest` | 20 a second | 6 on 26, 7 on 37 (13 and 14 with 20 ms chunks) |
+| Cold start to first frame, R8 build (median of 5) | `StartupBudgetTest` (e2e) | 3,000 ms | 910 ms on 26, 1,582 ms on 37 (emulators, software drawing) |
 
-Each phase adds the budgets for what it builds: heap during a track change and
-time to first frame are still to come.
+Each phase adds the budgets for what it builds: heap during a track change is
+still to come.
 
 ## Toolchain
 
@@ -142,8 +200,12 @@ time to first frame are still to come.
 ./gradlew :app:lintDebug             # lint; warnings are errors
 ./gradlew :app:assembleDebug         # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:connectedDebugAndroidTest   # instrumented, on a running emulator
-./gradlew :e2e:connectedDebugAndroidTest   # end to end, on a running emulator
+./gradlew :e2e:connectedBenchmarkReleaseAndroidTest  # end to end, on the minified build
 ```
+
+The end-to-end suite runs against `benchmarkRelease`: the release build, R8
+and all, signed with the debug key so it installs. `:e2e:connectedDebugAndroidTest`
+runs it against the debug build, which is quicker to make.
 
 CI (`.github/workflows/android.yml`) runs both device suites on an emulator
 at API 26 and 37 on every change, and on the whole matrix for a minor or major

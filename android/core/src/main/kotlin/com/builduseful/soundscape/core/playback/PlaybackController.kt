@@ -17,29 +17,7 @@ class PlaybackController(
     private val preferences: PreferenceStore,
     private val scheduler: Scheduler,
 ) {
-    init {
-        require(tracks.isNotEmpty()) { "The catalog is empty" }
-    }
-
-    private var index = savedTrackIndex()
-
-    /**
-     * Bumped by every load. A load's result is acted on only while its
-     * generation is still the latest: loads can finish out of order, and an
-     * older one must never decide what the listener sees.
-     */
-    private var generation = 0
-    private var loadPending = false
-    private var loadingIndicator: Cancellable? = null
-
-    var state = PlayerState(
-        track = tracks[index],
-        trackChange = null,
-        isPlaying = false,
-        volume = savedVolume(),
-        isLoading = false,
-        notice = null,
-    )
+    var state = PlayerState.restored(tracks, preferences)
         private set(value) {
             if (field == value) return
             field = value
@@ -50,6 +28,17 @@ class PlaybackController(
                 listener(value)
             }
         }
+
+    private var index = tracks.indexOf(state.track)
+
+    /**
+     * Bumped by every load. A load's result is acted on only while its
+     * generation is still the latest: loads can finish out of order, and an
+     * older one must never decide what the listener sees.
+     */
+    private var generation = 0
+    private var loadPending = false
+    private var loadingIndicator: Cancellable? = null
 
     private val listeners = mutableListOf<(PlayerState) -> Unit>()
 
@@ -189,12 +178,6 @@ class PlaybackController(
     private fun Notice?.withoutFailure() = takeUnless { it is Notice.Failed }
 
     // An unknown or missing id falls back to the first track.
-    private fun savedTrackIndex(): Int =
-        tracks.indexOfFirst { it.id == preferences.read(TRACK_KEY) }.coerceAtLeast(0)
-
-    private fun savedVolume(): Float =
-        preferences.read(VOLUME_KEY)?.toFloatOrNull()?.takeIf { it in 0f..1f } ?: 1f
-
     companion object {
         const val TRACK_KEY = "currentTrackId"
         const val VOLUME_KEY = "volume"

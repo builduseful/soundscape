@@ -18,15 +18,20 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.builduseful.soundscape.BuildConfig
 import com.builduseful.soundscape.MainActivity
 import com.builduseful.soundscape.R
 import com.builduseful.soundscape.audio.LoopingAudioEngine
+import com.builduseful.soundscape.core.contract.catalogShortcuts
 import com.builduseful.soundscape.core.contract.catalogTracks
 import com.builduseful.soundscape.core.playback.AudioFocusRules
+import com.builduseful.soundscape.core.playback.ListeningHistory
 import com.builduseful.soundscape.core.playback.PlaybackController
 import com.builduseful.soundscape.core.playback.PlayerState
+import com.builduseful.soundscape.diagnostics.Diagnostics
+import com.builduseful.soundscape.diagnostics.PlaybackDiagnostics
 
 /**
  * Owns the player, so sound outlives the screen, and joins it to the OS: the
@@ -44,6 +49,8 @@ class PlaybackService : Service() {
     lateinit var controller: PlaybackController
         private set
     private lateinit var focus: AudioFocusRules
+    private lateinit var history: ListeningHistory
+    private val shortcuts by lazy { AppShortcuts(this) }
     private lateinit var session: MediaSession
     private lateinit var notification: PlaybackNotification
 
@@ -53,18 +60,27 @@ class PlaybackService : Service() {
     private var listeningForNoisy = false
     private var published: PlayerState? = null
 
+    // TEMPORARY
+    private lateinit var diagnostics: PlaybackDiagnostics
+
     // Headphones unplugged, or a Bluetooth headset gone: the sound would
     // otherwise move to the speaker.
     internal val noisy = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) controller.pause()
+            if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                diagnostics.action("pause", "headphones out")
+                controller.pause()
+            }
         }
     }
 
     override fun onCreate() {
         super.onCreate()
+        Diagnostics.start(this)
+        val createdAt = SystemClock.uptimeMillis()
         engine = LoopingAudioEngine(assets, main)
-        controller = PlaybackController(catalogTracks, engine, SharedPreferenceStore(this, "playback"), HandlerScheduler(main))
+        diagnostics = PlaybackDiagnostics(engine)
+        controller = PlaybackController(catalogTracks, engine, SharedPreferenceStore(this, PREFERENCES), HandlerScheduler(main))
 
         val openApp = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -76,21 +92,40 @@ class PlaybackService : Service() {
         artwork = drawArtwork()
         notification = PlaybackNotification(this, session.sessionToken, artwork, openApp)
 
+        history = ListeningHistory(
+            SharedPreferenceStore(this, HISTORY),
+            HandlerScheduler(main),
+            SystemClock::elapsedRealtime,
+            System::currentTimeMillis,
+            ::showShortcuts,
+        )
+
         // Before focus, so the service is in the foreground before focus is asked for.
         controller.observe(::onState)
+        controller.observe(history::onState)
         focus = AudioFocusRules(controller, SystemAudioFocus(this, main, ::onFocusChange))
         onState(controller.state)
         session.isActive = true
+        // A call to the system, kept out of creating the service. Usually a no-op: what is shown already.
+        main.post(::showShortcuts)
+        Diagnostics.log("service", "created in ${SystemClock.uptimeMillis() - createdAt} ms")
     }
 
     override fun onBind(intent: Intent): IBinder = LocalBinder()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        intent?.action?.let {
+            val what = it.substringAfterLast('.').lowercase() + (intent.getStringExtra(BuildConfig.TRACK_ID_EXTRA)?.let { id -> " $id" } ?: "")
+            diagnostics.action(what, "notification or shortcut")
+        }
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> controller.playPause()
             ACTION_NEXT -> controller.next()
             ACTION_PREVIOUS -> controller.previous()
-            ACTION_STOP -> stop()
+            ACTION_STOP -> {
+                diagnostics.stopping("stop from the notification")
+                stop()
+            }
             BuildConfig.PLAY_TRACK_ACTION -> intent.getStringExtra(BuildConfig.TRACK_ID_EXTRA)?.let(controller::select)
         }
         // A command that did not start playback leaves nothing to keep running for.
@@ -101,16 +136,24 @@ class PlaybackService : Service() {
     // Swiped away from recents: playing carries on, as for any media app;
     // paused, there is nothing left to come back to.
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!controller.state.isPlaying) stop()
+        if (!controller.state.isPlaying) {
+            diagnostics.stopping("swiped away while paused")
+            stop()
+        }
     }
 
     override fun onDestroy() {
+        val destroying = SystemClock.uptimeMillis()
+        history.close()
         session.isActive = false
         focus.release()
         listenForNoisy(false)
         session.release()
+        val releasing = SystemClock.uptimeMillis()
         engine.release()
+        val released = SystemClock.uptimeMillis()
         main.removeCallbacksAndMessages(null)
+        diagnostics.destroyed(released - destroying, released - releasing)
         super.onDestroy()
     }
 
@@ -132,6 +175,7 @@ class PlaybackService : Service() {
     internal val isSounding get() = engine.isPlaying
 
     private fun onState(state: PlayerState) {
+        diagnostics.state(state)
         val wasInForeground = inForeground
         if (state.isPlaying && !inForeground) enterForeground(state)
         listenForNoisy(state.isPlaying)
@@ -153,6 +197,7 @@ class PlaybackService : Service() {
             // From the background, Android 12 and later refuse. Sound that
             // could be cut off at any moment is not started at all.
             Log.w(TAG, "Not allowed into the foreground; not playing", refused)
+            Diagnostics.log("issue", "not allowed into the foreground, so not playing: $refused")
             controller.pause()
         }
     }
@@ -195,6 +240,7 @@ class PlaybackService : Service() {
         .build()
 
     private fun onFocusChange(change: Int) {
+        diagnostics.focus(change)
         when (change) {
             AudioManager.AUDIOFOCUS_GAIN -> focus.onGain()
             AudioManager.AUDIOFOCUS_LOSS -> focus.onLoss()
@@ -202,6 +248,8 @@ class PlaybackService : Service() {
             // AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK: the system lowers us itself.
         }
     }
+
+    private fun showShortcuts() = shortcuts.show(history.shortcuts(catalogTracks, catalogShortcuts, SHORTCUTS))
 
     private fun listenForNoisy(listen: Boolean) {
         if (listen == listeningForNoisy) return
@@ -225,17 +273,21 @@ class PlaybackService : Service() {
     // dropped: acting on it would put a service that is going away back in the
     // foreground, and Android kills an app whose service ends before it gets there.
     private inner class SessionCallback : MediaSession.Callback() {
-        override fun onPlay() = whileActive { controller.play() }
+        override fun onPlay() = whileActive("play") { controller.play() }
 
-        override fun onPause() = whileActive { controller.pause() }
+        override fun onPause() = whileActive("pause") { controller.pause() }
 
-        override fun onStop() = whileActive { stop() }
+        override fun onStop() = whileActive("stop") {
+            diagnostics.stopping("stop from the media session")
+            stop()
+        }
 
-        override fun onSkipToNext() = whileActive { controller.next() }
+        override fun onSkipToNext() = whileActive("next") { controller.next() }
 
-        override fun onSkipToPrevious() = whileActive { controller.previous() }
+        override fun onSkipToPrevious() = whileActive("previous") { controller.previous() }
 
-        private inline fun whileActive(action: () -> Unit) {
+        private inline fun whileActive(what: String, action: () -> Unit) {
+            diagnostics.action(if (session.isActive) what else "$what, dropped: stopped", "media session")
             if (session.isActive) action()
         }
     }
@@ -249,6 +301,12 @@ class PlaybackService : Service() {
         const val ACTION_NEXT = "com.builduseful.soundscape.action.NEXT"
         const val ACTION_PREVIOUS = "com.builduseful.soundscape.action.PREVIOUS"
         const val ACTION_STOP = "com.builduseful.soundscape.action.STOP"
+        /** The player's saved track and volume, which the screen also reads to draw its first frame. */
+        const val PREFERENCES = "playback"
+        const val HISTORY = "listening"
+
+        // Android's guidance: launchers show about four.
+        private const val SHORTCUTS = 4
         private const val ARTWORK_PX = 192
         private const val TAG = "PlaybackService"
     }

@@ -1,68 +1,68 @@
 {
     "rain": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "ab8ca534eefa2757f91f164865b731cbd17f58d6d37a6d9f57c630a7bbdf4098",
+        "sha256": "45e3d64feab2a5abb8f3bda57b17199ddcb78789eb5e12f63ba38e0dd689a06b",
         "decodedFrom": "resources/soundscapes/opus/rain.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "garden-rain": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "a90dd535f10f6edaa2bc728560627d77094773d895cdd6653975ef780d90428d",
+        "sha256": "06dde343bf1f7b7a42200d07fe9698979d8c78cbe140633171d09db19f2aa238",
         "decodedFrom": "resources/soundscapes/opus/garden-rain.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "heavy-rain": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "46167c8f3e54476765f0907137ecdeda491d1a3203f069d80fdb0c15b1b894ce",
+        "sha256": "2f259fe58b88479461d4e532d8c820df1c23ca0a4a72e5adf159b44057c8a981",
         "decodedFrom": "resources/soundscapes/opus/heavy-rain.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "rain-thunder": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "b7672279c259ef336f6fcfde2af3ff3ae09a699848e7d23b3610d4d24d93552e",
+        "sha256": "30f41a52450e79e5c81bbb6abfb73364dad8cb7aad55a5e08a2937f69f196135",
         "decodedFrom": "resources/soundscapes/opus/rain-thunder.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "heavy-thunderstorm": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "f105d17997e4ba5aa650d120499752b84ff5d3510d62df566b2b215131c93555",
+        "sha256": "bf89a46c509e28f05963b0961953d8b3fa769729ab1838037c28a82d951a826a",
         "decodedFrom": "resources/soundscapes/opus/heavy-thunderstorm.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "fireplace": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "c4a901b4c592edaaa60a9e4a4ad90e0fc85dcf826c026523ca69486c44b53423",
+        "sha256": "a36bf235b5b22444e3157b3ffcd20622144fafb0810f603a7146213f5a496cbc",
         "decodedFrom": "resources/soundscapes/opus/fireplace.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "deep-fireplace": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "a97aee5d17b7c5e467b7e8108ad2ae38cf3d264c09169c542b9577ad281895df",
+        "sha256": "ac1310c9b7eaf7b47096271eb230ff885ccab58ed8e5d992ce3ad4969a650520",
         "decodedFrom": "resources/soundscapes/opus/deep-fireplace.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "the-open-road": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "533c37d703c5c55e4909559efb01b139f5f023ae412c3e283ee51346283f15b3",
+        "sha256": "8997e05a4e10b129748f9b8a6bd42d683b084faaa57122259cc7a9eb211b4400",
         "decodedFrom": "resources/soundscapes/opus/the-open-road.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "brown-noise": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "53358df98fcc8e98aedfcad184b0285096fcb9db59d2b551eeca9706bf2cb828",
+        "sha256": "e731f5ad233e9670a9cb2190af0974358a077042ad77d1646417bd860ec1f700",
         "decodedFrom": "resources/soundscapes/opus/brown-noise.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "pink-noise": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "db20a04c4f3c27195d40ebf8cdb6fee2b93fc1bc8ff31b225067c2695b5b1ab8",
+        "sha256": "7ce580e225fc3a4ed796788adc791907c00f28af18a1b5fe4d192953e3e1dc29",
         "decodedFrom": "resources/soundscapes/opus/pink-noise.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     },
     "white-noise": {
         "kind": "opus-decoded-placeholder",
-        "sha256": "f066a14cee1bc02e0fdb20d5860393aa6c043e6ad087ac510a1840641bfcacf4",
+        "sha256": "1ee196c63319cb94772f394349987487c0c126bf17ea114a284b44a74783aa03",
         "decodedFrom": "resources/soundscapes/opus/white-noise.opus",
-        "note": "Decoded from the published Opus. Not an original; replace when one exists."
+        "note": "Decoded from the published Opus and looped with the web's crossfade. Not an original; replace when one exists."
     }
 }

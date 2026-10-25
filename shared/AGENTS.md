@@ -2,11 +2,11 @@
 
 What every platform must agree on, kept as data so that each platform checks
 itself against this rather than against another platform's code. Platforms
-share this and the published audio, and nothing else: there is no shared code.
+share this and the audio, and nothing else: there is no shared code.
 
 | File | Holds |
 |---|---|
-| `catalog.json` | The soundscapes: `id` and `title`, in display order; and the ids offered as app shortcuts, in order |
+| `catalog.json` | The soundscapes: `id` and `title`, in display order; and the ids offered as app shortcuts, in order (on Android, those not yet ordered by listening) |
 | `design-tokens.json` | Colours (light and dark), shadows, sizes, type, durations, the volume control's steps, motion |
 | `copy.json` | Every string more than one platform shows |
 | `fixtures/loop-crossfade.json` | Golden input and output for the loop crossfade |
@@ -35,7 +35,9 @@ share this and the published audio, and nothing else: there is no shared code.
 
 ## The loop crossfade
 
-Every platform builds its loop the same way, and the fixture holds them to it.
+The web builds its loop this way as it decodes, and the fixture holds it to the
+formula. Android adds nothing: its masters are finished loops, and the
+placeholders were made with the web's own function (`masters/AGENTS.md`).
 For a buffer of `length` samples per channel at `sampleRate`:
 
 ```
@@ -59,4 +61,4 @@ why in the commit.
   soundscapes to build.
 - **Android** (being built; see `docs/native-apps-plan.md`): generates Kotlin
   and resources from these files at build time, and tests the result against
-  them; its instrumented tests read the fixtures, `layout.json` included.
+  them; its instrumented tests read `layout.json`.

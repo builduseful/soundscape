@@ -1,10 +1,10 @@
 # Repo-wide generators
 
 `node scripts/build-audio.mjs`, run from the repository root, builds every
-published soundscape from the masters into
-`web/src/resources/soundscapes/{opus,aac}/`. That folder is the one copy of the
-audio: the web app serves it and every other platform reads it from there. It
-is **host-only** (not part of any test suite or container image), needs
+web soundscape from the masters into
+`web/src/resources/soundscapes/{opus,aac}/`; Android bundles the masters
+themselves. With `--placeholders` it remakes the stand-in masters as finished
+loops. It is **host-only** (not part of any test suite or container image), needs
 `ffmpeg` and the inputs in [`../masters/`](../masters/AGENTS.md), and skips
 writing when the output is unchanged. The script's header says how it works.
 

@@ -63,18 +63,17 @@ deleted. It is a plan, not documentation.
   and light as it can be — memory, CPU and battery, while playing and while
   idle — through clean, straightforward code, never through hacks. In
   practice:
-  - **Memory:** 16-bit PCM decoded once into an exactly sized buffer, the
-    crossfade applied in place, and at most two tracks decoded at once (during
-    a track crossfade). Measured with a 16 MB heap, the worst real limit the
-    spike met.
+  - **Memory:** 16-bit PCM mapped from the APK, never decoded or copied onto
+    the heap, and at most two tracks mapped at once (during a track
+    crossfade). Measured with a 16 MB heap, the worst real limit the spike met.
   - **CPU:** one render thread that blocks on `AudioTrack.write` — no polling,
-    no timers while playing, no per-frame allocation; decoding off the main
-    thread; no recomposition while nothing on screen changes.
+    no timers while playing, no per-frame allocation; no recomposition while
+    nothing on screen changes.
   - **Battery:** nothing runs while paused except what the OS requires; no
     wake lock beyond what a foreground media service implies; the output
     buffer is sized for few wake-ups, not low latency, since nothing here
     needs low latency.
-  - **Startup:** the first frame draws before anything is decoded.
+  - **Startup:** the first frame draws before any audio is loaded.
   - Each is checked, not assumed: Phase 12 measures memory, CPU while playing,
     and wake-ups against budgets, on the lowest and highest API level.
 
@@ -136,7 +135,7 @@ deleted. It is a plan, not documentation.
     - the loop-crossfade maths
     - the ports it needs: `AudioEngine`, `PreferenceStore`, `Scheduler`
   - `android/app` holds the UI (Compose) and the OS adapters: the AudioTrack
-    engine, the decoder, the service and MediaSession, and the
+    engine, the service and MediaSession, and the
     SharedPreferences store. Adapters implement core's ports, and nothing in
     `core` knows Android exists.
 - **No code sharing with iOS (no Kotlin Multiplatform).** The domain is small
@@ -158,8 +157,8 @@ deleted. It is a plan, not documentation.
 
   - **The published audio stays in `web/src/resources/soundscapes/`.** GitHub
     Pages publishes one folder, so moving it out would give the web app its
-    first build step. Android's Gradle build reads it from there as an asset
-    source directory: one copy on disk, no duplication in git.
+    first build step. Android bundles the masters instead (see Phase 12):
+    still one copy of each soundscape in git, in `masters/`.
   - **Web-only generators move with the web app:**
     - icons
     - screenshots
@@ -174,8 +173,8 @@ deleted. It is a plan, not documentation.
       tests.
     - **UI Automator**, the black-box, cross-app counterpart of Playwright: it
       drives the real app, the notification and media keys.
-    - **Audio tests** that decode every bundled asset and prove the loop seam is
-      continuous, so the gapless promise is tested rather than asserted.
+    - **Audio tests** that prove every bundled loop's seam is continuous, so
+      the gapless promise is tested rather than asserted.
   - They run on **Gradle Managed Devices** (first-party, part of AGP), locally
     and in CI, across the version matrix below.
 - **Version matrix: every API level where something we use changed (requested
@@ -426,6 +425,13 @@ pre-removal state.
 > buffer is filled before `play()`: starting it empty counts an underrun on
 > API 26. The first budgets (`AudioBudgetTest`): a decode keeps only its PCM,
 > and the writer uses about 0.2% of one core.
+>
+> **Revised in Phase 12:** the app bundles the masters as 16-bit PCM WAV, each
+> a finished loop, and maps them from the APK. No decoder, no crossfade at
+> runtime, nothing on the heap: a load is instant and keeps 0 KB, for about
+> 35 MB more in the APK. `OggOpus`, `AssetDecoder`, `LoopCrossfade` and
+> `shared/fixtures/decoded-audio.json` went; `MastersTest` holds each master to
+> a clean seam.
 
 ### Phase 7 — Domain core (`android/core`)
 - [x] Catalog, `PlayerState`, `PlaybackController`, and the ports
@@ -529,8 +535,9 @@ pre-removal state.
 >   headset key does nothing; that is tested, and is what "fail gracefully"
 >   came to.
 > - **The shortcuts are in the contract**: `shared/catalog.json` lists their
->   ids, the web test holds the manifest to it, and Android generates
->   `shortcuts.xml` from it.
+>   ids, and the web test holds the manifest to it. Android publishes them as
+>   dynamic shortcuts, and once tracks have been listened to for 30 seconds
+>   it puts the most recent first, which a PWA's fixed manifest cannot.
 > - Artwork is the launcher icon, drawn once at 192 px, as the web gives its
 >   icon.
 > 8 service tests, 18 instrumented in all, pass on API 26, 29 and 37, and the
@@ -654,8 +661,8 @@ pre-removal state.
       `android/AGENTS.md`, each a gating test so a regression fails CI: Java
       heap while playing and during a track change, CPU while playing and while
       paused (none), wake-ups while paused (none), time to first frame, and
-      time to first sound (the whole track is decoded first; see Phase 9).
-      The audio path's first two (heap kept by a decode, writer CPU) exist from
+      time to first sound (instant since the loops are mapped; see Phase 6).
+      The audio path's first two (heap kept by a load, writer CPU) exist from
       Phase 6 in `AudioBudgetTest`; each later phase adds the budgets for what
       it builds.
 
