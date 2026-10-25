@@ -99,6 +99,9 @@ jobs:
       - name: Start the emulator
         run: |
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          # avdmanager and the emulator default to different places; name one.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           # `yes` ends on a broken pipe, which pipefail would count as a failure.
           (yes || true) | "$SDKMANAGER" --licenses > /dev/null
