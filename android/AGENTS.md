@@ -185,6 +185,17 @@ than emulator noise; raise one only with the maintainer's agreement.
 Each phase adds the budgets for what it builds: heap during a track change is
 still to come.
 
+## Versioning
+
+- **`versionName` and `versionCode` live in `app/build.gradle.kts`**, and
+  version independently of the web. Semantic versioning for the name: patch
+  for fixes, minor for features, major for breaking changes. The code goes up
+  by one with every name, since Android installs over an app only with a
+  higher one.
+- **Bump it with any change that ships in the app**, and propose the bump and
+  a matching `android-v<version>` tag before a commit to `trunk`, as the web
+  does (`web/src/AGENTS.md`). Tag on `trunk` after the merge.
+
 ## Toolchain
 
 - JDK 21 (any OpenJDK build) as `JAVA_HOME`.

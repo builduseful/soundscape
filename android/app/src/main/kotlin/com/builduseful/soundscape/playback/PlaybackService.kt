@@ -32,6 +32,7 @@ import com.builduseful.soundscape.core.playback.PlaybackController
 import com.builduseful.soundscape.core.playback.PlayerState
 import com.builduseful.soundscape.diagnostics.Diagnostics
 import com.builduseful.soundscape.diagnostics.PlaybackDiagnostics
+import kotlin.math.roundToInt
 
 /**
  * Owns the player, so sound outlives the screen, and joins it to the OS: the
@@ -261,11 +262,13 @@ class PlaybackService : Service() {
         }
     }
 
-    // The launcher icon, as the web gives its icon as artwork. Drawn once.
+    // The web's artwork, drawn once at the largest size the media controls
+    // show artwork (320dp; larger is scaled down), so a card that fills its
+    // width with it, as One UI's does, never stretches it.
     private fun drawArtwork(): Bitmap {
-        val size = ARTWORK_PX
+        val size = (ARTWORK_DP * resources.displayMetrics.density).roundToInt()
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        getDrawable(R.mipmap.ic_launcher)!!.apply { setBounds(0, 0, size, size) }.draw(Canvas(bitmap))
+        getDrawable(R.drawable.artwork)!!.apply { setBounds(0, 0, size, size) }.draw(Canvas(bitmap))
         return bitmap
     }
 
@@ -307,7 +310,7 @@ class PlaybackService : Service() {
 
         // Android's guidance: launchers show about four.
         private const val SHORTCUTS = 4
-        private const val ARTWORK_PX = 192
+        private const val ARTWORK_DP = 320
         private const val TAG = "PlaybackService"
     }
 }

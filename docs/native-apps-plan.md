@@ -538,8 +538,8 @@ pre-removal state.
 >   ids, and the web test holds the manifest to it. Android publishes them as
 >   dynamic shortcuts, and once tracks have been listened to for 30 seconds
 >   it puts the most recent first, which a PWA's fixed manifest cannot.
-> - Artwork is the launcher icon, drawn once at 192 px, as the web gives its
->   icon.
+> - Artwork is the web's icon (`icon.svg`, as `drawable/artwork`), drawn once
+>   at 320 dp, the largest the media controls show, so no card stretches it.
 > 8 service tests, 18 instrumented in all, pass on API 26, 29 and 37, and the
 > notification was looked at on each, light and dark. Found on the way:
 > - A listener that paused in reaction to play (focus refused) left the load

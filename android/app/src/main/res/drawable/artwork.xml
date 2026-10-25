@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- web/src/resources/icons/icon.svg, the web's media session artwork, so the
+     media controls show the same picture on both. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="192dp"
+    android:height="192dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:fillColor="#111111"
+        android:pathData="M112,0h288a112,112 0,0 1,112 112v288a112,112 0,0 1,-112 112h-288a112,112 0,0 1,-112 -112v-288a112,112 0,0 1,112 -112z" />
+    <path
+        android:pathData="M103,220c34,-38 68,-38 102,0s68,38 102,0 68,-38 102,0"
+        android:strokeColor="#F1F1F1"
+        android:strokeLineCap="round"
+        android:strokeWidth="28" />
+    <path
+        android:pathData="M103,292c34,-38 68,-38 102,0s68,38 102,0 68,-38 102,0"
+        android:strokeColor="#F1F1F1"
+        android:strokeLineCap="round"
+        android:strokeWidth="28" />
+</vector>
