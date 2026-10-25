@@ -111,14 +111,18 @@ jobs:
       - run: ./gradlew --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :e2e:assembleDebug
       - name: Wait for the boot
         run: |
-          adb wait-for-device
-          timeout 600 sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 5; done'
+          if ! timeout 600 sh -c 'adb wait-for-device && until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 5; done'; then
+            cat "$RUNNER_TEMP/emulator.log"
+            exit 1
+          fi
           # What runs straight after a boot is slow enough to fail a test on its own.
           sleep 30
           adb shell getprop ro.build.version.sdk
       - run: ./gradlew --console=plain :app:connectedDebugAndroidTest
+        timeout-minutes: 20
       - if: success() || failure()
         run: ./gradlew --console=plain :e2e:connectedDebugAndroidTest
+        timeout-minutes: 15
       - if: failure()
         run: |
           mkdir -p build/device-logs
