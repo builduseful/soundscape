@@ -51,8 +51,7 @@ jobs:
   # The instrumented and end-to-end suites on emulators: the lowest and highest
   # level on every change, the whole matrix (docs/native-apps-plan.md) for a
   # release or on demand. An emulator, not Gradle Managed Devices, which does
-  # not support API 26. The foldable is the Pixel Fold: the runner's avdmanager
-  # predates the Pixel 9 Pro Fold the local matrix uses.
+  # not support API 26.
   devices:
     name: devices (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -77,8 +76,8 @@ jobs:
           {"name":"phone 37","image":"android-37.0","device":"pixel_6"},
           {"name":"tablet 26","image":"android-26","device":"pixel_tablet"},
           {"name":"tablet 37","image":"android-37.0","device":"pixel_tablet"},
-          {"name":"foldable 26","image":"android-26","device":"pixel_fold"},
-          {"name":"foldable 37","image":"android-37.0","device":"pixel_fold"}
+          {"name":"foldable 26","image":"android-26","device":"pixel_9_pro_fold"},
+          {"name":"foldable 37","image":"android-37.0","device":"pixel_9_pro_fold"}
           ]' || '[
           {"name":"phone 26","image":"android-26","device":"pixel_6"},
           {"name":"phone 37","image":"android-37.0","device":"pixel_6"}
@@ -110,8 +109,9 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           # `yes` ends on a broken pipe, which pipefail would count as a failure.
           (yes || true) | "$SDKMANAGER" --licenses > /dev/null
-          "$SDKMANAGER" --install emulator platform-tools "$PACKAGE" > /dev/null
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+          # The runner's own avdmanager is too old to know the foldables, so a pinned one makes the AVD.
+          "$SDKMANAGER" --install "cmdline-tools;23.0" emulator platform-tools "$PACKAGE" > /dev/null
+          echo no | "$ANDROID_HOME/cmdline-tools/23.0/bin/avdmanager" create avd \
             --name test --package "$PACKAGE" --device ${{ matrix.device }}
           nohup "$ANDROID_HOME/emulator/emulator" -avd test -no-window -no-audio \
             -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
