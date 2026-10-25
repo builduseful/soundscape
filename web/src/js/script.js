@@ -28,7 +28,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";

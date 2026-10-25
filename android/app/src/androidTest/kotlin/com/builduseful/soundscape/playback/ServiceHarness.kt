@@ -67,9 +67,8 @@ class ServiceHarness : AutoCloseable {
         waitUntil("$trackId to be heard") { isSounding && controller { state.track.id } == trackId }
     }
 
-    // As long as EngineHarness allows a load: decoding a long track on the API 26
-    // emulator takes several seconds.
-    fun waitUntil(what: String, timeoutMillis: Long = 20_000, condition: () -> Boolean) {
+    // As long as EngineHarness allows a load, which is a ceiling, not a budget.
+    fun waitUntil(what: String, timeoutMillis: Long = 60_000, condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + timeoutMillis
         while (!condition()) {
             check(SystemClock.elapsedRealtime() < deadline) { "timed out waiting for $what" }

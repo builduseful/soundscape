@@ -7,12 +7,12 @@
     android:viewportWidth="512"
     android:viewportHeight="512">
     <path
-        android:pathData="M80,200c44,-50 88,-50 132,0s88,50 132,0 88,-50 132,0"
+        android:pathData="M58,200c44,-50 88,-50 132,0s88,50 132,0 88,-50 132,0"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeWidth="44" />
     <path
-        android:pathData="M80,312c44,-50 88,-50 132,0s88,50 132,0 88,-50 132,0"
+        android:pathData="M58,312c44,-50 88,-50 132,0s88,50 132,0 88,-50 132,0"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeWidth="44" />

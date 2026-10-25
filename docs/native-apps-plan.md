@@ -568,7 +568,7 @@ pre-removal state.
 - [ ] Narrow-width sizes at under 520 dp, reduced motion (animator duration
       scale 0 means no motion), TalkBack labels matching the web's accessible
       names, and announcements for loading and errors.
-- [ ] Every window: phone portrait and landscape, tablet, an unfolded
+- [x] Every window: phone portrait and landscape, tablet, an unfolded
       foldable, split-screen and a window too short for the page (it
       scrolls); the safe-drawing insets in each; and the keyboard (space,
       arrows, Tab, Escape/back closing a panel).
@@ -581,11 +581,14 @@ pre-removal state.
 > panel survive it. `SoundscapeAppTest` (21 tests) drives the screen with a
 > recorded player rather than a fake engine — the controller's rules are
 > core's — at phone, landscape, tablet, unfolded and short sizes, with keys
-> sent through the system. Still open in the two items above: TalkBack itself
-> (the labels and live regions are in place, not yet heard), split-screen,
-> and runs on tablet and foldable emulators.
+> sent through the system. On the API 37 tablet and foldable emulators the
+> whole instrumented suite passes; folding, unfolding and rotating keep the
+> sound playing and the screen's state; and a resizable freeform window lays
+> out at every size down to Android's smallest, where — as on the web at that
+> width — the transport is clipped at the side. Still open: TalkBack itself
+> (the labels and live regions are in place, not yet heard).
 
-- [ ] Store screenshots, scripted like the web's `npm run screenshots`: one
+- [x] Store screenshots, scripted like the web's `npm run screenshots`: one
       command (`android/scripts/capture-store-screenshots`) boots the latest
       emulator, plays a fixed track at a fixed volume, captures phone, 7-inch
       and 10-inch tablet screenshots in light and dark at Play's required
@@ -595,23 +598,57 @@ pre-removal state.
       change to how the home screen looks).
 
 ### Phase 11 — Parity
-- [ ] `web/scripts/capture-layout.mjs` writes
-      `shared/fixtures/layout-<w>x<h>.json` (element boxes, both themes).
-- [ ] An Android instrumented test asserts the same boxes within ±2 dp
+- [x] `web/scripts/capture-layout.mjs` writes the web's element boxes to
+      `shared/fixtures/`.
+- [x] An Android instrumented test asserts the same boxes within ±2 dp
       (gating).
-- [ ] Screenshot capture on both platforms, plus `scripts/parity-report.mjs`,
+
+> As done: one file, `shared/fixtures/layout.json`, for the five windows the UI
+> tests use, and one theme — no box depends on it. `LayoutParityTest` holds
+> buttons to all four edges, and text to what the font does not move: where
+> the byline starts, and the title's centre and top. It found the app name a
+> line 1.6 dp taller than the web's: Android will not lay a line out shorter
+> than its font, so `Modifier.lineBox` holds it to the token.
+- [x] Screenshot capture on both platforms, plus `scripts/parity-report.mjs`,
       which produces a side-by-side and diff HTML report (advisory).
 
+> As done: both capture the windows of `layout.json`, light and dark, with the
+> first soundscape paused — the web with Playwright, Android with
+> `ParityScreenshots` rendering the screen as `LayoutParityTest` does (left out
+> of Gradle's runs). The report embeds both and draws the diff in the page.
+> First run: under 2% of pixels differ in any window, almost all of it text
+> and glyph edges.
+
 ### Phase 12 — End-to-end and CI
-- [ ] A UI Automator end-to-end suite: launch, play, skip, change volume, theme,
+- [x] A UI Automator end-to-end suite: launch, play, skip, change volume, theme,
       background, notification controls, restart restores the preferences.
+
+> As done: `android/e2e/`, a self-instrumenting `com.android.test` module, so
+> a test can force-stop the app and launch it again. Three journeys: play,
+> skip and pause; playing on from the home screen under the notification's
+> controls; and a restart that keeps the track, volume and theme (the one the
+> system is not in, checked by the page's colour on screen, not only the menu).
+> CI compiles it and the instrumented suite; running them there is the next
+> item.
 - [ ] Gradle Managed Devices for the whole version matrix, wired into CI with
       KVM (26 and the latest on pull requests; the full matrix on `trunk`),
       and web/Android path filters verified.
-- [ ] Run the end-to-end and instrumented suites on every level in the matrix
+- [x] Run the end-to-end and instrumented suites on every level in the matrix
       and record the results, with a light and dark screenshot from each level
       in `.temp/screens/` for the maintainer to look over (not tracked), and
       from a tablet and a foldable on the lowest and highest level.
+
+> As done: both suites pass on API 26, 29, 30, 31, 33, 34, 35 and 37, and on
+> the tablet and foldable at 26 and 37 — run one emulator at a time, two cores
+> each. The first runs found one bug in the app: on API 33 SystemUI clears a
+> stopped player's notification a second later as if dismissed, and when a new
+> one shared its id that stopped the new playback; each notification now has
+> its own (`playingAgainRightAfterAStopCarriesOn`). The rest were the tests'
+> own: `pm clear` finishing after it answers, and on API 34 killing a launch
+> half a second on; `isMusicActive` lagging the last test's sound; and waits
+> too short for an emulator just booted (60 s ceilings now, not budgets). On a
+> Galaxy A26 (One UI, Android 16) everything passes but Escape closing a panel:
+> One UI keeps the Escape key for itself, and Back still closes it.
 
 - [ ] Performance budgets, measured on API 26 and 37 and recorded in
       `android/AGENTS.md`, each a gating test so a regression fails CI: Java
@@ -626,5 +663,9 @@ pre-removal state.
 - [ ] Docs pass: every `AGENTS.md` is accurate, the README covers the
       platforms, and this plan is removed (its decisions now live beside the
       code).
-- [ ] A release checklist for the maintainer: signing key, Play listing, data
+- [x] A release checklist for the maintainer: signing key, Play listing, data
       safety form (no data collected), and screenshots.
+
+> As done: [`android/RELEASE.md`](../android/RELEASE.md). The README now covers
+> both platforms; the rest of the docs pass, and removing this plan, wait for
+> the phases above.

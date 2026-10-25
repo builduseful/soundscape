@@ -50,7 +50,6 @@ class PlaybackService : Service() {
     private lateinit var artwork: Bitmap
 
     private var inForeground = false
-    private var destroyed = false
     private var listeningForNoisy = false
     private var published: PlayerState? = null
 
@@ -106,7 +105,7 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
-        destroyed = true
+        session.isActive = false
         focus.release()
         listenForNoisy(false)
         session.release()
@@ -118,12 +117,16 @@ class PlaybackService : Service() {
     /** Pauses, takes the notification down and lets the service end. */
     fun stop() {
         controller.pause()
+        session.isActive = false
         if (inForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             inForeground = false
         }
         stopSelf()
     }
+
+    /** The notification now up, for tests. */
+    internal val notificationId get() = notification.id
 
     /** Whether sound is coming out, for tests: [PlayerState.isPlaying] is the listener's intent. */
     internal val isSounding get() = engine.isPlaying
@@ -140,11 +143,12 @@ class PlaybackService : Service() {
             startForegroundService(Intent(this, PlaybackService::class.java))
             val built = notification.build(state)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(PlaybackNotification.ID, built, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                startForeground(notification.id, built, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
             } else {
-                startForeground(PlaybackNotification.ID, built)
+                startForeground(notification.id, built)
             }
             inForeground = true
+            session.isActive = true
         } catch (refused: IllegalStateException) {
             // From the background, Android 12 and later refuse. Sound that
             // could be cut off at any moment is not started at all.
@@ -184,7 +188,7 @@ class PlaybackService : Service() {
                 state.isLoading -> PlaybackState.STATE_BUFFERING
                 else -> PlaybackState.STATE_PLAYING
             },
-            // A loop has no position worth showing; unknown hides the seek bar.
+            // A loop has no position worth showing: unknown leaves any seek bar empty and still.
             PlaybackState.PLAYBACK_POSITION_UNKNOWN,
             if (state.isPlaying) 1f else 0f,
         )
@@ -217,22 +221,22 @@ class PlaybackService : Service() {
         return bitmap
     }
 
-    // A key pressed as the service ends can arrive after onDestroy: the
-    // session had already queued it. It is dropped — acting on it would start
-    // a service that is going away (on Android 8, a crash).
+    // Stopped, the session is inactive and a key already queued for it is
+    // dropped: acting on it would put a service that is going away back in the
+    // foreground, and Android kills an app whose service ends before it gets there.
     private inner class SessionCallback : MediaSession.Callback() {
-        override fun onPlay() = unlessDestroyed { controller.play() }
+        override fun onPlay() = whileActive { controller.play() }
 
-        override fun onPause() = unlessDestroyed { controller.pause() }
+        override fun onPause() = whileActive { controller.pause() }
 
-        override fun onStop() = unlessDestroyed { stop() }
+        override fun onStop() = whileActive { stop() }
 
-        override fun onSkipToNext() = unlessDestroyed { controller.next() }
+        override fun onSkipToNext() = whileActive { controller.next() }
 
-        override fun onSkipToPrevious() = unlessDestroyed { controller.previous() }
+        override fun onSkipToPrevious() = whileActive { controller.previous() }
 
-        private inline fun unlessDestroyed(action: () -> Unit) {
-            if (!destroyed) action()
+        private inline fun whileActive(action: () -> Unit) {
+            if (session.isActive) action()
         }
     }
 

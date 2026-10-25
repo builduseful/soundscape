@@ -18,5 +18,14 @@ writing when the output is unchanged. The script's header says how it works.
 `shared/fixtures/loop-crossfade.json` from the formula in
 [`../shared/AGENTS.md`](../shared/AGENTS.md); it needs nothing but Node.
 
+`node scripts/parity-report.mjs` screenshots the web and Android screens in
+every window of `shared/fixtures/layout.json`, light and dark, and writes
+`.temp/parity/report.html`: each pair side by side with a pixel diff. Advisory
+and untracked — `LayoutParityTest` gates where things sit; this is for a person
+to look over after a change to how either looks. It runs
+`web/scripts/capture-parity.mjs` and `android/scripts/capture-parity.mjs`, so
+it needs Playwright and an emulator; `--no-capture` rebuilds the report from
+the last capture.
+
 The web app's own generators (icons, screenshots) are in
 [`../web/scripts/AGENTS.md`](../web/scripts/AGENTS.md).

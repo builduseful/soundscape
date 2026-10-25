@@ -10,6 +10,7 @@ share this and the published audio, and nothing else: there is no shared code.
 | `design-tokens.json` | Colours (light and dark), shadows, sizes, type, durations, the volume control's steps, motion |
 | `copy.json` | Every string more than one platform shows |
 | `fixtures/loop-crossfade.json` | Golden input and output for the loop crossfade |
+| `fixtures/layout.json` | Where each part of the page sits in the web app, per window size; written by `web/scripts/capture-layout.mjs` (`npm run layout`) |
 
 ## Rules
 
@@ -58,4 +59,4 @@ why in the commit.
   soundscapes to build.
 - **Android** (being built; see `docs/native-apps-plan.md`): generates Kotlin
   and resources from these files at build time, and tests the result against
-  them.
+  them; its instrumented tests read the fixtures, `layout.json` included.

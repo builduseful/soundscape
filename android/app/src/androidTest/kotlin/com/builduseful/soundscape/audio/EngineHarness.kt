@@ -65,7 +65,9 @@ class EngineHarness : AutoCloseable {
 
         /** The load's failure, or null once it succeeded. */
         fun await(): Throwable? {
-            check(latch.await(20, TimeUnit.SECONDS)) { "the load never finished" }
+            // A ceiling, as DecodeNow's, not a budget: on an emulator still busy
+            // after its boot, a long track's decode has taken 14 s.
+            check(latch.await(60, TimeUnit.SECONDS)) { "the load never finished" }
             return error
         }
     }

@@ -59,3 +59,22 @@ The default image also bundles Node.js so it can run `npm test`. For a slim runt
     --volume ${PWD}/..:/repo --workdir /repo/web \
     soundscape npm test
 ```
+
+## Android app
+
+Run every command below from `android/`. It needs JDK 21 and the Android SDK
+(`ANDROID_HOME`); [`android/AGENTS.md`](android/AGENTS.md) has the toolchain,
+the emulators and the rest.
+
+```sh
+./gradlew :app:assembleDebug               # app/build/outputs/apk/debug/app-debug.apk
+./gradlew :core:test :app:lintDebug        # JVM tests and lint, no device needed
+./gradlew :app:connectedDebugAndroidTest   # instrumented tests, on a running emulator
+./gradlew :e2e:connectedDebugAndroidTest   # end-to-end tests, on a running emulator
+```
+
+## Keeping the platforms alike
+
+`node scripts/parity-report.mjs`, from the repository root, screenshots the web
+and Android apps at the same window sizes and writes a side-by-side report to
+`.temp/parity/report.html`. See [`scripts/AGENTS.md`](scripts/AGENTS.md).

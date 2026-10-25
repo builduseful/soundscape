@@ -10,6 +10,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.Icon
 import android.media.session.MediaSession
+import android.os.SystemClock
 import com.builduseful.soundscape.R
 import com.builduseful.soundscape.core.playback.PlayerState
 
@@ -26,6 +27,11 @@ internal class PlaybackNotification(
     private val openApp: PendingIntent,
 ) {
     private val manager = service.getSystemService(NotificationManager::class.java)
+
+    // Not reused when the service starts again: SystemUI's clean-up after the
+    // last one, which it dismisses as a person would, can land a second later
+    // and stop the new playback through the delete intent (seen on API 33).
+    val id = ++lastId
 
     init {
         manager.createNotificationChannel(
@@ -61,7 +67,7 @@ internal class PlaybackNotification(
     // Exempt from POST_NOTIFICATIONS, being a media-session notification;
     // PlaybackServiceTest holds it to showing without the permission.
     @SuppressLint("NotificationPermission")
-    fun show(state: PlayerState) = manager.notify(ID, build(state))
+    fun show(state: PlayerState) = manager.notify(id, build(state))
 
     private fun action(icon: Int, label: Int, command: String) =
         Notification.Action.Builder(Icon.createWithResource(service, icon), service.getString(label), command(command)).build()
@@ -75,8 +81,10 @@ internal class PlaybackNotification(
         PendingIntent.FLAG_IMMUTABLE,
     )
 
-    companion object {
-        const val ID = 1
-        private const val CHANNEL = "playback"
+    private companion object {
+        const val CHANNEL = "playback"
+
+        // From the seconds since boot, so a new process does not start from the last one's.
+        var lastId = (SystemClock.elapsedRealtime() / 1000).toInt()
     }
 }

@@ -27,7 +27,7 @@ web/
 │   ├── js/                # App modules; components/ carries its own AGENTS.md
 │   └── resources/         # icons/, screenshots/, soundscapes/{opus,aac}/
 ├── tests/                 # Unit suite (dependency-free), plus helpers/
-├── scripts/               # Host-only generators: icons, screenshots; a media-key test aid
+├── scripts/               # Host-only generators: icons, screenshots, the shared layout; a media-key test aid
 └── Dockerfile             # Default target = Caddy + Node; `--target serve` = slim Caddy only
 ```
 

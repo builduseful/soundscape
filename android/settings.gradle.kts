@@ -17,4 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "soundscape"
 
-include(":core", ":app")
+include(":core", ":app", ":e2e")

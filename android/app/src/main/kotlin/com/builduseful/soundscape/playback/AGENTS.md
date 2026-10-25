@@ -17,9 +17,11 @@ package only delivers the OS's events to it and shows its state.
 - **No POST_NOTIFICATIONS.** A media-session notification is exempt on 13+;
   the permission is not declared, and `PlaybackServiceTest` holds the
   notification to showing without it.
-- **Nothing acts after `onDestroy`.** A media key pressed as the service ends is
-  delivered late; the session callback drops it (on API 26 acting on it
-  crashed the app).
+- **Nothing acts after stop.** Stop deactivates the session, so the system sends
+  it no more keys, and the callback drops one already queued: acting on it
+  would put a service that is ending back in the foreground, which crashes the
+  app (on API 26 after `onDestroy`; on 37 between stop and `onDestroy`). Playing
+  again from the screen reactivates it.
 - **The notification and session change only when what they show changes**:
   the track, playing, and (for the session) loading. Volume and the notice are
   the screen's.

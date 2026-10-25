@@ -16,8 +16,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # JVM tests, lint (warnings are errors) and a debug build. Instrumented tests
-  # on emulators join in Phase 12 of docs/native-apps-plan.md.
+  # JVM tests, lint (warnings are errors), a debug build, and the device suites
+  # compiled. Running those on emulators joins in Phase 12 of
+  # docs/native-apps-plan.md.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -38,4 +39,5 @@ jobs:
           distribution: microsoft
           java-version: 21
           cache: gradle
-      - run: ./gradlew --console=plain :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      # The device suites need an emulator; compiling them here keeps them from rotting.
+      - run: ./gradlew --console=plain :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :e2e:assembleDebug

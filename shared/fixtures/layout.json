@@ -1,0 +1,245 @@
+{
+  "about": "Where each part of the page sits in the web app, in CSS px from the top left of the page, per window. Written by web/scripts/capture-layout.mjs; do not edit.",
+  "windows": [
+    {
+      "width": 360,
+      "height": 640,
+      "boxes": {
+        "byline": {
+          "x": 18,
+          "y": 42.2,
+          "width": 82.8,
+          "height": 15.7
+        },
+        "menuButton": {
+          "x": 302,
+          "y": 18,
+          "width": 40,
+          "height": 40
+        },
+        "previous": {
+          "x": 54,
+          "y": 255.7,
+          "width": 60,
+          "height": 60
+        },
+        "playPause": {
+          "x": 129,
+          "y": 234.7,
+          "width": 102,
+          "height": 102
+        },
+        "next": {
+          "x": 246,
+          "y": 255.7,
+          "width": 60,
+          "height": 60
+        },
+        "title": {
+          "x": 91.7,
+          "y": 370.7,
+          "width": 176.7,
+          "height": 24.6
+        },
+        "volumeButton": {
+          "x": 292,
+          "y": 572,
+          "width": 50,
+          "height": 50
+        }
+      }
+    },
+    {
+      "width": 800,
+      "height": 360,
+      "boxes": {
+        "byline": {
+          "x": 26,
+          "y": 50,
+          "width": 82.8,
+          "height": 15.7
+        },
+        "menuButton": {
+          "x": 734,
+          "y": 26,
+          "width": 40,
+          "height": 40
+        },
+        "previous": {
+          "x": 266,
+          "y": 115.7,
+          "width": 60,
+          "height": 60
+        },
+        "playPause": {
+          "x": 341,
+          "y": 86.7,
+          "width": 118,
+          "height": 118
+        },
+        "next": {
+          "x": 474,
+          "y": 115.7,
+          "width": 60,
+          "height": 60
+        },
+        "title": {
+          "x": 311.7,
+          "y": 238.7,
+          "width": 176.7,
+          "height": 24.6
+        },
+        "volumeButton": {
+          "x": 724,
+          "y": 284,
+          "width": 50,
+          "height": 50
+        }
+      }
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "boxes": {
+        "byline": {
+          "x": 26,
+          "y": 50,
+          "width": 82.8,
+          "height": 15.7
+        },
+        "menuButton": {
+          "x": 1214,
+          "y": 26,
+          "width": 40,
+          "height": 40
+        },
+        "previous": {
+          "x": 506,
+          "y": 335.7,
+          "width": 60,
+          "height": 60
+        },
+        "playPause": {
+          "x": 581,
+          "y": 306.7,
+          "width": 118,
+          "height": 118
+        },
+        "next": {
+          "x": 714,
+          "y": 335.7,
+          "width": 60,
+          "height": 60
+        },
+        "title": {
+          "x": 551.7,
+          "y": 458.7,
+          "width": 176.7,
+          "height": 24.6
+        },
+        "volumeButton": {
+          "x": 1204,
+          "y": 724,
+          "width": 50,
+          "height": 50
+        }
+      }
+    },
+    {
+      "width": 673,
+      "height": 841,
+      "boxes": {
+        "byline": {
+          "x": 26,
+          "y": 50,
+          "width": 82.8,
+          "height": 15.7
+        },
+        "menuButton": {
+          "x": 607,
+          "y": 26,
+          "width": 40,
+          "height": 40
+        },
+        "previous": {
+          "x": 202.5,
+          "y": 356.2,
+          "width": 60,
+          "height": 60
+        },
+        "playPause": {
+          "x": 277.5,
+          "y": 327.2,
+          "width": 118,
+          "height": 118
+        },
+        "next": {
+          "x": 410.5,
+          "y": 356.2,
+          "width": 60,
+          "height": 60
+        },
+        "title": {
+          "x": 248.2,
+          "y": 479.2,
+          "width": 176.7,
+          "height": 24.6
+        },
+        "volumeButton": {
+          "x": 597,
+          "y": 765,
+          "width": 50,
+          "height": 50
+        }
+      }
+    },
+    {
+      "width": 360,
+      "height": 300,
+      "boxes": {
+        "byline": {
+          "x": 18,
+          "y": 42.2,
+          "width": 82.8,
+          "height": 15.7
+        },
+        "menuButton": {
+          "x": 302,
+          "y": 18,
+          "width": 40,
+          "height": 40
+        },
+        "previous": {
+          "x": 54,
+          "y": 85.7,
+          "width": 60,
+          "height": 60
+        },
+        "playPause": {
+          "x": 129,
+          "y": 64.7,
+          "width": 102,
+          "height": 102
+        },
+        "next": {
+          "x": 246,
+          "y": 85.7,
+          "width": 60,
+          "height": 60
+        },
+        "title": {
+          "x": 91.7,
+          "y": 200.7,
+          "width": 176.7,
+          "height": 24.6
+        },
+        "volumeButton": {
+          "x": 292,
+          "y": 232,
+          "width": 50,
+          "height": 50
+        }
+      }
+    }
+  ]
+}

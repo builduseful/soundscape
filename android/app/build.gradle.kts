@@ -35,6 +35,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Screenshots for scripts/parity-report.mjs, not a check: run only by android/scripts/capture-parity.mjs.
+        testInstrumentationRunnerArguments["notClass"] = "$appId.ui.ParityScreenshots"
         buildConfigField("String", "PLAY_TRACK_ACTION", "\"$playTrackAction\"")
         buildConfigField("String", "TRACK_ID_EXTRA", "\"$trackIdExtra\"")
     }

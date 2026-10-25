@@ -45,7 +45,8 @@ class PlaybackServiceTest {
     @Test
     fun theNotificationShowsTheTrack() {
         harness.playing("fireplace")
-        assertTrue(notifications.activeNotifications.any { it.id == PlaybackNotification.ID })
+        val id = harness.service.notificationId
+        assertTrue(notifications.activeNotifications.any { it.id == id })
 
         device.openNotification()
         assertNotNull("the track's title in the notification shade", device.wait(Until.findObject(By.text(title("fireplace"))), 5_000))
@@ -73,12 +74,14 @@ class PlaybackServiceTest {
         val shortcuts = context.getSystemService(ShortcutManager::class.java).manifestShortcuts.sortedBy { it.rank }
         assertEquals(listOf("garden-rain", "fireplace", "rain-thunder"), shortcuts.map { it.id })
 
-        val shortcut = shortcuts.first { it.id == "rain-thunder" }
-        assertEquals(title("rain-thunder"), shortcut.shortLabel)
+        // Not the first shortcut, so the right one is shown to be chosen; and not
+        // the minute-long rain-thunder, whose decode on a busy emulator outlasts the wait.
+        val shortcut = shortcuts.first { it.id == "fireplace" }
+        assertEquals(title("fireplace"), shortcut.shortLabel)
         context.startActivity(Intent(shortcut.intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         harness.waitUntil("the shortcut's track to be heard") {
-            harness.isSounding && harness.controller { state.track.id } == "rain-thunder"
+            harness.isSounding && harness.controller { state.track.id } == "fireplace"
         }
     }
 
@@ -86,9 +89,11 @@ class PlaybackServiceTest {
     // sound going: it is in the foreground.
     @Test
     fun playbackOutlivesTheScreen() {
-        val shortcut = context.getSystemService(ShortcutManager::class.java).manifestShortcuts.first()
+        val shortcut = context.getSystemService(ShortcutManager::class.java).manifestShortcuts.minBy { it.rank }
         context.startActivity(Intent(shortcut.intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        harness.waitUntil("the app to start playing") { audio.isMusicActive }
+        // The service's word, not isMusicActive: that stays true a moment after
+        // the last test's sound has stopped, and let this one leave too soon.
+        harness.waitUntil("the app to start playing") { harness.isSounding }
         harness.unbind()
 
         device.pressHome()
@@ -142,14 +147,28 @@ class PlaybackServiceTest {
     @Test
     fun stopTakesTheNotificationDownAndLaterKeysDoNothing() {
         harness.playing("rain")
+        val id = harness.service.notificationId
         press(KeyEvent.KEYCODE_MEDIA_STOP)
-        harness.waitUntil("the notification to go") { notifications.activeNotifications.none { it.id == PlaybackNotification.ID } }
+        harness.waitUntil("the notification to go") { notifications.activeNotifications.none { it.id == id } }
         assertFalse(harness.isSounding)
         harness.unbind()
 
         press(KeyEvent.KEYCODE_MEDIA_PLAY)
         SystemClock.sleep(1_500)
         assertFalse(audio.isMusicActive)
+    }
+
+    // SystemUI clears away a stopped player's notification a second or so
+    // later, as if the person had dismissed it. On API 33, when the new
+    // notification shared its id, that landed on it and stopped the sound.
+    @Test
+    fun playingAgainRightAfterAStopCarriesOn() {
+        harness.playing("rain")
+        harness.close()
+
+        harness.playing("rain")
+        SystemClock.sleep(3_000)
+        assertTrue("still playing", harness.isSounding)
     }
 
     private fun press(code: Int) {

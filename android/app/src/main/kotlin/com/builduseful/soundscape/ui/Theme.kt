@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -120,11 +121,24 @@ internal fun TypeToken.style(color: Color) = TextStyle(
     color = color,
     fontSize = size.sp,
     fontWeight = FontWeight(weight),
-    lineHeight = (size * (lineHeight ?: DesignTokens.Type.body.lineHeight!!)).sp,
+    lineHeight = lineBox,
     // CSS spreads the extra line height evenly above and below the text.
     lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
     letterSpacing = letterSpacing.em,
 )
+
+private val TypeToken.lineBox get() = (size * (lineHeight ?: DesignTokens.Type.body.lineHeight!!)).sp
+
+/**
+ * One line of text exactly its token's line height, centred, as CSS lays it
+ * out. Needed only where that is less than the font's own height, as the app
+ * name's is: Android never lays a line out shorter than its font.
+ */
+internal fun Modifier.lineBox(type: TypeToken): Modifier = layout { measurable, constraints ->
+    val text = measurable.measure(constraints)
+    val height = type.lineBox.roundToPx()
+    layout(text.width, height) { text.place(0, (height - text.height) / 2) }
+}
 
 /** A CSS `box-shadow` from the tokens: every layer, in order. */
 internal fun Modifier.tokenShadow(layers: List<Pair<ShadowLayer, Color>>, shape: Shape): Modifier =

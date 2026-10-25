@@ -10,6 +10,7 @@ Every command in this file runs from `android/`.
 |---|---|---|
 | `core/` | The product's rules: catalog, loop crossfade, and the playback controller and audio-focus rules with their ports (`core/playback`). Plain Kotlin on the JVM. | Kotlin's standard library only |
 | `app/` | Everything Android: activity, Compose UI, playback service, audio engine. | `core`, the libraries below |
+| `e2e/` | The end-to-end suite: the installed app driven from outside its process with UI Automator — the screen, the notification, a restart. | `core`, the test libraries |
 | `build-logic/` | Gradle tasks that generate code and resources from `../shared/`. | Gradle |
 
 Keep Android out of `core`: if a rule can be stated without the platform, it
@@ -141,6 +142,7 @@ time to first frame are still to come.
 ./gradlew :app:lintDebug             # lint; warnings are errors
 ./gradlew :app:assembleDebug         # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:connectedDebugAndroidTest   # instrumented, on a running emulator
+./gradlew :e2e:connectedDebugAndroidTest   # end to end, on a running emulator
 ```
 
 Check a change on the lowest and highest API level in the matrix
@@ -159,10 +161,32 @@ adb emu kill
 On API 29, `cmd uimode night` reports success and changes nothing. Use
 `adb shell settings put secure ui_night_mode 2` (1 for light) and `adb reboot`.
 
+The end-to-end suite finds controls by the names TalkBack reads, taken from
+`shared/copy.json`, so it holds the installed app to the contract's wording
+too. It runs in its own process (self-instrumenting), which is what lets it
+kill the app and launch it again.
+
 Uninstall a hand-installed APK (`adb uninstall com.builduseful.soundscape`)
 before `connectedDebugAndroidTest`: its own install then fails with
 `INSTALL_FAILED_ALREADY_EXISTS`, and the build still reports success with no
 tests run.
+
+On a foldable emulator, which has two displays, pass the display to
+`screencap -d <id>` (the ids are in `adb shell dumpsys SurfaceFlinger
+--display-id`); without one it writes a warning into the file instead of a PNG.
+
+Releasing to Play, and what it needs from the maintainer, is
+[`RELEASE.md`](RELEASE.md).
+
+The Play listing's screenshots are `store/screenshots/`, written by
+`node scripts/capture-store-screenshots.mjs`. Re-run it after any change to how
+the home screen looks, and commit what it rewrites.
+
+`node scripts/capture-parity.mjs` screenshots the screen as `LayoutParityTest`
+lays it out (`ParityScreenshots`, which Gradle's runs leave out) for the
+repository's parity report: see [`../scripts/AGENTS.md`](../scripts/AGENTS.md).
+Both scripts drive the device through `scripts/device.mjs`: the one attached,
+or else the AVD they name, started headless.
 
 Take screenshots from Bash, not PowerShell: PowerShell's `>` re-encodes the
 binary and corrupts the PNG. Put them in `.temp/`.

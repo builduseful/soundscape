@@ -204,7 +204,11 @@ private fun Header(
         verticalAlignment = if (narrow) Alignment.CenterVertically else Alignment.Top,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.brandGap.dp)) {
-            BasicText(stringResource(R.string.app_name), style = DesignTokens.Type.appName.style(palette.textMuted))
+            BasicText(
+                stringResource(R.string.app_name),
+                Modifier.lineBox(DesignTokens.Type.appName),
+                style = DesignTokens.Type.appName.style(palette.textMuted),
+            )
             Link(
                 text = stringResource(R.string.byline),
                 url = stringResource(R.string.byline_url),

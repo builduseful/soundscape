@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- To launch the app and read its resources from Android 11 on. -->
+    <queries>
+        <package android:name="com.builduseful.soundscape" />
+    </queries>
+</manifest>
