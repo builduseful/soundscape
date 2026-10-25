@@ -99,8 +99,9 @@ through plain code. Here that means:
   `AudioTrack.write`; nothing at all runs while paused.
 - **No allocation on the audio path**, and no recomposition while nothing on
   screen changes.
-- **Nothing before the first frame but the theme.** The service is bound, and
-  created, after it; the window is painted the page colour while the app
+- **Little before the first frame**: the theme and the saved track and volume.
+  The service is bound in `onStart`, which can create it before the first frame
+  (seen in the trial log); the window is painted the page colour while the app
   starts. EmojiCompat, which Compose brings, is not started (the manifest):
   nothing here shows an emoji.
 
@@ -115,7 +116,13 @@ records it by opening the app and pressing play and pause:
 ./gradlew :app:generateBaselineProfile     # on a running emulator, API 33 or later
 ```
 
-Run it again when what runs at launch changes, and commit the result. The same
+Run it again when what runs at launch changes, and commit the result. If it
+ends saying no rules were generated, check the log for AGP's test listener
+crashing (`ArrayIndexOutOfBoundsException` in `AndroidTestResultListener`, AGP
+9.4.1): the profile was recorded, but the copy step found nothing and emptied the
+folder. Copy `BaselineProfileGenerator_generate-startup-prof.txt` from
+`baselineprofile/build/outputs/connected_android_test_additional_output/` over
+both files instead. The same
 module times a cold start to the first frame, without the profile and with it
 (`StartupBenchmark`). Macrobenchmark refuses an emulator, rightly: what it
 measures there is mostly the emulator's software GPU. Run it on a phone, or
@@ -126,9 +133,11 @@ for a comparison only:
 ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest
 ```
 
-On the API 37 emulator: debug about 2.2 s; minified 1.37 s; with the profile
-1.29 s, of which some 650 ms is the emulator drawing the first frame in
-software. Not a gating budget: an emulator cannot measure it fairly.
+On a Galaxy A26 (API 36), median of 10: 661 ms without the profile, 615 ms
+with it (slowest 948 and 719 ms). On the API 37 emulator: debug about 2.2 s;
+minified 1.37 s; with the profile 1.29 s, of which some 650 ms is the emulator
+drawing the first frame in software. `StartupBudgetTest` (below) gates a far
+coarser limit on the CI emulators.
 
 ### Diagnostics log (temporary)
 
