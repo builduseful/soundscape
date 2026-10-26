@@ -89,17 +89,58 @@ internal object Diagnostics {
 
     fun sinceProcessStart(): Long = SystemClock.uptimeMillis() - Process.getStartUptimeMillis()
 
-    /** Battery, charging, power saver, thermal state and the media volume, in one phrase. */
-    fun power(): String {
+    /** The battery at one moment, to compare with another. */
+    class Battery(val at: Long, val percent: Int, val chargeMicroAh: Int?, val celsius: Float?, val charging: Boolean) {
+        override fun toString() = "battery $percent%${if (charging) " charging" else ""}" +
+            (chargeMicroAh?.let { ", ${it / 1000} mAh in it" } ?: "") +
+            (celsius?.let { String.format(Locale.ROOT, ", %.1f °C", it) } ?: "")
+
+        /** What the whole phone drew from [earlier] to this, not the app alone. */
+        fun since(earlier: Battery): String {
+            val hours = (at - earlier.at) / 3_600_000.0
+            if (charging || earlier.charging || hours <= 0) return "charging, so no drain"
+            val used = if (chargeMicroAh != null && earlier.chargeMicroAh != null) earlier.chargeMicroAh - chargeMicroAh else null
+            return String.format(Locale.ROOT, "%d%% used in %.1f min", earlier.percent - percent, hours * 60) +
+                (used?.let { String.format(Locale.ROOT, " (%d mAh, about %.0f mA)", it / 1000, it / 1000 / hours) } ?: "")
+        }
+    }
+
+    // Read from the battery service and its last sticky broadcast: nothing is
+    // registered, so nothing is woken to keep it current.
+    fun battery(): Battery {
         val battery = app.getSystemService(BatteryManager::class.java)
+        val sticky = app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val tenths = sticky?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)?.takeIf { it != Int.MIN_VALUE }
+        return Battery(
+            SystemClock.elapsedRealtime(),
+            battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
+            battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER).takeIf { it > 0 },
+            tenths?.div(10f),
+            battery.isCharging,
+        )
+    }
+
+    /** Battery, power saver, Doze, thermal state, the screen and the media volume, in one phrase. */
+    fun power(battery: Battery = battery()): String {
         val power = app.getSystemService(PowerManager::class.java)
         val audio = app.getSystemService(AudioManager::class.java)
-        val thermal = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ", thermal ${power.currentThermalStatus}" else ""
-        return "battery ${battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%" +
-            (if (battery.isCharging) " charging" else "") +
-            (if (power.isPowerSaveMode) ", power saver" else "") + thermal +
+        val thermal = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ", thermal ${thermalName(power.currentThermalStatus)}" else ""
+        return "$battery" +
+            (if (power.isPowerSaveMode) ", power saver" else "") +
+            (if (power.isDeviceIdleMode) ", dozing" else "") + thermal +
             ", screen ${if (power.isInteractive) "on" else "off"}" +
             ", media volume ${audio.getStreamVolume(AudioManager.STREAM_MUSIC)}/${audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
+    }
+
+    private fun thermalName(status: Int) = when (status) {
+        PowerManager.THERMAL_STATUS_NONE -> "normal"
+        PowerManager.THERMAL_STATUS_LIGHT -> "light"
+        PowerManager.THERMAL_STATUS_MODERATE -> "moderate"
+        PowerManager.THERMAL_STATUS_SEVERE -> "severe (throttling)"
+        PowerManager.THERMAL_STATUS_CRITICAL -> "critical"
+        PowerManager.THERMAL_STATUS_EMERGENCY -> "emergency"
+        PowerManager.THERMAL_STATUS_SHUTDOWN -> "shutting down"
+        else -> "status $status"
     }
 
     fun memory(): String {
@@ -129,6 +170,13 @@ internal object Diagnostics {
         AudioDeviceInfo.TYPE_HDMI -> "HDMI"
         AudioDeviceInfo.TYPE_BLE_HEADSET -> "Bluetooth LE headset"
         AudioDeviceInfo.TYPE_BLE_SPEAKER -> "Bluetooth LE speaker"
+        AudioDeviceInfo.TYPE_BLE_BROADCAST -> "Bluetooth LE broadcast"
+        AudioDeviceInfo.TYPE_HEARING_AID -> "hearing aid"
+        AudioDeviceInfo.TYPE_TELEPHONY -> "telephony"
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE -> "speaker (safe)"
+        AudioDeviceInfo.TYPE_DOCK -> "dock"
+        AudioDeviceInfo.TYPE_LINE_ANALOG, AudioDeviceInfo.TYPE_LINE_DIGITAL, AudioDeviceInfo.TYPE_AUX_LINE -> "line out"
+        AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "remote submix (casting or recording)"
         else -> "type ${device.type}"
     } + (device.productName?.takeIf { it.isNotBlank() }?.let { " \"$it\"" } ?: "")
 
@@ -193,13 +241,25 @@ internal object Diagnostics {
 
     private fun watchMemory() {
         app.registerComponentCallbacks(object : ComponentCallbacks2 {
-            override fun onTrimMemory(level: Int) = log("memory", "asked to trim (level $level), ${memory()}")
+            override fun onTrimMemory(level: Int) = log("memory", "asked to trim (${trimName(level)}), ${memory()}")
 
             override fun onConfigurationChanged(newConfig: Configuration) = Unit
 
             @Deprecated("Deprecated in Java")
             override fun onLowMemory() = log("memory", "low, ${memory()}")
         })
+    }
+
+    @Suppress("DEPRECATION")
+    private fun trimName(level: Int) = when (level) {
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE -> "running, memory moderate"
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> "running, memory low"
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> "running, memory critical"
+        ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> "screen hidden"
+        ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> "in the background"
+        ComponentCallbacks2.TRIM_MEMORY_MODERATE -> "in the background, memory moderate"
+        ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> "next to be killed"
+        else -> "level $level"
     }
 
     // Called at once with every device already there, then on each change:
@@ -222,10 +282,19 @@ internal object Diagnostics {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_POWER_CONNECTED)
             addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
         }
+        // Each is sent only when the state changes, so listening costs nothing between.
         app.registerReceiver(object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                log("system", intent.action.orEmpty().substringAfterLast('.').lowercase(Locale.ROOT))
+                val power = app.getSystemService(PowerManager::class.java)
+                val what = when (intent.action) {
+                    PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> "power saver ${if (power.isPowerSaveMode) "on" else "off"}"
+                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> "Doze ${if (power.isDeviceIdleMode) "on" else "off"}"
+                    else -> intent.action.orEmpty().substringAfterLast('.').lowercase(Locale.ROOT).replace('_', ' ')
+                }
+                log("system", "$what; ${battery()}")
             }
         }, filter)
     }
@@ -278,10 +347,19 @@ internal object Diagnostics {
             val result = status.get()
             log(
                 "profile",
-                "install result ${result.profileInstallResultCode}, compiled with it ${result.isCompiledWithProfile}, " +
+                "install result ${profileResult(result.profileInstallResultCode)}, compiled with it ${result.isCompiledWithProfile}, " +
                     "waiting to compile ${result.hasProfileEnqueuedForCompilation()}",
             )
         }, writer)
+    }
+
+    private fun profileResult(code: Int) = when (code) {
+        ProfileVerifier.CompilationStatus.RESULT_CODE_NO_PROFILE_INSTALLED -> "no profile installed"
+        ProfileVerifier.CompilationStatus.RESULT_CODE_COMPILED_WITH_PROFILE -> "compiled with the profile"
+        ProfileVerifier.CompilationStatus.RESULT_CODE_PROFILE_ENQUEUED_FOR_COMPILATION -> "waiting to compile"
+        ProfileVerifier.CompilationStatus.RESULT_CODE_COMPILED_WITH_PROFILE_NON_MATCHING -> "compiled with an older profile"
+        ProfileVerifier.CompilationStatus.RESULT_CODE_ERROR_NO_PROFILE_EMBEDDED -> "no profile in the APK"
+        else -> "code $code"
     }
 
     private const val FILE_NAME = "diagnostics.log"

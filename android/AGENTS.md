@@ -152,7 +152,11 @@ Nothing leaves the phone. The file covers:
 - every action and where it came from, audio focus, and output devices
   appearing and going;
 - loads, the time to sound, underruns, and each play session's length, render
-  CPU, wake-ups, battery and memory;
+  CPU, wake-ups, battery drain and memory;
+- while playing, every 5 minutes, the battery (level, charge, temperature and
+  the whole phone's drain), taken while the sound already keeps the phone
+  awake, so nothing is woken for it; and Doze, power saver, the screen and
+  charging as they change;
 - how long each track was listened to;
 - how long the service took to shut down.
 
@@ -192,9 +196,10 @@ still to come.
   for fixes, minor for features, major for breaking changes. The code goes up
   by one with every name, since Android installs over an app only with a
   higher one.
-- **Bump it with any change that ships in the app**, and propose the bump and
-  a matching `android-v<version>` tag before a commit to `trunk`, as the web
-  does (`web/src/AGENTS.md`). Tag on `trunk` after the merge.
+- **Bump it in the same commit as any change that ships in the app**, so no
+  two builds that differ share a version. Propose a matching `android-v<version>` tag before a commit
+  to `trunk`, as the web does (`web/src/AGENTS.md`), and tag on `trunk` after
+  the merge.
 
 ## Toolchain
 
