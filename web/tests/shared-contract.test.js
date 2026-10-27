@@ -28,12 +28,15 @@ const sources = {
     appMenu: await readSrc("js/components/app-menu.js"),
     themeSelector: await readSrc("js/components/theme-selector.js"),
     volumeControl: await readSrc("js/components/volume-control.js"),
+    gestures: await readSrc("js/gestures.js"),
+    gestureTutorial: await readSrc("js/components/gesture-tutorial.js"),
 };
 
 const page = parseCss(await readSrc("style.css"));
 const menu = parseCss(componentCss(sources.appMenu));
 const themes = parseCss(componentCss(sources.themeSelector));
 const volume = parseCss(componentCss(sources.volumeControl));
+const tutorial = parseCss(componentCss(sources.gestureTutorial));
 
 const ROOT_REM_PX = 16;
 const NARROW = `@media (max-width: ${tokens.size.narrowBreakpoint}px)`;
@@ -107,8 +110,6 @@ describe("the web app matches shared/design-tokens.json", () => {
         ["playButton", rule(page, "button.play").get("height")],
         ["playButtonNarrow", rule(page, NARROW, "button.play").get("width")],
         ["playButtonNarrow", rule(page, NARROW, "button.play").get("height")],
-        ["playIcon", rule(page, "button.play .button-icon").get("width")],
-        ["playIconNarrow", rule(page, NARROW, "button.play .button-icon").get("width")],
         ["skipButton", rule(page, "button.prev, button.next").get("width")],
         ["skipButton", rule(page, "button.prev, button.next").get("height")],
         ["skipIcon", rule(page, ".button-icon").get("width")],
@@ -192,7 +193,6 @@ describe("the web app matches shared/design-tokens.json", () => {
     const includes = [
         ["duration.titleChange", rule(page, MOTION, ".track-title.is-changing .track-title-text--current").get("animation"), `${seconds(duration.titleChange)} ${bezier(motion.emphasizedEasing)}`],
         ["duration.titleChange (incoming)", rule(page, MOTION, ".track-title.is-changing .track-title-text--incoming").get("animation"), `${seconds(duration.titleChange)} ${bezier(motion.emphasizedEasing)}`],
-        ["duration.titleDim", rule(page, MOTION, ".track-title").get("transition"), `opacity ${seconds(duration.titleDim)}`],
         ["duration.loadingSweep", rule(page, MOTION, ".track-loading-bar::after").get("animation"), `${seconds(duration.loadingSweep)} linear`],
         ["duration.press", rule(page, MOTION, "button").get("transition"), `transform ${seconds(duration.press)}`],
         ["duration.themeThumb", rule(themes, "@scope (theme-selector)", ".theme-selector::before").get("transition"), `transform ${duration.themeThumb}ms ${bezier(motion.emphasizedEasing)}`],
@@ -239,6 +239,84 @@ describe("the web app matches shared/design-tokens.json", () => {
     });
 });
 
+describe("the gestures, the drawing and the resting screen match shared/design-tokens.json", () => {
+    const { size, duration, gesture, motion } = tokens;
+
+    test("gesture", () => {
+        assert.equal(jsConstant(sources.gestures, "TAP_SLOP_PX"), gesture.tapSlop);
+        assert.equal(jsConstant(sources.gestures, "TAP_MAX_MS"), gesture.tapMaxMs);
+        assert.equal(jsConstant(sources.gestures, "SWIPE_MIN_PX"), gesture.swipeMin);
+        assert.equal(jsConstant(sources.gestures, "SWIPE_PROJECTION_MS"), gesture.swipeProjectionMs);
+        assert.equal(jsConstant(sources.gestures, "VELOCITY_WINDOW_MS"), gesture.velocityWindowMs);
+        assert.equal(jsConstant(sources.gestures, "VOLUME_TRAVEL_PX"), gesture.volumeTravel);
+        assert.equal(jsConstant(sources.script, "SWIPE_MIN_SPEED"), gesture.swipeMinSpeed);
+    });
+
+    test("the swipe's timings", () => {
+        assert.equal(jsConstant(sources.script, "SWIPE_MIN_MS"), duration.swipeMin);
+        assert.equal(jsConstant(sources.script, "SWIPE_MAX_MS"), duration.swipeMax);
+        assert.equal(jsConstant(sources.script, "SWIPE_SETTLE_MS"), duration.swipeSettle);
+        assert.ok(sources.script.includes(`const SWIPE_EASING = "${bezier(motion.swipeEasing)}";`));
+    });
+
+    test("the press-in under a drag", () => {
+        const pressed = rule(page, MOTION, ".track-status[data-pressed]");
+        assert.equal(pressed.get("scale"), String(motion.dragPressScale));
+        assert.equal(pressed.get("transition"), `scale ${seconds(duration.dragPress)} ${bezier(motion.pressEasing)}`);
+        assert.equal(rule(page, MOTION, ".track-status").get("transition"), `scale ${seconds(duration.dragRelease)} ${bezier(motion.emphasizedEasing)}`);
+    });
+
+    test("the stage", () => {
+        assert.equal(rule(page, ".track-stage").get("width"), px(size.stage));
+        assert.equal(rule(page, ".track-stage").get("height"), px(size.stage));
+        assert.equal(rule(page, ".track-status").get("gap"), px(size.stageGap));
+        assert.equal(rule(page, ".track-stage track-scene:not([playing])").get("opacity"), String(motion.pausedScene));
+        assert.equal(rule(page, ".track-stage track-scene").get("transition"), `opacity ${seconds(duration.sceneDim)} ${bezier(motion.fadeEasing)}`);
+        // The name is in the drawing's colour, dimmed with it while paused.
+        assert.equal(rule(page, ".track-title").get("color"), "var(--color-text-muted)");
+        assert.equal(rule(page, ".track-status:has(track-scene:not([playing])) .track-title").get("filter"), `opacity(${motion.pausedScene})`);
+    });
+
+    test("the volume a drag sets", () => {
+        const bar = rule(page, ".gesture-volume");
+        assert.equal(bar.get("width"), px(size.gestureVolumeWidth));
+        assert.equal(bar.get("height"), px(size.gestureVolumeHeight));
+        assert.equal(bar.get("top"), `calc(100% + ${px(size.gestureVolumeOffset)})`);
+        assert.equal(rule(page, ":root[data-resting] .gesture-volume").get("transition"), `opacity ${seconds(duration.restFade)} ${bezier(motion.fadeEasing)}`);
+    });
+
+    test("the arrival", () => {
+        const arrival = rule(page, MOTION, ".app-header, .player, .app-footer").get("animation");
+        assert.ok(arrival.includes(`app-enter ${seconds(duration.appEnter)} ${bezier(motion.emphasizedEasing)}`), arrival);
+        assert.ok(arrival.includes(`app-fade ${seconds(duration.appEnter)} ${bezier(motion.fadeEasing)}`), arrival);
+        assert.equal(rule(page, MOTION, ".player").get("animation-delay"), seconds(duration.appEnterStagger));
+        assert.equal(rule(page, MOTION, ".app-footer").get("animation-delay"), seconds(2 * duration.appEnterStagger));
+    });
+
+    test("the resting screen", () => {
+        assert.equal(jsConstant(sources.script, "REST_AFTER_MS"), duration.restAfter);
+        const fade = bezier(motion.fadeEasing);
+        assert.equal(rule(page, ".app-header > *").get("transition"), `opacity ${seconds(duration.wake)} ${fade}`);
+        const title = rule(page, ".track-title").get("transition");
+        assert.equal(title, `opacity ${seconds(duration.wake)} ${fade}, filter ${seconds(duration.sceneDim)} ${fade}`);
+        assert.equal(
+            rule(page, ":root[data-resting] :is(.app-header > *, .track-title)").get("transition-duration"),
+            `${seconds(duration.restFade)}, ${seconds(duration.sceneDim)}`,
+        );
+    });
+
+    test("the guide", () => {
+        const card = rule(tutorial, "@scope (gesture-tutorial)", ":scope");
+        assert.equal(jsConstant(sources.script, "TUTORIAL_DELAY_MS"), duration.tutorialDelay);
+        assert.equal(jsConstant(sources.gestureTutorial, "FADE_MS"), duration.tutorialFade);
+        assert.equal(jsConstant(sources.gestureTutorial, "DONE_HOLD_MS"), duration.tutorialDoneHold);
+        assert.ok(card.get("transition").startsWith(`opacity ${seconds(duration.tutorialFade)} ease`));
+        assert.ok(card.get("width").startsWith(`min(${px(size.tutorialMaxWidth)},`));
+        assert.ok(card.get("bottom").startsWith(`calc(${px(size.tutorialBottom)} +`));
+        assert.equal(rule(tutorial, "@scope (gesture-tutorial)", ".tutorial-card").get("border-radius"), px(size.tutorialRadius));
+    });
+});
+
 describe("the web app matches shared/copy.json", () => {
     // Each key, and the form it takes where the web code says it. Every key in
     // copy.json must be listed: a string no platform is checked against is a
@@ -261,6 +339,11 @@ describe("the web app matches shared/copy.json", () => {
         themeDark: [["themeSelector", (v) => `label: "${v}",`]],
         loading: [["script", (v) => `const LOADING_LABEL = "${v}";`]],
         playbackFailed: [["script", (v) => `\`${v.replace("{title}", "${track.title}")}\``]],
+        gestureTap: [["gestureTutorial", (v) => `{ gesture: "tap", text: "${v}" }`]],
+        gestureSwipe: [["gestureTutorial", (v) => `{ gesture: "swipe", text: "${v}" }`]],
+        gestureVolume: [["gestureTutorial", (v) => `{ gesture: "volume", text: "${v}" }`]],
+        gestureDone: [["gestureTutorial", (v) => `const DONE_TEXT = "${v}";`]],
+        skip: [["gestureTutorial", (v) => `class="tutorial-skip">${v}</button>`]],
     };
 
     test("every string in copy.json is checked here", () => {

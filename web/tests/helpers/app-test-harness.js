@@ -24,6 +24,10 @@ class FakeElement {
         this.isContentEditable = false;
         this.closestMatch = null;
         this.offsetWidth = 0;
+        this.style = {
+            properties: new Map(),
+            setProperty: (name, value) => this.style.properties.set(name, value),
+        };
         this.classList = {
             add: (...names) => {
                 for (const name of names) {
@@ -208,6 +212,10 @@ export function installAppTestEnvironment({
         "playbackError",
         "trackLoading",
         "trackLoadingLabel",
+        "trackStatus",
+        "trackScene",
+        "gestureVolume",
+        "gestureTutorial",
     ]) {
         elements.set(id, new FakeElement());
     }
@@ -216,6 +224,10 @@ export function installAppTestEnvironment({
     // whether a playback failure — or a slow load — is actually surfaced.
     elements.get("playbackError").hidden = true;
     elements.get("trackLoading").hidden = true;
+    // The tutorial's own steps are the component's; the app only starts it and reports gestures.
+    Object.assign(elements.get("gestureTutorial"), { start() {}, completed() {} });
+    const container = new FakeElement();
+    container.setPointerCapture = () => {};
 
     elements.set("title", title);
     elements.set("audioElement", audioElement);
@@ -252,6 +264,9 @@ export function installAppTestEnvironment({
         },
         getElementById(id) {
             return elements.get(id);
+        },
+        querySelector(selector) {
+            return selector === ".container" ? container : null;
         },
     };
     globalThis.localStorage = {

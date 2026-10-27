@@ -53,30 +53,27 @@
             </div>
         </header>
         <main class="player">
-            <div class="controls" aria-label="Playback controls">
-                <div class="transport-controls">
-                    <button class="prev" id="previousButton" type="button" aria-label="Previous track">
-                        <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M6 6.75h2.5v10.5H6V6.75Zm12.5 0v10.5L9.5 12l9-5.25Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path>
-                        </svg>
-                    </button>
-                    <button class="play" id="playPauseButton" type="button" aria-label="Play" data-playing="false">
-                        <svg class="button-icon play-icon play-icon--play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M6.75 5.5v13l11-6.5-11-6.5Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path>
-                        </svg>
-                        <svg class="button-icon play-icon play-icon--pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <rect x="6.5" y="5.5" width="4" height="13" rx="0.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></rect>
-                            <rect x="13.5" y="5.5" width="4" height="13" rx="0.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></rect>
-                        </svg>
-                    </button>
-                    <button class="next" id="nextButton" type="button" aria-label="Next track">
-                        <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M5.5 6.75v10.5l9-5.25-9-5.25Zm10 0H18v10.5h-2.5V6.75Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"></path>
-                        </svg>
-                    </button>
+            <div id="trackStatus" class="track-status">
+                <!-- The soundscape, drawn: the centre of the screen. It moves
+                     while the sound plays and holds still while it does not. -->
+                <div class="track-stage" aria-hidden="true">
+                    <track-scene id="trackScene"></track-scene>
                 </div>
-            </div>
-            <div class="track-status">
+                <div class="controls" aria-label="Playback controls">
+                    <div class="transport-controls">
+                        <button class="prev" id="previousButton" type="button" aria-label="Previous track">
+                            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M17 6.5 9 12l8 5.5ZM6.5 6.5v11"></path>
+                            </svg>
+                        </button>
+                        <button class="play" id="playPauseButton" type="button" aria-label="Play" data-playing="false"></button>
+                        <button class="next" id="nextButton" type="button" aria-label="Next track">
+                            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M7 6.5 15 12l-8 5.5ZM17.5 6.5v11"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
                 <h1 id="title" class="track-title" aria-live="polite">
                     <span class="track-title-text track-title-text--current">Soundscape</span>
                     <span class="track-title-text track-title-text--incoming" aria-hidden="true"></span>
@@ -88,12 +85,25 @@
                          static text that only gets un-hidden gives it nothing. -->
                     <span id="trackLoadingLabel" class="track-loading-label"></span>
                 </p>
+                <div id="gestureVolume" class="gesture-volume" aria-hidden="true">
+                    <span class="gesture-volume-fill"></span>
+                </div>
+            </div>
+            <!-- The soundscape a swipe is bringing in, a screen's width away
+                 beside this one; laid out as the real one is, so the change
+                 from it to the real one cannot be seen. -->
+            <div id="trackPeek" class="track-status track-peek" aria-hidden="true" hidden>
+                <div class="track-stage">
+                    <track-scene id="trackPeekScene"></track-scene>
+                </div>
+                <p class="track-title"><span id="trackPeekTitle" class="track-title-text"></span></p>
             </div>
             <p id="playbackError" class="playback-error" role="status" hidden></p>
         </main>
         <footer class="app-footer">
             <volume-control id="volumeControl" value="1"></volume-control>
         </footer>
+        <gesture-tutorial id="gestureTutorial" hidden></gesture-tutorial>
         <!-- Opted out of remote playback on purpose. This element's audio is
              diverted into the Web Audio graph by createMediaElementSource, so a
              browser or OS offering it as a cast or AirPlay source would hand the

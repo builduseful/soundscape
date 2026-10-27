@@ -17,8 +17,11 @@ import {
     updateMediaSessionStatus,
 } from "./media-session.js";
 import { AppMenu } from "./components/app-menu.js";
+import { GestureTutorial } from "./components/gesture-tutorial.js";
 import { ThemeSelector } from "./components/theme-selector.js";
+import { TrackScene } from "./components/track-scene.js";
 import { VolumeControl } from "./components/volume-control.js";
+import { attachGestures } from "./gestures.js";
 import { registerInstallPrompt, registerLaunchQueueConsumer, registerServiceWorker } from "./pwa.js";
 import {
     applyThemePreference,
@@ -28,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.0.1";
+const VERSION = "2.1.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -37,6 +40,20 @@ const KEY_ARROW_RIGHT = "ArrowRight";
 const KEY_ARROW_LEFT = "ArrowLeft";
 const SAVED_VOLUME_KEY = "soundscape.volume";
 const SAVED_TRACK_ID_KEY = "soundscape.currentTrackId";
+const TUTORIAL_DONE_KEY = "soundscape.gestureTutorialDone";
+// After the page's own fade in, so the guide arrives into a settled screen.
+const TUTORIAL_DELAY_MS = 900;
+// Left alone this long, the screen rests.
+const REST_AFTER_MS = 3000;
+// The slowest a swipe carries on, in px/ms, for one let go almost still.
+const SWIPE_MIN_SPEED = 0.6;
+// However quick or slow the finger, a swipe finishes within these.
+const SWIPE_MIN_MS = 160;
+const SWIPE_MAX_MS = 420;
+// Ease-out cubic: it starts at three times its average speed, which is how a
+// swipe is timed to carry on at the finger's speed.
+const SWIPE_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
+const SWIPE_SETTLE_MS = 360;
 const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
 const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
 const LOADING_LABEL = "Loading soundscape";
@@ -50,7 +67,9 @@ const LOADING_LABEL = "Loading soundscape";
 const LOADING_INDICATOR_DELAY_MS = 450;
 
 customElements.define("app-menu", AppMenu);
+customElements.define("gesture-tutorial", GestureTutorial);
 customElements.define("theme-selector", ThemeSelector);
+customElements.define("track-scene", TrackScene);
 customElements.define("volume-control", VolumeControl);
 
 const volumeControl = document.getElementById("volumeControl");
@@ -67,12 +86,28 @@ const installButton = document.getElementById("installButton");
 const playbackError = document.getElementById("playbackError");
 const trackLoading = document.getElementById("trackLoading");
 const trackLoadingLabel = document.getElementById("trackLoadingLabel");
+const trackStatus = document.getElementById("trackStatus");
+const trackScene = document.getElementById("trackScene");
+const gestureVolume = document.getElementById("gestureVolume");
+const gestureTutorial = document.getElementById("gestureTutorial");
+const trackPeek = document.getElementById("trackPeek");
+const trackPeekScene = document.getElementById("trackPeekScene");
+const trackPeekTitle = document.getElementById("trackPeekTitle");
 
 const requestedTrackIndex = getTrackIndexFromUrl(globalThis.location?.href);
 let currentTrackIndex = requestedTrackIndex === -1 ? getSavedTrackIndex() : requestedTrackIndex;
 let currentTrackChangeId = 0;
 let mediaSessionPositionTimer = 0;
 let loadingIndicatorTimer = 0;
+let restTimer = 0;
+let tutorialOpen = false;
+let volumeAtGestureStart = 0;
+let swipeDx = 0;
+let swipeDragging = false;
+// Which neighbour the peek shows: -1 the previous, 1 the next, 0 neither.
+let peekSide = 0;
+// Ends the name and drawing's carrying on after a drag, or settling back, at once.
+let swipeMotion = null;
 
 // The local output. Always present, and the one the app falls back to.
 const localOutput = new AudioPlayer(audioElement, {
@@ -116,6 +151,23 @@ title.addEventListener("animationend", handleTitleAnimationEnd);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
+for (const type of ["pointermove", "pointerdown", "keydown"]) document.addEventListener(type, handleActivity);
+gestureTutorial.addEventListener("tutorial-done", () => {
+    savePreference(TUTORIAL_DONE_KEY, "true");
+    tutorialOpen = false;
+    wake();
+});
+attachGestures(document.querySelector(".container"), {
+    onPress: () => setPressed(true),
+    onRelease: () => setPressed(false),
+    onTap: handleTapGesture,
+    onSwipeMove: handleSwipeMove,
+    onSwipe: handleSwipeGesture,
+    onSwipeCancel: handleSwipeCancel,
+    onVolumeStart: handleVolumeGestureStart,
+    onVolumeChange: handleVolumeGestureChange,
+    onVolumeEnd: handleVolumeGestureEnd,
+});
 
 updateThemePreference(loadThemePreference(), false);
 // On `system` the OS can change the colours without asking us. It repaints on
@@ -131,6 +183,7 @@ registerServiceWorker();
 registerInstallPrompt(installButton);
 initLaunchQueue();
 appVersion.textContent = VERSION;
+offerGestureTutorial();
 
 async function playPauseClick() {
     if (isOutputPlaying()) {
@@ -194,6 +247,219 @@ function isTransportButton(button) {
         || button === previousButton;
 }
 
+// --- Gestures -------------------------------------------------------------
+
+async function handleTapGesture() {
+    hideGestureVolume();
+    gestureTutorial.completed("tap");
+    await playPauseClick();
+}
+
+// The soundscapes lie side by side, a screen's width apart, and a swipe turns
+// from one to the next as a page does: the name and drawing are under the
+// finger, the neighbour coming in beside them. Let go heading on and they
+// carry on at the finger's speed until the neighbour is in place; let go
+// short, or heading back, and they settle home.
+function pageWidth() {
+    return document.documentElement.clientWidth;
+}
+
+function placeSwipe(dx) {
+    const width = pageWidth();
+    const side = dx < 0 ? 1 : -1;
+
+    if (side !== peekSide) showPeek(side);
+    trackStatus.style.transform = `translateX(${dx}px)`;
+    trackPeek.style.transform = `translateX(${dx + side * width}px)`;
+}
+
+function showPeek(side) {
+    const track = tracks[(currentTrackIndex + side + tracks.length) % tracks.length];
+
+    peekSide = side;
+    trackPeekScene.setAttribute("track", track.id);
+    trackPeekScene.toggleAttribute("playing", trackScene.hasAttribute("playing"));
+    trackPeekTitle.textContent = track.title;
+    trackPeek.hidden = false;
+}
+
+function hidePeek() {
+    peekSide = 0;
+    trackPeek.hidden = true;
+    trackPeek.style.transform = "";
+}
+
+function setPressed(pressed) {
+    for (const element of [trackStatus, trackPeek]) {
+        if (pressed) element.dataset.pressed = "";
+        else delete element.dataset.pressed;
+    }
+}
+
+function handleSwipeMove(dx) {
+    // A drag that starts while the last swipe is still moving takes over from
+    // where that would have ended.
+    if (!swipeDragging) {
+        swipeMotion?.();
+        hideGestureVolume();
+    }
+    swipeDragging = true;
+    swipeDx = dx;
+    placeSwipe(dx);
+}
+
+// Both moved from where the drag left them to `to`, the current one's offset.
+function slide(to, duration) {
+    const from = swipeDx;
+    const width = pageWidth();
+    const options = { duration, easing: SWIPE_EASING };
+
+    swipeDragging = false;
+    swipeDx = 0;
+    trackStatus.style.transform = "";
+    trackPeek.style.transform = "";
+    const motion = trackStatus.animate(
+        [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+        { ...options, fill: "forwards" },
+    );
+    trackPeek.animate(
+        [{ transform: `translateX(${from + peekSide * width}px)` }, { transform: `translateX(${to + peekSide * width}px)` }],
+        { ...options, fill: "forwards" },
+    );
+    return motion;
+}
+
+async function handleSwipeGesture(direction, velocity) {
+    const side = direction === "next" ? 1 : -1;
+
+    gestureTutorial.completed("swipe");
+    if (side !== peekSide) showPeek(side);
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const end = -side * pageWidth();
+    const speed = Math.max(-velocity * side, SWIPE_MIN_SPEED);
+    const duration = reduced ? 0 : Math.min(Math.max((3 * Math.abs(end - swipeDx)) / speed, SWIPE_MIN_MS), SWIPE_MAX_MS);
+
+    // Once the peek is exactly where the current one sits, showing what it
+    // will, the real one takes over, with the drawing's motion carried across
+    // so the change cannot be seen. The title's own slide would replay the
+    // change the swipe has already shown.
+    await whenSlid(slide(end, duration), () => {
+        const changing = changeTrack(side, direction, { animateTitle: false });
+
+        takeOverMotion(trackPeekScene, trackScene);
+        return changing;
+    });
+}
+
+function handleSwipeCancel() {
+    whenSlid(slide(0, SWIPE_SETTLE_MS), () => {});
+}
+
+// Runs `then` once the slide ends, or at once if a new drag cuts it short,
+// and hands the page back to its stylesheet.
+function whenSlid(motion, then) {
+    let result;
+    const finish = () => {
+        if (swipeMotion !== finish) return result;
+
+        swipeMotion = null;
+        result = then();
+        for (const element of [trackStatus, trackPeek]) {
+            for (const animation of element.getAnimations()) animation.cancel();
+        }
+        hidePeek();
+        return result;
+    };
+
+    swipeMotion = finish;
+    return motion.finished.then(finish, () => {});
+}
+
+function takeOverMotion(from, to) {
+    const theirs = from.getAnimations({ subtree: true });
+
+    to.getAnimations({ subtree: true }).forEach((animation, index) => {
+        if (theirs[index]) animation.currentTime = theirs[index].currentTime;
+    });
+}
+
+function handleVolumeGestureStart() {
+    volumeAtGestureStart = Number(volumeControl.value);
+    gestureVolume.style.setProperty("--level", volumeControl.value);
+    gestureVolume.dataset.active = "";
+}
+
+function handleVolumeGestureChange(change) {
+    const volume = Math.min(1, Math.max(0, volumeAtGestureStart + change));
+
+    volumeControl.value = String(volume);
+    gestureVolume.style.setProperty("--level", String(volume));
+    applyVolume(volume);
+}
+
+function handleVolumeGestureEnd() {
+    savePreference(SAVED_VOLUME_KEY, volumeControl.value);
+    gestureTutorial.completed("volume");
+}
+
+// The level a drag set stays to be read until the screen rests, and goes with
+// the words; any other gesture is about something else, and clears it.
+function hideGestureVolume() {
+    delete gestureVolume.dataset.active;
+}
+
+// Touch screens are where the gestures are the only way in, so that is where
+// the guide is offered; it is finished or skipped once, and not seen again.
+function offerGestureTutorial() {
+    if (!isTouchScreen()) return;
+    if (loadPreference(TUTORIAL_DONE_KEY) !== null) return;
+
+    tutorialOpen = true;
+    wake();
+    setTimeout(() => gestureTutorial.start(), TUTORIAL_DELAY_MS);
+}
+
+// Left alone, the screen rests: the controls step back and the rest dims to
+// a trace, so the sound has the room rather than the screen. A touch, a moving
+// mouse or a key brings it all back.
+//
+// With a mouse it rests only while the sound plays: paused, the way to start
+// it should be in sight. A touch screen has no controls to show, so it rests
+// either way, though not while the guide is still talking to it.
+function handleActivity(event) {
+    if (event.type === "pointermove" && event.pointerType !== "mouse") return;
+
+    wake();
+}
+
+function canRest() {
+    return !tutorialOpen && (isOutputPlaying() || isTouchScreen());
+}
+
+// The same question style.css asks, and for the same reason.
+function isTouchScreen() {
+    return Boolean(globalThis.matchMedia?.("(hover: none) and (pointer: coarse)").matches);
+}
+
+function wake() {
+    clearTimeout(restTimer);
+    restTimer = 0;
+    delete document.documentElement.dataset.resting;
+    if (!canRest()) return;
+
+    restTimer = setTimeout(() => {
+        restTimer = 0;
+        document.documentElement.dataset.resting = "";
+        hideGestureVolume();
+    }, REST_AFTER_MS);
+}
+
+// Starting the sound starts the countdown without waiting for a touch;
+// stopping it, where that brings the controls back, does so at once.
+function syncRest() {
+    if (!canRest() || (!restTimer && !("resting" in document.documentElement.dataset))) wake();
+}
+
 // --- Track selection and navigation ---------------------------------------
 
 async function playNextTrack() {
@@ -226,14 +492,14 @@ async function selectTrack(requestedIndex) {
     return true;
 }
 
-async function changeTrack(offset, direction) {
+async function changeTrack(offset, direction, { animateTitle = true } = {}) {
     const trackChangeId = ++currentTrackChangeId;
     const previousTrackIndex = currentTrackIndex;
     currentTrackIndex = (currentTrackIndex + offset + tracks.length) % tracks.length;
     const attemptedTrack = getCurrentTrack();
 
     try {
-        const result = await playCurrentTrack(trackChangeId, direction);
+        const result = await playCurrentTrack(trackChangeId, direction, animateTitle);
         if (trackChangeId !== currentTrackChangeId) {
             return false;
         }
@@ -359,6 +625,8 @@ function saveCurrentTrack() {
 
 function updateTrackTitle({ animate = false, direction = "next" } = {}) {
     const trackTitle = getCurrentTrack().title;
+
+    trackScene.setAttribute("track", getCurrentTrack().id);
 
     if (
         !animate
@@ -531,7 +799,7 @@ function updateThemePreference(value, shouldSave = true) {
 
 // --- Playback -------------------------------------------------------------
 
-async function playCurrentTrack(trackChangeId, direction = "next") {
+async function playCurrentTrack(trackChangeId, direction = "next", animateTitle = true) {
     const track = getCurrentTrack();
     // Decide from playback intent, not the media element's transient paused
     // state: during a track swap the element is briefly paused (src set +
@@ -540,7 +808,7 @@ async function playCurrentTrack(trackChangeId, direction = "next") {
     const wasPlaying = activeOutput().isPlaybackRequested();
 
     saveCurrentTrack();
-    updateTrackTitle({ animate: true, direction });
+    updateTrackTitle({ animate: animateTitle, direction });
 
     await activeOutput().startTrack(track, { wasPlaying });
 
@@ -677,6 +945,9 @@ function syncPlaybackState(isPlaying) {
     updateMediaSessionPositionTimer(isPlaying);
     playPauseButton.setAttribute("aria-label", isPlaying ? PAUSE_LABEL : PLAY_LABEL);
     playPauseButton.dataset.playing = isPlaying ? "true" : "false";
+    syncRest();
+    // The drawing moves while the sound plays, however it was asked to.
+    trackScene.toggleAttribute("playing", isPlaying);
 }
 
 // Asked of the active output, which answers null when it has no position yet.

@@ -7,7 +7,7 @@ share this and the audio, and nothing else: there is no shared code.
 | File | Holds |
 |---|---|
 | `catalog.json` | The soundscapes: `id` and `title`, in display order; and the ids offered as app shortcuts, in order (on Android, those not yet ordered by listening) |
-| `design-tokens.json` | Colours (light and dark), shadows, sizes, type, durations, the volume control's steps, motion |
+| `design-tokens.json` | Colours (light and dark), shadows, sizes, type, durations, the volume control's steps, the gestures' thresholds, motion |
 | `copy.json` | Every string more than one platform shows |
 | `fixtures/loop-crossfade.json` | Golden input and output for the loop crossfade |
 | `fixtures/layout.json` | Where each part of the page sits in the web app, per window size; written by `web/scripts/capture-layout.mjs` (`npm run layout`) |

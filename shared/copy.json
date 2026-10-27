@@ -15,5 +15,10 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "loading": "Loading soundscape",
-    "playbackFailed": "{title} could not be played. Try again, or pick another."
+    "playbackFailed": "{title} could not be played. Try again, or pick another.",
+    "gestureTap": "Tap anywhere to play or pause",
+    "gestureSwipe": "Swipe left or right to change sound",
+    "gestureVolume": "Slide up or down to set the volume",
+    "gestureDone": "You're all set",
+    "skip": "Skip"
 }

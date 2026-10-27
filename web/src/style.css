@@ -125,6 +125,10 @@ body {
     display: grid;
     grid-template-rows: auto 1fr auto;
     min-height: 100svh;
+    /* A swipe's neighbour waits a screen's width off to the side. A phone
+       widens its layout viewport to take in anything overflowing, whatever
+       body says, so it is clipped here instead. */
+    overflow-x: clip;
     padding: 26px;
 }
 
@@ -185,6 +189,7 @@ body {
 .player {
     align-self: center;
     display: grid;
+    position: relative;
     gap: 34px;
     justify-items: center;
     margin-inline: auto;
@@ -196,14 +201,28 @@ body {
    own, so a slow track change cannot nudge the controls around. */
 .track-status {
     display: grid;
+    gap: 22px;
+    grid-area: 1 / 1;
     justify-items: center;
     position: relative;
 }
 
+.track-peek[hidden] {
+    display: none;
+}
+
+/* In the drawing's colour, and dimmed with it while paused, so the name and
+   the drawing read as one thing. The pause's dim is a filter, not opacity,
+   which the resting screen and a load's dim own: the three multiply. */
 .track-title {
-    color: var(--color-text);
-    font-size: 1.28rem;
-    font-weight: 700;
+    color: var(--color-text-muted);
+    transition:
+        opacity 0.6s cubic-bezier(0.37, 0, 0.63, 1),
+        filter 0.9s cubic-bezier(0.37, 0, 0.63, 1);
+    /* 20px, so its 1.2 line is a whole 24: with no fraction inside the track's
+       box, it lands on the same pixel pressed, settling or still. */
+    font-size: 1.25rem;
+    font-weight: 400;
     display: grid;
     line-height: 1.2;
     margin: 0;
@@ -227,6 +246,10 @@ body {
    it's a two-state opacity change, not a decorative loop. */
 .track-title.is-loading {
     opacity: 0.3;
+}
+
+.track-status:has(track-scene:not([playing])) .track-title {
+    filter: opacity(0.55);
 }
 
 /* The title changes the moment a track is picked, but the audio still has to be
@@ -309,11 +332,156 @@ body {
     width: 100%;
 }
 
+/* The page is the control: a tap plays or pauses, a swipe across changes
+   soundscape, a drag up or down sets the volume (gestures.js). One finger's
+   movement is the app's; two are still the browser's, to zoom. */
+.container {
+    touch-action: pinch-zoom;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* The controls stand aside so the soundscape's name is all there is, and come
+   back for whoever reaches for them: a keyboard's focus (not a click's, which
+   stays on the button long after the pointer has gone), an open volume panel.
+   Still in the page, so a screen reader finds them as ever. */
+.controls,
+volume-control {
+    transition: opacity 0.4s ease;
+}
+
+/* On a touch screen the gestures are the way in. Asked as "a finger and no
+   hover" rather than "no hover" alone: a desktop with no pointer the browser
+   can see reports no hover either, and still needs its controls. */
+@media (hover: none) and (pointer: coarse) {
+    .controls:not(:has(:focus-visible)) {
+        opacity: 0;
+        pointer-events: none;
+        position: absolute;
+    }
+
+    volume-control:not(:has(:focus-visible, :popover-open)) {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* With a mouse they show while it moves, and fade when the screen rests, as a
+   video's do; the pointer goes with them. */
+@media not ((hover: none) and (pointer: coarse)) {
+    :root[data-resting] {
+        cursor: none;
+    }
+
+    :root[data-resting] .controls:not(:has(:focus-visible)),
+    :root[data-resting] volume-control:not(:has(:focus-visible, :popover-open)) {
+        opacity: 0;
+        transition-duration: 2.4s;
+    }
+}
+
+/* At rest the words fade away altogether, leaving the drawing, and come back
+   sooner: a slow dissolve out, a shorter one back. Eased in and out, as every
+   fade here is: opacity eased out jumps at the start, which reads as a flicker.
+   Not the error, which is only ever there because something needs saying.
+   The title's own fade is with its colour, on .track-title. */
+.app-header > * {
+    transition: opacity 0.6s cubic-bezier(0.37, 0, 0.63, 1);
+}
+
+/* The drawing stays: it is what is left to look at. */
+:root[data-resting] :is(.app-header > *, .track-title) {
+    opacity: 0;
+    transition-duration: 2.4s, 0.9s;
+}
+
+/* The soundscape, drawn, above its name. Paused it holds still and a little
+   faint; playing it moves at full strength. No play or pause mark: the
+   drawing starting and stopping says it. */
+.track-stage {
+    display: grid;
+    height: 80px;
+    place-items: center;
+    width: 80px;
+}
+
+.track-stage > * {
+    grid-area: 1 / 1;
+}
+
+.track-stage track-scene {
+    height: 80px;
+    transition: opacity 0.9s cubic-bezier(0.37, 0, 0.63, 1);
+    width: 80px;
+}
+
+.track-stage track-scene:not([playing]) {
+    opacity: 0.55;
+}
+
+
+/* The level while a drag sets it, under the name, where the loading bar would be. */
+.gesture-volume {
+    background-color: var(--color-border);
+    border-radius: 999px;
+    height: 4px;
+    left: calc(50% - 60px);
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    position: absolute;
+    top: calc(100% + 18px);
+    transition: opacity 0.25s ease;
+    width: 120px;
+}
+
+.gesture-volume[data-active] {
+    opacity: 1;
+}
+
+/* Cleared as the screen rests, it fades with the words, at their pace. */
+:root[data-resting] .gesture-volume {
+    transition: opacity 2.4s cubic-bezier(0.37, 0, 0.63, 1);
+}
+
+.gesture-volume-fill {
+    background-color: var(--color-text-muted);
+    display: block;
+    height: 100%;
+    width: calc(var(--level, 1) * 100%);
+}
+
+/* No buttons to see: the drawing is the play button, and the skips are two
+   marks either side of it, in its line. They sit over the drawing, out of the
+   flow, so the page is laid out the same with or without them. */
+.track-status > .controls {
+    height: 80px;
+    inset: 0 0 auto;
+    position: absolute;
+}
+
 .transport-controls {
     display: flex;
-    gap: 15px;
+    gap: 28px;
     justify-content: center;
     align-items: center;
+}
+
+.transport-controls button {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    color: var(--color-text-soft);
+}
+
+.transport-controls button:hover {
+    background: none;
+    color: var(--color-text-muted);
+}
+
+.transport-controls button:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
 }
 
 button {
@@ -348,43 +516,36 @@ button:active {
     box-shadow: none;
 }
 
+/* Exactly over the drawing, with no mark of its own: the drawing is what it
+   plays and pauses (.track-stage). */
 button.play {
-    width: 118px;
-    height: 118px;
+    width: 80px;
+    height: 80px;
     margin: 0;
-    background-color: var(--color-primary);
-    border-color: var(--color-primary);
-    color: var(--color-primary-text);
+    border-radius: 22px;
+}
+
+/* The press-in is the drawing's, not this transparent square's. */
+button.play:active {
+    transform: none;
 }
 
 button.prev,
 button.next {
-    width: 60px;
-    height: 60px;
-    background-color: var(--color-secondary);
-    color: var(--color-secondary-text);
+    width: 44px;
+    height: 44px;
 }
 
 .button-icon {
     display: block;
-    width: 30px;
-    height: 30px;
-    fill: currentColor;
+    width: 24px;
+    height: 24px;
+    fill: none;
     pointer-events: none;
-}
-
-button.play .button-icon {
-    width: 52px;
-    height: 52px;
-}
-
-button.play[data-playing="false"] .play-icon--pause,
-button.play[data-playing="true"] .play-icon--play {
-    display: none;
-}
-
-button.play[data-playing="true"] .play-icon--pause {
-    display: block;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
 }
 
 @media (max-width: 520px) {
@@ -397,13 +558,8 @@ button.play[data-playing="true"] .play-icon--pause {
     }
 
     button.play {
-        height: 102px;
-        width: 102px;
-    }
-
-    button.play .button-icon {
-        width: 46px;
-        height: 46px;
+        height: 80px;
+        width: 80px;
     }
 }
 
@@ -452,6 +608,51 @@ textarea {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+    /* The page arrives rather than appears: each part rises a little into place
+       as it fades in, top to bottom, out of the launch screen's plain ground.
+       The rise settles on the emphasized curve, the fade on the softer one.
+       backwards, not both: once it is over nothing is left holding a transform. */
+    .app-header,
+    .player,
+    .app-footer {
+        animation:
+            app-enter 0.9s cubic-bezier(0.22, 1, 0.36, 1) backwards,
+            app-fade 0.9s cubic-bezier(0.37, 0, 0.63, 1) backwards;
+    }
+
+    .player {
+        animation-delay: 0.08s;
+    }
+
+    .app-footer {
+        animation-delay: 0.16s;
+    }
+
+    @keyframes app-enter {
+        from {
+            transform: translateY(8px);
+        }
+    }
+
+    @keyframes app-fade {
+        from {
+            opacity: 0;
+        }
+    }
+
+    /* Under a finger, from the moment it touches, the name and drawing give
+       a little, as something soft does when pressed, and settle back as it
+       lets go. Shallow and unhurried, so a tap is felt rather than seen.
+       scale, not transform: the drag itself owns transform. */
+    .track-status {
+        transition: scale 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .track-status[data-pressed] {
+        scale: 0.985;
+        transition: scale 0.24s cubic-bezier(0.33, 1, 0.68, 1);
+    }
+
     /* The press-in on the app's buttons. A transition replaces rather than adds
        to the one it overrides, so naming the motion here means naming the
        colours again with it. */
@@ -479,11 +680,6 @@ textarea {
         100% {
             left: 100%;
         }
-    }
-
-    /* Only the fade is gated; the dim itself is above, for everyone. */
-    .track-title {
-        transition: opacity 0.3s ease;
     }
 
     .track-title.is-changing .track-title-text--current {
