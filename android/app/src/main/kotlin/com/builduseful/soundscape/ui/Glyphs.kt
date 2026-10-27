@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.Dp
 internal class Glyph(val paths: List<String>, val style: GlyphStyle)
 
 internal enum class GlyphStyle {
-    /** `fill: currentColor`, with a 1-unit round-joined stroke: the transport icons. */
-    Solid,
+    /** `fill: none`, a 1.5-unit round stroke: the transport's skips. */
+    Line,
 
     /** `fill: none`, a 2-unit round stroke: the menu's, theme and volume icons. */
     Outline,
@@ -35,16 +35,9 @@ internal enum class GlyphStyle {
 }
 
 internal object Glyphs {
-    val previous = Glyph(listOf("M6 6.75h2.5v10.5H6V6.75Zm12.5 0v10.5L9.5 12l9-5.25Z"), GlyphStyle.Solid)
-    val play = Glyph(listOf("M6.75 5.5v13l11-6.5-11-6.5Z"), GlyphStyle.Solid)
-    val pause = Glyph(
-        listOf(
-            "M7 5.5h3a.5.5 0 0 1 .5.5v12a.5.5 0 0 1-.5.5H7a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5Z",
-            "M14 5.5h3a.5.5 0 0 1 .5.5v12a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5Z",
-        ),
-        GlyphStyle.Solid,
-    )
-    val next = Glyph(listOf("M5.5 6.75v10.5l9-5.25-9-5.25Zm10 0H18v10.5h-2.5V6.75Z"), GlyphStyle.Solid)
+    // The skips, as marks in the drawing's line either side of it.
+    val previous = Glyph(listOf("M17 6.5 9 12l8 5.5Z", "M6.5 6.5v11"), GlyphStyle.Line)
+    val next = Glyph(listOf("M7 6.5 15 12l-8 5.5Z", "M17.5 6.5v11"), GlyphStyle.Line)
 
     val menu = Glyph(
         listOf("M10 5a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M10 19a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z"),
@@ -95,10 +88,8 @@ internal fun GlyphIcon(
             if (alpha <= 0f) return@forEachIndexed
             for (path in paths) {
                 when (glyph.style) {
-                    GlyphStyle.Solid -> {
-                        drawPath(path, color, alpha, Fill)
-                        drawPath(path, color, alpha, Stroke(width = unit, join = StrokeJoin.Round))
-                    }
+                    GlyphStyle.Line ->
+                        drawPath(path, color, alpha, Stroke(width = 1.5f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
                     GlyphStyle.Outline ->
                         drawPath(path, color, alpha, Stroke(width = 2 * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
                     GlyphStyle.Filled -> drawPath(path, color, alpha, Fill)

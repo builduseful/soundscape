@@ -1,21 +1,28 @@
 package com.builduseful.soundscape.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -29,14 +36,18 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -46,7 +57,10 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -55,8 +69,15 @@ import androidx.compose.ui.unit.dp
 import com.builduseful.soundscape.R
 import com.builduseful.soundscape.core.appearance.ThemePreference
 import com.builduseful.soundscape.core.contract.DesignTokens
+import com.builduseful.soundscape.core.gestures.Gesture
+import com.builduseful.soundscape.core.gestures.GestureGuide
+import com.builduseful.soundscape.core.gestures.GestureHandlers
+import com.builduseful.soundscape.core.gestures.GestureTracker
+import com.builduseful.soundscape.core.gestures.SwipeDirection
 import com.builduseful.soundscape.core.playback.Notice
 import com.builduseful.soundscape.core.playback.PlayerState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** What the screen asks of the player. Every action goes through the controller. */
 interface PlayerActions {
@@ -79,12 +100,15 @@ fun SoundscapeApp(
     theme: ThemePreference,
     onTheme: (ThemePreference) -> Unit,
     versionName: String,
+    guide: GestureGuide? = null,
     reducedMotion: Boolean = rememberReducedMotion(),
 ) {
     val dark = theme.isDark(isSystemInDarkTheme())
     val panels = remember { Panels() }
     val keys = remember { Keys() }
     val root = remember { FocusRequester() }
+    val guideState = remember(guide) { GuideState(guide) }
+    val rest = remember { Rest() }
 
     BackHandler(enabled = panels.open != null) { panels.close() }
     LaunchedEffect(Unit) { root.requestFocus() }
@@ -97,12 +121,16 @@ fun SoundscapeApp(
         )
         CompositionLocalProvider(LocalPalette provides remember(darkness) { Palette(darkness) }) {
             Page(
-                state, actions, theme, onTheme, versionName, panels, keys,
+                state, actions, theme, onTheme, versionName, panels, keys, guideState, rest,
                 modifier = Modifier
                     .then(with(panels) { Modifier.dismissOnPressOutside() })
+                    .then(with(rest) { Modifier.wakesOnPress() })
                     .focusRequester(root)
                     .onFocusChanged { keys.rootFocused = it.isFocused }
-                    .onPreviewKeyEvent { keys.handle(it, panels, actions) }
+                    .onPreviewKeyEvent {
+                        rest.wake()
+                        keys.handle(it, panels, actions)
+                    }
                     .focusable(),
             )
         }
@@ -118,46 +146,194 @@ private fun Page(
     versionName: String,
     panels: Panels,
     keys: Keys,
+    guide: GuideState,
+    rest: Rest,
     modifier: Modifier,
 ) {
     val palette = LocalPalette.current
+    val reduced = LocalReducedMotion.current
+    val scope = rememberCoroutineScope()
+    val pager = remember { Pager(scope) }
+    val volume = remember { DragVolume() }
+    val current by rememberUpdatedState(state)
+    val currentActions by rememberUpdatedState(actions)
+    val currentReduced by rememberUpdatedState(reduced)
+    val tracker = remember {
+        GestureTracker(PlayerGestures(pager, volume, guide, { current }, { currentActions }, { currentReduced }))
+    }
+
+    // Left alone, the screen rests: the words fade away and leave the
+    // drawing, so the sound has the room rather than the screen. Not while the
+    // guide is still talking, nor with a panel open; nor under a screen
+    // reader, which would lose what faded to nothing.
+    val exploring = rememberTouchExploration()
+    val canRest = !guide.open && panels.open == null && !exploring
+    LaunchedEffect(rest.activity, canRest) {
+        rest.resting = false
+        if (!canRest) return@LaunchedEffect
+        delay(DesignTokens.Duration.restAfter)
+        rest.resting = true
+        volume.rest()
+    }
+    val words = animateFloatAsState(
+        if (rest.resting) 0f else 1f,
+        when {
+            reduced -> snap()
+            rest.resting -> tween(DesignTokens.Duration.restFade.toInt(), easing = FadeEasing)
+            else -> tween(DesignTokens.Duration.wake.toInt(), easing = FadeEasing)
+        },
+        label = "rest",
+    )
+
+    // Offered once, after the page has arrived, so the guide comes into a settled screen.
+    LaunchedEffect(guide) {
+        if (!guide.isOffered) return@LaunchedEffect
+        delay(DesignTokens.Duration.tutorialDelay)
+        guide.start()
+    }
+
+    // The page arrives rather than appears: each part rises a little into
+    // place as it fades in, top to bottom.
+    val arrival = remember { List(3) { Animatable(if (reduced) 1f else 0f) } }
+    LaunchedEffect(Unit) {
+        arrival.forEachIndexed { index, part ->
+            launch {
+                delay(index * DesignTokens.Duration.appEnterStagger)
+                part.animateTo(1f, tween(DesignTokens.Duration.appEnter.toInt(), easing = LinearEasing))
+            }
+        }
+    }
+
     BoxWithConstraints(Modifier.testTag(UiTags.PAGE).fillMaxSize().background(palette.page)) {
         val narrow = maxWidth <= DesignTokens.Size.narrowBreakpoint.dp
         val padding = (if (narrow) DesignTokens.Size.pagePaddingNarrow else DesignTokens.Size.pagePadding).dp
+        val density = LocalDensity.current
+        pager.width = with(density) { maxWidth.toPx() }
+        pager.density = density.density
         PageLayout(
-            header = { Header(narrow, panels, theme, onTheme, versionName) },
+            header = {
+                Box(Modifier.arrives(arrival[0]).graphicsLayer { alpha = words.value }) {
+                    Header(narrow, panels, theme, onTheme, versionName)
+                }
+            },
             player = {
                 Column(
-                    Modifier.widthIn(max = DesignTokens.Size.playerMaxWidth.dp),
+                    Modifier.widthIn(max = DesignTokens.Size.playerMaxWidth.dp).arrives(arrival[1]),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.playerGap.dp),
                 ) {
-                    TransportControls(
-                        isPlaying = state.isPlaying,
-                        narrow = narrow,
-                        onPrevious = actions::previous,
-                        onPlayPause = actions::playPause,
-                        onNext = actions::next,
-                        modifier = Modifier.onFocusChanged { keys.transportFocused = it.hasFocus },
+                    Pages(
+                        state, pager, volume, narrow, actions, { words.value },
+                        Modifier.onFocusChanged { keys.transportFocused = it.hasFocus },
                     )
-                    TrackStatus(state)
                     (state.notice as? Notice.Failed)?.let { PlaybackError(it.track.title) }
                 }
             },
             footer = {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    VolumeControl(panels, state.volume, actions::setVolume)
+                Row(Modifier.fillMaxWidth().arrives(arrival[2]), horizontalArrangement = Arrangement.End) {
+                    // A drag up or down sets the volume: the button is for the keyboard and TalkBack.
+                    VolumeControl(panels, state.volume, actions::setVolume, concealed = true)
                 }
             },
             // Scrolls only when the window is too short to hold the page. The page's
             // focus and keys are on this, inside the subcomposition: Tab does not
-            // search past one from a focused node directly above it.
+            // search past one from a focused node directly above it. The gestures
+            // are inside the scroll, so they take a drag before it can.
             modifier = modifier
                 .verticalScroll(rememberScrollState())
+                .playerGestures(tracker)
                 .heightIn(min = maxHeight)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(padding),
         )
+        GuideCard(
+            guide,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(bottom = DesignTokens.Size.tutorialBottom.dp)
+                .padding(horizontal = GUIDE_MARGIN.dp)
+                .widthIn(max = DesignTokens.Size.tutorialMaxWidth.dp),
+        )
+    }
+}
+
+// The rise settles on the emphasized curve, the fade on the softer one, as the web's two animations do.
+private fun Modifier.arrives(part: Animatable<Float, *>) = graphicsLayer {
+    alpha = FadeEasing.transform(part.value)
+    translationY = (1 - ArrivalRise.transform(part.value)) * ARRIVAL_RISE.dp.toPx()
+}
+
+private val ArrivalRise = DesignTokens.Motion.emphasizedEasing.easing()
+
+// As the web's: how far each part rises as it arrives, and the guide's margin from the window's sides.
+private const val ARRIVAL_RISE = 8
+private const val GUIDE_MARGIN = 18
+
+/** Whether the screen is resting, and the touches and keys that wake it. */
+@Stable
+private class Rest {
+    var resting by mutableStateOf(false)
+    var activity by mutableIntStateOf(0)
+        private set
+
+    fun wake() {
+        activity++
+    }
+
+    /** On the root: every press wakes the screen, before anything handles it, and none is consumed. */
+    fun Modifier.wakesOnPress(): Modifier = pointerInput(this@Rest) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            wake()
+        }
+    }
+}
+
+/** What the gestures do: through the pager, the drag's volume and the guide, to the player. */
+private class PlayerGestures(
+    private val pager: Pager,
+    private val volume: DragVolume,
+    private val guide: GuideState,
+    private val state: () -> PlayerState,
+    private val actions: () -> PlayerActions,
+    private val reduced: () -> Boolean,
+) : GestureHandlers {
+    override fun onPress() {
+        pager.pressed = true
+    }
+
+    override fun onRelease() {
+        pager.pressed = false
+    }
+
+    override fun onTap() {
+        volume.hide()
+        guide.completed(Gesture.Tap)
+        actions().playPause()
+    }
+
+    override fun onSwipeMove(dx: Float) {
+        volume.hide()
+        pager.drag(dx * pager.density)
+    }
+
+    override fun onSwipe(direction: SwipeDirection, velocity: Float) {
+        guide.completed(Gesture.Swipe)
+        pager.swipe(direction, velocity, reduced()) {
+            if (it == SwipeDirection.Next) actions().next() else actions().previous()
+        }
+    }
+
+    override fun onSwipeCancel() = pager.cancel()
+
+    override fun onVolumeStart() = volume.start(state().volume)
+
+    override fun onVolumeChange(change: Float) = actions().setVolume(volume.change(change), false)
+
+    override fun onVolumeEnd() {
+        actions().setVolume(volume.level, true)
+        guide.completed(Gesture.Volume)
     }
 }
 
@@ -266,6 +442,10 @@ object UiTags {
     const val VOLUME_BUTTON = "volumeButton"
     const val VOLUME_PANEL = "volumePanel"
     const val VOLUME_SLIDER = "volumeSlider"
+    const val PEEK = "peek"
+    const val DRAG_VOLUME = "dragVolume"
+    const val GUIDE = "guide"
+    const val GUIDE_SKIP = "guideSkip"
 
     fun themeOption(label: String) = "theme-$label"
 }

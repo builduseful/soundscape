@@ -41,6 +41,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -59,6 +60,8 @@ import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.Constraints
@@ -71,6 +74,10 @@ import kotlin.math.sign
 /**
  * The volume button and the slider that opens above it. [onVolume]'s second
  * argument says whether to save: false while a drag is still moving.
+ *
+ * [concealed], the button is for the keyboard and TalkBack alone, as the
+ * transport's are: unseen until it has the keyboard's focus or its panel is
+ * open, and no target for a finger, whose drag up or down sets the volume.
  */
 @Composable
 internal fun VolumeControl(
@@ -78,6 +85,7 @@ internal fun VolumeControl(
     volume: Float,
     onVolume: (Float, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    concealed: Boolean = false,
 ) {
     val open = panels.open == Panel.Volume
     val reduced = LocalReducedMotion.current
@@ -94,11 +102,18 @@ internal fun VolumeControl(
     Layout(
         content = {
             with(panels) {
+                val shown by animateFloatAsState(
+                    if (!concealed || open || buttonFocused) 1f else 0f,
+                    motion(reduced, CONCEAL_MILLIS),
+                    label = "conceal",
+                )
                 VolumeButton(
                     open,
                     muted = volume <= DesignTokens.Volume.mutedAtOrBelow,
                     interaction = buttonInteraction,
                     onClick = { panels.toggle(Panel.Volume) },
+                    touchable = !concealed,
+                    shown = { shown },
                     modifier = Modifier.partOf(Panel.Volume, "button"),
                 )
             }
@@ -132,7 +147,15 @@ internal fun VolumeControl(
 }
 
 @Composable
-private fun VolumeButton(open: Boolean, muted: Boolean, interaction: MutableInteractionSource, onClick: () -> Unit, modifier: Modifier) {
+private fun VolumeButton(
+    open: Boolean,
+    muted: Boolean,
+    interaction: MutableInteractionSource,
+    onClick: () -> Unit,
+    touchable: Boolean,
+    shown: () -> Float,
+    modifier: Modifier,
+) {
     val palette = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val focused by interaction.collectIsFocusedAsState()
@@ -147,19 +170,39 @@ private fun VolumeButton(open: Boolean, muted: Boolean, interaction: MutableInte
             .size(DesignTokens.Size.volumeButton.dp)
             .clip(CircleShape)
             .background(ground)
-            .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
-            .pointerHoverIcon(PointerIcon.Hand)
+            .then(
+                if (touchable) {
+                    Modifier
+                        .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+                        .pointerHoverIcon(PointerIcon.Hand)
+                } else {
+                    Modifier
+                        .onKeyEvent {
+                            val press = it.key == Key.Enter || it.key == Key.NumPadEnter || it.key == Key.DirectionCenter
+                            if (press && it.type == KeyEventType.KeyUp) onClick()
+                            press
+                        }
+                        .focusable(interactionSource = interaction)
+                        .semantics {
+                            role = Role.Button
+                            onClick { onClick(); true }
+                        }
+                },
+            )
             .semantics {
                 contentDescription = label
                 if (open) collapse { onClick(); true } else expand { onClick(); true }
             },
         contentAlignment = Alignment.Center,
     ) {
-        GlyphIcon(
-            listOf(Glyphs.speaker to 1f, Glyphs.waves to if (muted) DesignTokens.Volume.mutedWaveOpacity else 1f, Glyphs.muteSlash to slash),
-            DesignTokens.Size.volumeIcon.dp,
-            color,
-        )
+        // Faded within, not as a whole: a node drawn at nothing is left out for TalkBack too.
+        Box(Modifier.graphicsLayer { alpha = shown() }) {
+            GlyphIcon(
+                listOf(Glyphs.speaker to 1f, Glyphs.waves to if (muted) DesignTokens.Volume.mutedWaveOpacity else 1f, Glyphs.muteSlash to slash),
+                DesignTokens.Size.volumeIcon.dp,
+                color,
+            )
+        }
     }
 }
 
@@ -307,3 +350,6 @@ private fun Slider(
 
 private const val TRACK = 8f
 private const val THUMB = 16f
+
+// As the web's: the concealed button's fade.
+private const val CONCEAL_MILLIS = 400L

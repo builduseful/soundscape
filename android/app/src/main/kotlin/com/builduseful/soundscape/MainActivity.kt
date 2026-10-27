@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import com.builduseful.soundscape.core.appearance.ThemePreference
 import com.builduseful.soundscape.core.contract.catalogTracks
+import com.builduseful.soundscape.core.gestures.GestureGuide
 import com.builduseful.soundscape.core.playback.Cancellable
 import com.builduseful.soundscape.core.playback.PlaybackController
 import com.builduseful.soundscape.core.playback.PlayerState
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
 
     private val appearance by lazy { SharedPreferenceStore(this, "appearance") }
     private var theme by mutableStateOf(ThemePreference.System)
+    private val guide by lazy { GestureGuide(appearance) }
 
     /** A shortcut's track, held until the service is bound. */
     private var requestedTrack: String? = null
@@ -129,6 +131,7 @@ class MainActivity : ComponentActivity() {
                     theme = theme,
                     onTheme = ::chooseTheme,
                     versionName = BuildConfig.VERSION_NAME,
+                    guide = guide,
                 )
             }
         }

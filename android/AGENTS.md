@@ -110,7 +110,8 @@ through plain code. Here that means:
 The release build is minified by R8, and ships a startup profile
 (`app/src/release/generated/baselineProfiles/`) that the system compiles ahead
 of time on install, so a first launch runs compiled code. `baselineprofile/`
-records it by opening the app and pressing play and pause:
+records it by opening the app, tapping to play, swiping to the next sound and
+tapping to pause:
 
 ```sh
 ./gradlew :app:generateBaselineProfile     # on a running emulator, API 33 or later

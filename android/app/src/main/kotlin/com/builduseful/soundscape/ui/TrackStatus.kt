@@ -58,14 +58,16 @@ import com.builduseful.soundscape.core.playback.PlayerState
 /**
  * The title, and the loading indicator hung below it without a row of its own,
  * so a slow change cannot nudge the controls (the web's `.track-status`).
+ * [words] is the resting screen's fade of the title. A [peek] is the
+ * neighbour a swipe brings in, found by its own tag.
  */
 @Composable
-internal fun TrackStatus(state: PlayerState, modifier: Modifier = Modifier) {
+internal fun TrackStatus(state: PlayerState, words: () -> Float, modifier: Modifier = Modifier, peek: Boolean = false) {
     val reduced = LocalReducedMotion.current
     val offset = (if (reduced) DesignTokens.Size.loadingOffsetReduced else DesignTokens.Size.loadingOffset).dp
     Layout(
         content = {
-            TrackTitle(state.track.title, state.trackChange, dim = state.isLoading)
+            TrackTitle(state.track.title, state.trackChange, dim = state.isLoading, state.isPlaying, words, if (peek) UiTags.PEEK else UiTags.TITLE)
             if (state.notice == Notice.Loading) LoadingIndicator()
         },
         modifier = modifier,
@@ -81,10 +83,11 @@ internal fun TrackStatus(state: PlayerState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TrackTitle(title: String, change: Direction?, dim: Boolean) {
+private fun TrackTitle(title: String, change: Direction?, dim: Boolean, playing: Boolean, words: () -> Float, tag: String) {
     val palette = LocalPalette.current
     val reduced = LocalReducedMotion.current
-    val style = DesignTokens.Type.title.style(palette.text).copy(textAlign = TextAlign.Center)
+    // In the drawing's colour, and dimmed with it while paused, so the name and the drawing read as one thing.
+    val style = DesignTokens.Type.title.style(palette.textMuted).copy(textAlign = TextAlign.Center)
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val minWidth = remember(style, density) { measurer.chars(style, density, DesignTokens.Size.titleMinWidthChars) }
@@ -114,8 +117,13 @@ private fun TrackTitle(title: String, change: Direction?, dim: Boolean) {
 
     val alpha by animateFloatAsState(
         if (dim) DesignTokens.Motion.loadingDim else 1f,
-        if (reduced) snap() else tween(DesignTokens.Duration.titleDim.toInt(), easing = CssEase),
+        if (reduced) snap() else tween(DesignTokens.Duration.wake.toInt(), easing = FadeEasing),
         label = "dim",
+    )
+    val paused by animateFloatAsState(
+        if (playing) 1f else DesignTokens.Motion.pausedScene,
+        if (reduced) snap() else tween(DesignTokens.Duration.sceneDim.toInt(), easing = FadeEasing),
+        label = "paused",
     )
     val slide = with(density) { DesignTokens.Size.titleSlide.dp.toPx() }
     val exitX = if (direction == Direction.Next) -slide else slide
@@ -123,9 +131,9 @@ private fun TrackTitle(title: String, change: Direction?, dim: Boolean) {
 
     Box(
         Modifier
-            .testTag(UiTags.TITLE)
+            .testTag(tag)
             .widthIn(min = minWidth)
-            .graphicsLayer { this.alpha = alpha }
+            .graphicsLayer { this.alpha = alpha * paused * words() }
             .clipToBounds()
             .semantics {
                 heading()

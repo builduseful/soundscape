@@ -14,6 +14,7 @@ import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
@@ -23,6 +24,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -76,13 +81,46 @@ class SoundscapeAppTest {
 
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
+    // The buttons are for TalkBack and the keyboard, not a finger: pressed as TalkBack presses them.
+    private fun SemanticsNodeInteraction.activate() = performSemanticsAction(SemanticsActions.OnClick)
+
     @Test
     fun eachTransportButtonAsksThePlayer() {
         show()
-        tag(UiTags.PLAY_PAUSE).performClick()
-        tag(UiTags.NEXT).performClick()
-        tag(UiTags.PREVIOUS).performClick()
+        tag(UiTags.PLAY_PAUSE).activate()
+        tag(UiTags.NEXT).activate()
+        tag(UiTags.PREVIOUS).activate()
         assertEquals(listOf("playPause", "next", "previous"), player.calls)
+    }
+
+    // The page is the control: a tap anywhere, even where a hidden button sits, plays or pauses.
+    @Test
+    fun aTapPlaysOrPauses() {
+        show()
+        tag(UiTags.PAGE).performTouchInput { click(center) }
+        tag(UiTags.NEXT).performTouchInput { click(center) }
+        assertEquals(listOf("playPause", "playPause"), player.calls)
+    }
+
+    @Test
+    fun aSwipeChangesTheTrack() {
+        show()
+        tag(UiTags.PAGE).performTouchInput { swipeLeft() }
+        rule.waitForIdle()
+        tag(UiTags.PAGE).performTouchInput { swipeRight() }
+        rule.waitForIdle()
+        assertEquals(listOf("next", "previous"), player.calls)
+    }
+
+    // Each step of the drag sets the level; letting go saves it.
+    @Test
+    fun aDragUpOrDownSetsTheVolume() {
+        state = state.copy(volume = 0.5f)
+        show()
+        tag(UiTags.PAGE).performTouchInput { swipeUp(startY = centerY + 100f, endY = centerY - 100f) }
+        assertTrue(player.calls.toString(), player.calls.first().startsWith("volume ") && !player.calls.first().endsWith("saved"))
+        val saved = player.calls.last()
+        assertTrue(saved, saved.endsWith(" saved") && saved.removePrefix("volume ").removeSuffix(" saved").toFloat() > 0.5f)
     }
 
     // The button names what it will do, as the web's aria-label does.
@@ -136,15 +174,15 @@ class SoundscapeAppTest {
         tag(UiTags.themeOption(string(R.string.theme_dark))).assertIsSelected()
     }
 
-    // A press outside a panel closes it, and still reaches what it landed on.
+    // A press outside a panel closes it, and still reaches what it landed on: here the page.
     @Test
     fun aPressOutsideClosesThePanelAndStillCounts() {
         show()
         tag(UiTags.MENU_BUTTON).performClick()
         tag(UiTags.MENU_PANEL).assertExists()
-        tag(UiTags.NEXT).performClick()
+        tag(UiTags.TITLE).performTouchInput { click(center) }
         tag(UiTags.MENU_PANEL).assertDoesNotExist()
-        assertEquals(listOf("next"), player.calls)
+        assertEquals(listOf("playPause"), player.calls)
     }
 
     // At most one panel is open, as with the web's popover="auto".
@@ -152,7 +190,7 @@ class SoundscapeAppTest {
     fun openingOnePanelClosesTheOther() {
         show()
         tag(UiTags.MENU_BUTTON).performClick()
-        tag(UiTags.VOLUME_BUTTON).performClick()
+        tag(UiTags.VOLUME_BUTTON).activate()
         tag(UiTags.MENU_PANEL).assertDoesNotExist()
         tag(UiTags.VOLUME_PANEL).assertExists()
     }
@@ -160,7 +198,7 @@ class SoundscapeAppTest {
     @Test
     fun backClosesAnOpenPanelFirst() {
         show()
-        tag(UiTags.VOLUME_BUTTON).performClick()
+        tag(UiTags.VOLUME_BUTTON).activate()
         tag(UiTags.VOLUME_PANEL).assertExists()
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
         tag(UiTags.VOLUME_PANEL).assertDoesNotExist()
@@ -170,7 +208,7 @@ class SoundscapeAppTest {
     @Test
     fun theSliderSetsAndSavesTheVolume() {
         show()
-        tag(UiTags.VOLUME_BUTTON).performClick()
+        tag(UiTags.VOLUME_BUTTON).activate()
         tag(UiTags.VOLUME_SLIDER).performSemanticsAction(SemanticsActions.SetProgress) { it(0.25f) }
         assertEquals(listOf("volume 0.25 saved"), player.calls)
     }

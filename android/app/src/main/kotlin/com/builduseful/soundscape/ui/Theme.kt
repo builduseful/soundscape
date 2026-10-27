@@ -1,6 +1,8 @@
 package com.builduseful.soundscape.ui
 
 import android.animation.ValueAnimator
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
 import android.os.Build
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
@@ -19,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -110,6 +113,22 @@ internal fun rememberReducedMotion(): Boolean {
     }
     return reduced
 }
+
+/** Whether a screen reader is exploring the screen by touch, kept current. */
+@Composable
+internal fun rememberTouchExploration(): Boolean {
+    val manager = LocalContext.current.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    var exploring by remember { mutableStateOf(manager.isTouchExplorationEnabled) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { exploring = it }
+        manager.addTouchExplorationStateChangeListener(listener)
+        onDispose { manager.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return exploring
+}
+
+/** Every fade's curve: eased in and out, so an opacity change neither jumps at the start nor lands hard. */
+internal val FadeEasing: Easing = DesignTokens.Motion.fadeEasing.easing()
 
 /** CSS's `ease`, which a web transition uses when it names no timing function. */
 internal val CssEase: Easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)

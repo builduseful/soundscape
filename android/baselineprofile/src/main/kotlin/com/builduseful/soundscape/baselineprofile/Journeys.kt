@@ -13,15 +13,16 @@ private val copy by lazy {
     JSONObject(context.assets.open("copy.json").bufferedReader().readText())
 }
 
-/** What a person does first: open the app and press play, then pause. */
+/** What a person does first: open the app, tap to play, swipe to the next sound, and tap to pause. */
 internal fun MacrobenchmarkScope.startAndPlay() {
     startActivityAndWait()
-    press("play")
-    press("pause")
-}
-
-private fun MacrobenchmarkScope.press(label: String) {
-    val button = device.wait(Until.findObject(By.pkg(APP).desc(copy.getString(label)).clickable(true)), 10_000)
-    checkNotNull(button) { "No “${copy.getString(label)}” button" }.click()
+    checkNotNull(device.wait(Until.findObject(By.pkg(APP).desc(copy.getString("play"))), 10_000)) { "No “${copy.getString("play")}” button" }
+    val x = device.displayWidth / 2
+    val y = device.displayHeight / 2
+    device.click(x, y)
+    device.waitForIdle()
+    device.swipe(device.displayWidth * 4 / 5, y, device.displayWidth / 5, y, 40)
+    device.waitForIdle()
+    device.click(x, y)
     device.waitForIdle()
 }

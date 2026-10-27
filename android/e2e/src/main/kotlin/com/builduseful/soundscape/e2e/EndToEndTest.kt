@@ -34,6 +34,11 @@ import java.util.concurrent.TimeUnit
  * controls found by the names TalkBack reads, the sound checked as the system
  * hears it, and the app killed between launches. Each rule is proven in core
  * and in the app's own tests; this proves they are joined up.
+ *
+ * The page is the control: a tap plays or pauses and a swipe changes track.
+ * The buttons are there for TalkBack and are pressed as it presses them. On a
+ * fresh install the guide is showing, and the screen does not rest while it
+ * is, so the words stay on screen to be found.
  */
 @RunWith(AndroidJUnit4::class)
 class EndToEndTest {
@@ -59,24 +64,27 @@ class EndToEndTest {
         launch()
         title(catalogTracks[0].title)
 
-        control("play").click()
+        tap()
         waitUntil("the sound") { audio.isMusicActive }
         control("pause")
 
-        control("nextTrack").click()
+        swipe(next = true)
         title(catalogTracks[1].title)
-        control("previousTrack").click()
+        swipe(next = false)
         title(catalogTracks[0].title)
 
-        control("pause").click()
+        tap()
         waitUntil("silence") { !audio.isMusicActive }
         control("play")
+
+        activate("nextTrack")
+        title(catalogTracks[1].title)
     }
 
     @Test
     fun playsOnInTheBackgroundUnderTheNotificationsControls() {
         launch()
-        control("play").click()
+        tap()
         waitUntil("the sound") { audio.isMusicActive }
 
         device.pressHome()
@@ -94,10 +102,10 @@ class EndToEndTest {
     @Test
     fun aRestartRestoresTheTrackVolumeAndTheme() {
         launch()
-        control("nextTrack").click()
+        swipe(next = true)
         title(catalogTracks[1].title)
 
-        control("volume").click()
+        activate("volume")
         val before = volume()
         val slider = slider().visibleBounds
         device.click(slider.centerX(), slider.bottom - slider.height() * 3 / 10)
@@ -121,7 +129,7 @@ class EndToEndTest {
 
         title(catalogTracks[1].title)
         waitUntil("the page in ${string(theme)}") { pageColour() == page }
-        control("volume").click()
+        activate("volume")
         assertEquals(chosen, volume(), 0.001f)
         device.pressBack()
         control("menu").click()
@@ -160,6 +168,25 @@ class EndToEndTest {
     }
 
     private fun string(key: String): String = copy.getString(key)
+
+    // In the middle of the page, over the drawing: a finger's tap, not a button's press.
+    private fun tap() = device.click(device.displayWidth / 2, device.displayHeight / 2)
+
+    private fun swipe(next: Boolean) {
+        val (from, to) = if (next) 0.8 to 0.2 else 0.2 to 0.8
+        val y = device.displayHeight / 2
+        device.swipe((device.displayWidth * from).toInt(), y, (device.displayWidth * to).toInt(), y, SWIPE_STEPS)
+    }
+
+    // As TalkBack's double tap does: the button's own action, not a touch where it sits.
+    private fun activate(label: String) {
+        control(label)
+        fun named(node: AccessibilityNodeInfo): AccessibilityNodeInfo? =
+            if (node.contentDescription == string(label) && node.isClickable) node
+            else (0 until node.childCount).firstNotNullOfOrNull { i -> node.getChild(i)?.let(::named) }
+        val node = checkNotNull(named(instrumentation.uiAutomation.rootInActiveWindow)) { "no “${string(label)}” to press" }
+        assertTrue("“${string(label)}” pressed", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    }
 
     private fun control(label: String): UiObject2 = find("“${string(label)}”", By.pkg(APP).desc(string(label)).clickable(true))
 
@@ -208,5 +235,8 @@ class EndToEndTest {
         // A ceiling for an emulator still busy after its boot, not a budget: time to
         // first frame and first sound have their own.
         const val TIMEOUT = 60_000L
+
+        // About a fifth of a second: a swipe, not a fling.
+        const val SWIPE_STEPS = 40
     }
 }

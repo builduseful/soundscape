@@ -120,6 +120,11 @@ abstract class GenerateKotlinContract : DefaultTask() {
         map(root, "volume").forEach { (name, value) -> out.appendLine("        const val $name: Float = ${float(value)}") }
         out.appendLine("    }\n")
 
+        out.appendLine("    /** Distances in dp, times in ms, speeds in dp per ms. */")
+        out.appendLine("    object Gesture {")
+        map(root, "gesture").forEach { (name, value) -> out.appendLine("        const val $name: Float = ${float(value)}") }
+        out.appendLine("    }\n")
+
         out.appendLine("    object Motion {")
         map(root, "motion").forEach { (name, value) ->
             if (value is List<*>) {
