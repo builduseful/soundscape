@@ -48,7 +48,6 @@ import com.builduseful.soundscape.core.contract.DesignTokens
 @Composable
 internal fun TransportControls(
     isPlaying: Boolean,
-    narrow: Boolean,
     onPrevious: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -78,7 +77,7 @@ internal fun TransportControls(
         // Over the drawing, which answers for it with its own marks.
         MarkButton(
             stringResource(if (isPlaying) R.string.pause else R.string.play),
-            (if (narrow) DesignTokens.Size.playButtonNarrow else DesignTokens.Size.playButton).dp,
+            DesignTokens.Size.stage.dp,
             round = false,
             interactions[1],
             alpha,

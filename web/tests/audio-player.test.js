@@ -744,7 +744,9 @@ test("a hand-over holds the sound out until the next track starts, then rises it
     assert.equal(presence.value, 0);
 
     await player.startTrack({ id: "second", url: "/second.ogg" });
-    assert.equal(presence.valueCurve.duration, 0.9);
+    assert.equal(presence.valueCurve.duration, 0.5);
+    // Heard at once, not eased in.
+    assert.ok(Math.abs(presence.valueCurve.curve[presence.valueCurve.curve.length >> 1] - Math.SQRT1_2) < 0.02);
     assert.equal(presence.valueCurve.curve[0], 0);
     assert.equal(presence.value, 1);
 });

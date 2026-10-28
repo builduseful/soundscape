@@ -467,7 +467,7 @@ class PlaybackControllerTest {
 
         engine.succeed()
         scheduler.advance(DesignTokens.Duration.swipeFadeIn / 2)
-        assertEquals(0.5f, engine.appliedVolume, 0.02f)
+        assertEquals("heard at once, not eased in", 0.707f, engine.appliedVolume, 0.02f)
         scheduler.advance(DesignTokens.Duration.swipeFadeIn)
         assertEquals(1f, engine.appliedVolume)
     }

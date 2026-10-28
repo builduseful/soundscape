@@ -215,7 +215,6 @@ internal fun Pages(
     state: PlayerState,
     pager: Pager,
     volume: DragVolume,
-    narrow: Boolean,
     actions: PlayerActions,
     words: () -> Float,
     modifier: Modifier = Modifier,
@@ -242,7 +241,6 @@ internal fun Pages(
                 TrackPage(
                     page.state,
                     page.centre,
-                    narrow,
                     actions,
                     volume,
                     words,
@@ -271,7 +269,6 @@ private fun PlayerState.asPeek(track: Track) = copy(track = track, trackChange =
 private fun TrackPage(
     state: PlayerState,
     centre: Boolean,
-    narrow: Boolean,
     actions: PlayerActions,
     volume: DragVolume,
     words: () -> Float,
@@ -288,7 +285,6 @@ private fun TrackPage(
                     if (centre) {
                         TransportControls(
                             isPlaying = state.isPlaying,
-                            narrow = narrow,
                             onPrevious = actions::previous,
                             onPlayPause = actions::playPause,
                             onNext = actions::next,
@@ -303,9 +299,13 @@ private fun TrackPage(
     ) { measurables, constraints ->
         val page = measurables[0].measure(constraints)
         val bar = measurables.getOrNull(1)?.measure(Constraints())
-        layout(page.width, page.height) {
-            page.place(0, 0)
-            bar?.place((page.width - bar.width) / 2, page.height + DesignTokens.Size.gestureVolumeOffset.dp.roundToPx())
+        // The drawing is the page's centre (the web's `--name-reach`): as much
+        // room above it as the name takes below, whether or not the name, which
+        // fades as the screen rests, is there.
+        val reach = page.height - DesignTokens.Size.stage.dp.roundToPx()
+        layout(page.width, page.height + reach) {
+            page.place(0, reach)
+            bar?.place((page.width - bar.width) / 2, reach + page.height + DesignTokens.Size.gestureVolumeOffset.dp.roundToPx())
         }
     }
 }

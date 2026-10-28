@@ -3,7 +3,7 @@ import { createLocalSourceResolver } from "./local-source.js";
 const FADE_DURATION_SECONDS = 0.25;
 const TRACK_CROSSFADE_SECONDS = 0.25;
 // How long the next soundscape takes to rise in after a swipe let the last one go.
-const SWIPE_FADE_IN_SECONDS = 0.9;
+const SWIPE_FADE_IN_SECONDS = 0.5;
 // Following a finger: smoothed just enough that its steps are not heard.
 const PRESENCE_FOLLOW_SECONDS = 0.04;
 const LOOP_CROSSFADE_MS = 10;
@@ -234,10 +234,12 @@ export class AudioPlayer {
         if (!this.presenceHeld) return;
 
         this.presenceHeld = false;
-        this.fadePresence(1, this.playbackRequested ? seconds : 0);
+        // Rising as the crossfade's incoming track does, heard at once: eased
+        // in as well, a fade from silence reads as a late arrival.
+        this.fadePresence(1, this.playbackRequested ? seconds : 0, (t) => Math.sin(t * Math.PI / 2));
     }
 
-    fadePresence(level, seconds) {
+    fadePresence(level, seconds, ease = (t) => (1 - Math.cos(t * Math.PI)) / 2) {
         const gain = this.presenceGainNode.gain;
         const now = this.audioContext.currentTime;
         const from = gain.value;
@@ -249,12 +251,12 @@ export class AudioPlayer {
             return;
         }
 
-        // Eased in and out, as every fade here is, so neither end is heard as an edge.
+        // Eased in and out unless asked otherwise, so neither end is heard as an edge.
         const curve = new Float32Array(CROSSFADE_CURVE_STEPS + 1);
 
         for (let i = 0; i <= CROSSFADE_CURVE_STEPS; i++) {
             const t = i / CROSSFADE_CURVE_STEPS;
-            curve[i] = from + (level - from) * (1 - Math.cos(t * Math.PI)) / 2;
+            curve[i] = from + (level - from) * ease(t);
         }
         curve[CROSSFADE_CURVE_STEPS] = level;
 

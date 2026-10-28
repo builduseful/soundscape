@@ -4,6 +4,7 @@ import com.builduseful.soundscape.core.Track
 import com.builduseful.soundscape.core.contract.DesignTokens
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * The player's rules, apart from any platform: which track is on, whether it
@@ -219,13 +220,15 @@ class PlaybackController(
         presenceHeld = false
         handOverLapse?.cancel()
         handOverLapse = null
-        fadePresence(1f, if (engine.isPlaying) DesignTokens.Duration.swipeFadeIn else 0)
+        // Rising as the crossfade's incoming track does, heard at once: eased
+        // in as well, a fade from silence reads as a late arrival.
+        fadePresence(1f, if (engine.isPlaying) DesignTokens.Duration.swipeFadeIn else 0) { sin(PI / 2 * it) }
     }
 
     // Stepped a frame at a time on the controller's thread, along a sine ease
-    // in and out, so neither end of the fade is heard as an edge. Nothing runs
-    // between fades.
-    private fun fadePresence(level: Float, millis: Long) {
+    // in and out unless asked otherwise, so neither end of the fade is heard as
+    // an edge. Nothing runs between fades.
+    private fun fadePresence(level: Float, millis: Long, ease: (Double) -> Double = { (1 - cos(PI * it)) / 2 }) {
         presenceFade?.cancel()
         presenceFade = null
         if (millis <= 0) {
@@ -238,7 +241,7 @@ class PlaybackController(
         fun at(i: Int) = millis * i / steps
         fun next() {
             step++
-            val eased = (1 - cos(PI * step / steps).toFloat()) / 2
+            val eased = ease(step.toDouble() / steps).toFloat()
             applyPresence(from + (level - from) * eased)
             presenceFade = if (step < steps) scheduler.schedule(at(step + 1) - at(step), ::next) else null
         }

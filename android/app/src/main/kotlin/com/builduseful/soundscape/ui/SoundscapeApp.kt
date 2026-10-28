@@ -233,7 +233,7 @@ private fun Page(
                     verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.playerGap.dp),
                 ) {
                     Pages(
-                        state, pager, volume, narrow, actions, { words.value },
+                        state, pager, volume, actions, { words.value },
                         Modifier.onFocusChanged { keys.transportFocused = it.hasFocus },
                     )
                     (state.notice as? Notice.Failed)?.let { PlaybackError(it.track.title) }
@@ -360,8 +360,9 @@ private class PlayerGestures(
 
 /**
  * The web's `.container` grid: header and footer at their own heights, the
- * player centred in the rest, the whole at least the window's height. The
- * header and footer draw above the player, so their panels cover it.
+ * player centred across the whole, not just the room between them, which
+ * differ in height; the whole at least the window's height. The header and
+ * footer draw above the player, so their panels cover it.
  */
 @Composable
 private fun PageLayout(
@@ -375,12 +376,11 @@ private fun PageLayout(
         val top = h.first().measure(loose)
         val bottom = f.first().measure(loose)
         val middle = p.first().measure(loose)
-        val height = maxOf(constraints.minHeight, top.height + middle.height + bottom.height)
-        val room = height - top.height - bottom.height
+        val height = maxOf(constraints.minHeight, top.height + bottom.height, middle.height)
         // Placed in reading order, which is the keyboard's order too.
         layout(constraints.maxWidth, height) {
             top.place(0, 0, zIndex = 1f)
-            middle.place((constraints.maxWidth - middle.width) / 2, top.height + (room - middle.height) / 2)
+            middle.place((constraints.maxWidth - middle.width) / 2, (height - middle.height) / 2)
             bottom.place(0, height - bottom.height, zIndex = 1f)
         }
     }

@@ -322,8 +322,8 @@ class SoundscapeAppTest {
         // A window smaller than the size asked for is drawn at a smaller density: in its pixels per unit.
         val page = tag(UiTags.PAGE).bounds()
         val unit = page.width / size.width.value
-        val play = unit * if (narrow) DesignTokens.Size.playButtonNarrow else DesignTokens.Size.playButton
-        assertEquals("play button for this width", play, bounds.getValue(UiTags.PLAY_PAUSE).width, 1.5f)
+        val play = unit * DesignTokens.Size.stage
+        assertEquals("play button over the drawing", play, bounds.getValue(UiTags.PLAY_PAUSE).width, 1.5f)
         val padding = unit * if (narrow) DesignTokens.Size.pagePaddingNarrow else DesignTokens.Size.pagePadding
         assertEquals("menu at the trailing padding", page.right - padding, bounds.getValue(UiTags.MENU_BUTTON).right, 1.5f)
         assertEquals("volume at the trailing padding", page.right - padding, bounds.getValue(UiTags.VOLUME_BUTTON).right, 1.5f)

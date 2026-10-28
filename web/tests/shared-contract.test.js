@@ -106,10 +106,9 @@ describe("the web app matches shared/design-tokens.json", () => {
         ["playerGap", rule(page, ".player").get("gap")],
         ["playerMaxWidth", rule(page, ".player").get("max-width")],
         ["transportGap", rule(page, ".transport-controls").get("gap")],
-        ["playButton", rule(page, "button.play").get("width")],
-        ["playButton", rule(page, "button.play").get("height")],
-        ["playButtonNarrow", rule(page, NARROW, "button.play").get("width")],
-        ["playButtonNarrow", rule(page, NARROW, "button.play").get("height")],
+        // Exactly over the drawing.
+        ["stage", rule(page, "button.play").get("width")],
+        ["stage", rule(page, "button.play").get("height")],
         ["skipButton", rule(page, "button.prev, button.next").get("width")],
         ["skipButton", rule(page, "button.prev, button.next").get("height")],
         ["skipIcon", rule(page, ".button-icon").get("width")],
@@ -272,6 +271,8 @@ describe("the gestures, the drawing and the resting screen match shared/design-t
         assert.equal(rule(page, ".track-stage").get("width"), px(size.stage));
         assert.equal(rule(page, ".track-stage").get("height"), px(size.stage));
         assert.equal(rule(page, ".track-status").get("gap"), px(size.stageGap));
+        // As much room above the drawing as the name takes below it, so the drawing is the centre.
+        assert.equal(rule(page, ".track-status").get("--name-reach"), `calc(${px(size.stageGap)} + ${tokens.type.title.lineHeight} * ${rem(tokens.type.title.size)})`);
         assert.equal(rule(page, ".track-stage track-scene:not([playing])").get("opacity"), String(motion.pausedScene));
         assert.equal(rule(page, ".track-stage track-scene").get("transition"), `opacity ${seconds(duration.sceneDim)} ${bezier(motion.fadeEasing)}`);
         // The name is in the drawing's colour, dimmed with it while paused.

@@ -133,6 +133,7 @@ body {
 }
 
 .app-header {
+    grid-area: 1 / 1;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -140,6 +141,7 @@ body {
 }
 
 .app-footer {
+    grid-area: 3 / 1;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -186,9 +188,12 @@ body {
     color: var(--color-text-muted);
 }
 
+/* Across the whole page, not just the room between header and footer, which
+   differ in height: the drawing is the middle of the screen. */
 .player {
     align-self: center;
     display: grid;
+    grid-area: 1 / 1 / -1;
     position: relative;
     gap: 34px;
     justify-items: center;
@@ -198,12 +203,16 @@ body {
 }
 
 /* Anchors the loading indicator to the title without giving it a row of its
-   own, so a slow track change cannot nudge the controls around. */
+   own, so a slow track change cannot nudge the controls around. The drawing is
+   its centre: as much room above it as the name takes below, so it stays put
+   whether or not the name, which fades as the screen rests, is there. */
 .track-status {
+    --name-reach: calc(20px + 1.2 * 1.09375rem);
     display: grid;
-    gap: 22px;
+    gap: 20px;
     grid-area: 1 / 1;
     justify-items: center;
+    padding-top: var(--name-reach);
     position: relative;
 }
 
@@ -219,9 +228,9 @@ body {
     transition:
         opacity 0.6s cubic-bezier(0.37, 0, 0.63, 1),
         filter 0.9s cubic-bezier(0.37, 0, 0.63, 1);
-    /* 20px, so its 1.2 line is a whole 24: with no fraction inside the track's
-       box, it lands on the same pixel pressed, settling or still. */
-    font-size: 1.25rem;
+    /* 17.5px, so its 1.2 line is a whole 21: with no fraction inside the
+       track's box, it lands on the same pixel pressed, settling or still. */
+    font-size: 1.09375rem;
     font-weight: 400;
     display: grid;
     line-height: 1.2;
@@ -401,9 +410,9 @@ volume-control {
    drawing starting and stopping says it. */
 .track-stage {
     display: grid;
-    height: 80px;
+    height: 88px;
     place-items: center;
-    width: 80px;
+    width: 88px;
 }
 
 .track-stage > * {
@@ -411,9 +420,9 @@ volume-control {
 }
 
 .track-stage track-scene {
-    height: 80px;
+    height: 88px;
     transition: opacity 0.9s cubic-bezier(0.37, 0, 0.63, 1);
-    width: 80px;
+    width: 88px;
 }
 
 .track-stage track-scene:not([playing]) {
@@ -456,8 +465,8 @@ volume-control {
    marks either side of it, in its line. They sit over the drawing, out of the
    flow, so the page is laid out the same with or without them. */
 .track-status > .controls {
-    height: 80px;
-    inset: 0 0 auto;
+    height: 88px;
+    inset: var(--name-reach) 0 auto;
     position: absolute;
 }
 
@@ -519,8 +528,8 @@ button:active {
 /* Exactly over the drawing, with no mark of its own: the drawing is what it
    plays and pauses (.track-stage). */
 button.play {
-    width: 80px;
-    height: 80px;
+    width: 88px;
+    height: 88px;
     margin: 0;
     border-radius: 22px;
 }
@@ -555,11 +564,6 @@ button.next {
 
     .app-header {
         align-items: center;
-    }
-
-    button.play {
-        height: 80px;
-        width: 80px;
     }
 }
 
