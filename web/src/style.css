@@ -404,6 +404,19 @@ volume-control {
 /* The soundscape, drawn, above its name. Paused it holds still and a little
    faint; playing it moves at full strength. No play or pause mark: the
    drawing starting and stopping says it. */
+/* Registered, so the breath can be animated and its depth eased. */
+@property --breath {
+    syntax: "<number>";
+    inherits: false;
+    initial-value: 0;
+}
+
+@property --breath-depth {
+    syntax: "<number>";
+    inherits: false;
+    initial-value: 0;
+}
+
 .track-stage {
     display: grid;
     height: 88px;
@@ -646,11 +659,40 @@ textarea {
        scale, not transform: the drag itself owns transform. */
     .track-status {
         transition: scale 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+        /* Drawn once and the picture scaled, as the drawing's breath is: the
+           name redrawn at each size would shimmer as it gives. */
+        will-change: scale;
     }
 
     .track-status[data-pressed] {
         scale: 0.985;
         transition: scale 0.24s cubic-bezier(0.33, 1, 0.68, 1);
+    }
+
+    /* Paused, the drawing breathes: out, a little smaller and fainter, and
+       back in, slowly, so the screen is alive without drawing the eye. How
+       deep it breathes eases in and out with the dim; the breath itself runs
+       only while paused. Apart, because a transition does not take over from
+       an animation that stops: playing would jump to full strength. */
+    .track-stage {
+        animation: scene-breath 5s cubic-bezier(0.37, 0, 0.63, 1) infinite paused;
+        opacity: calc(1 - var(--breath-depth) * var(--breath) * (1 - 0.4 / 0.55));
+        scale: calc(1 - var(--breath-depth) * var(--breath) * (1 - 0.96));
+        transition: --breath-depth 0.9s cubic-bezier(0.37, 0, 0.63, 1);
+        /* Drawn once and the picture scaled: redrawn at each size, the thin
+           strokes land on different pixels frame to frame and shimmer. */
+        will-change: scale;
+    }
+
+    .track-stage:has(track-scene:not([playing])) {
+        --breath-depth: 1;
+        animation-play-state: running;
+    }
+
+    @keyframes scene-breath {
+        50% {
+            --breath: 1;
+        }
     }
 
     /* The press-in on the app's buttons. A transition replaces rather than adds

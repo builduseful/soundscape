@@ -107,6 +107,7 @@
         "swipeSettle": 360,
         "swipeFadeIn": 500,
         "sceneDim": 900,
+        "sceneBreath": 5000,
         "tutorialDelay": 900,
         "tutorialFade": 320,
         "tutorialDoneHold": 1400
@@ -135,6 +136,8 @@
         "wipeEasing": [0.2, 0.8, 0.2, 1],
         "dragPressScale": 0.985,
         "pausedScene": 0.55,
+        "pausedSceneBreath": 0.4,
+        "pausedSceneBreathScale": 0.96,
         "swipeEasing": [0.33, 1, 0.68, 1],
         "fadeEasing": [0.37, 0, 0.63, 1],
         "pressEasing": [0.33, 1, 0.68, 1]

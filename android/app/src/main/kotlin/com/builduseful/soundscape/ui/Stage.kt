@@ -32,8 +32,9 @@ import kotlin.math.tan
 
 /**
  * The soundscape, drawn, the centre of the screen (the web's `.track-stage`).
- * Paused it holds still and a little faint; playing it moves at full strength.
- * No play or pause mark: the drawing starting and stopping says it.
+ * Paused it holds still, a little faint and breathing; playing it moves at
+ * full strength. No play or pause mark: the drawing starting and stopping
+ * says it.
  */
 @Composable
 internal fun Stage(trackId: String, playing: Boolean, modifier: Modifier = Modifier) {
@@ -43,8 +44,42 @@ internal fun Stage(trackId: String, playing: Boolean, modifier: Modifier = Modif
         if (reduced) snap() else tween(DesignTokens.Duration.sceneDim.toInt(), easing = FadeEasing),
         label = "dim",
     )
+    // Paused, it breathes (the web's `scene-breath`): out, a little smaller
+    // and fainter, and back in, slowly. How deep eases in and out with the
+    // dim; the breath itself runs only while paused, so playing costs nothing.
+    val depth by animateFloatAsState(
+        if (playing || reduced) 0f else 1f,
+        if (reduced) snap() else tween(DesignTokens.Duration.sceneDim.toInt(), easing = FadeEasing),
+        label = "breath depth",
+    )
+    val breath = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(playing, reduced) {
+        if (playing || reduced) return@LaunchedEffect
+        val period = DesignTokens.Duration.sceneBreath * 1_000_000f
+        var last = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                breath.floatValue = (breath.floatValue + (now - last) / period) % 1f
+                last = now
+            }
+        }
+    }
     val size = DesignTokens.Size.stage.dp
-    TrackSceneView(trackId, playing, modifier.size(size).graphicsLayer { alpha = dim })
+    TrackSceneView(
+        trackId,
+        playing,
+        modifier.size(size).graphicsLayer {
+            // Out and back in over each breath, eased each way.
+            val way = if (breath.floatValue < 0.5f) breath.floatValue * 2 else (1 - breath.floatValue) * 2
+            val out = depth * FadeEasing.transform(way)
+            alpha = dim * (1 - out * (1 - DesignTokens.Motion.pausedSceneBreath / DesignTokens.Motion.pausedScene))
+            scaleX = 1 - out * (1 - DesignTokens.Motion.pausedSceneBreathScale)
+            scaleY = scaleX
+            // Drawn once and the picture scaled: redrawn at each size, the thin
+            // strokes land on different pixels frame to frame and shimmer.
+            if (out > 0f) compositingStrategy = CompositingStrategy.Offscreen
+        },
+    )
 }
 
 /**
