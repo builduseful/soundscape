@@ -324,11 +324,11 @@ class PlaybackControllerTest {
         assertEquals("a running attempt replaces the old failure", Notice.Loading, controller.state.notice)
     }
 
-    // The title's accessible text settles only when its slide ends; announcing
-    // loading sooner would reach a screen reader before the track's name.
+    // A page turned by a key lands, with the new track's name, before loading
+    // could be announced; announcing it sooner would reach a screen reader first.
     @Test
-    fun theIndicatorDelayOutlastsTheTitleChange() {
-        assertTrue(DesignTokens.Duration.loadingIndicatorDelay > DesignTokens.Duration.titleChange)
+    fun theIndicatorDelayOutlastsAPageTurn() {
+        assertTrue(DesignTokens.Duration.loadingIndicatorDelay > DesignTokens.Duration.swipeMax)
     }
 
     // --- Shortcuts -------------------------------------------------------------

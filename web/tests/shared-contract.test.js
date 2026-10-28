@@ -114,7 +114,6 @@ describe("the web app matches shared/design-tokens.json", () => {
         ["skipIcon", rule(page, ".button-icon").get("width")],
         ["loadingBarWidth", rule(page, ".track-loading-bar").get("width")],
         ["loadingBarHeight", rule(page, ".track-loading-bar").get("height")],
-        ["titleSlide", rule(page, MOTION, ".track-title.is-changing-next").get("--title-enter-x")],
         ["menuButton", rule(menu, "@scope (app-menu)", ":scope").get("--menu-button-size")],
         ["menuIcon", rule(menu, "@scope (app-menu)", ":scope > button svg").get("width")],
         ["menuPanelRadius", rule(menu, "@scope (app-menu)", ".menu-panel").get("border-radius")],
@@ -190,8 +189,6 @@ describe("the web app matches shared/design-tokens.json", () => {
 
     const { duration, motion } = tokens;
     const includes = [
-        ["duration.titleChange", rule(page, MOTION, ".track-title.is-changing .track-title-text--current").get("animation"), `${seconds(duration.titleChange)} ${bezier(motion.emphasizedEasing)}`],
-        ["duration.titleChange (incoming)", rule(page, MOTION, ".track-title.is-changing .track-title-text--incoming").get("animation"), `${seconds(duration.titleChange)} ${bezier(motion.emphasizedEasing)}`],
         ["duration.loadingSweep", rule(page, MOTION, ".track-loading-bar::after").get("animation"), `${seconds(duration.loadingSweep)} linear`],
         ["duration.press", rule(page, MOTION, "button").get("transition"), `transform ${seconds(duration.press)}`],
         ["duration.themeThumb", rule(themes, "@scope (theme-selector)", ".theme-selector::before").get("transition"), `transform ${duration.themeThumb}ms ${bezier(motion.emphasizedEasing)}`],

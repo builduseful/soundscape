@@ -35,6 +35,7 @@ import com.builduseful.soundscape.core.contract.DesignTokens
 import com.builduseful.soundscape.core.contract.catalogTracks
 import com.builduseful.soundscape.core.gestures.SwipeDirection
 import com.builduseful.soundscape.core.gestures.swipeDurationMillis
+import com.builduseful.soundscape.core.playback.Direction
 import com.builduseful.soundscape.core.playback.PlayerState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -83,11 +84,26 @@ internal class Pager(private val scope: CoroutineScope) {
     private var dragging = false
     private var slide: Slide? = null
 
-    /** Keeps up with the player: a change it made itself (a key, the notification) is shown at once. */
-    fun follow(track: Track) {
+    /**
+     * Keeps up with the player. A change made other than by a swipe (the
+     * earphones, the notification, a key) turns the page as a swipe let go
+     * still would; one without a direction, or under a finger, is shown at once.
+     */
+    fun follow(track: Track, change: Direction?, reduced: Boolean) {
         if (track == lastState) return
         lastState = track
-        shown = track
+        slide?.end()
+        if (track == shown) return
+        if (shown == null || change == null || dragging) {
+            shown = track
+            // A drag under way finds the new neighbour as it moves on.
+            peek = null
+            side = 0
+            return
+        }
+        side = if (change == Direction.Next) 1 else -1
+        peek = track
+        turn(if (reduced) 0 else DesignTokens.Duration.swipeMax.toInt())
     }
 
     fun drag(dx: Float) {
@@ -106,15 +122,7 @@ internal class Pager(private val scope: CoroutineScope) {
         release()
         show(to)
         val millis = if (reduced) 0 else swipeDurationMillis((width - abs(offset)) / density, -velocity * to).toInt()
-        Slide(-to * width) {
-            val arrived = peek
-            key++
-            offset = 0f
-            peek = null
-            side = 0
-            shown = arrived
-            change(direction)
-        }.start(millis)
+        turn(millis) { change(direction) }
         return millis
     }
 
@@ -124,6 +132,19 @@ internal class Pager(private val scope: CoroutineScope) {
             peek = null
             side = 0
         }.start(DesignTokens.Duration.swipeSettle.toInt())
+    }
+
+    /** Over to the neighbour, where it becomes the page; then [landed]. */
+    private fun turn(millis: Int, landed: () -> Unit = {}) {
+        Slide(-side * width) {
+            val arrived = peek
+            key++
+            offset = 0f
+            peek = null
+            side = 0
+            shown = arrived
+            landed()
+        }.start(millis)
     }
 
     private fun release() {
@@ -219,8 +240,8 @@ internal fun Pages(
     words: () -> Float,
     modifier: Modifier = Modifier,
 ) {
-    SideEffect { pager.follow(state.track) }
     val reduced = LocalReducedMotion.current
+    SideEffect { pager.follow(state.track, state.trackChange, reduced) }
     val press = animateFloatAsState(
         if (pager.pressed) DesignTokens.Motion.dragPressScale else 1f,
         when {

@@ -28,6 +28,7 @@ class FakeElement {
             properties: new Map(),
             setProperty: (name, value) => this.style.properties.set(name, value),
         };
+        this.animations = [];
         this.classList = {
             add: (...names) => {
                 for (const name of names) {
@@ -75,6 +76,18 @@ class FakeElement {
         }
 
         return this.closestMatch === selector ? this : null;
+    }
+
+    // Each motion is recorded, and finishes at once.
+    animate(keyframes, options) {
+        const animation = { keyframes, options, finished: Promise.resolve(), cancel() {} };
+
+        this.animations.push(animation);
+        return animation;
+    }
+
+    getAnimations() {
+        return [];
     }
 
     querySelector(selector) {
@@ -184,8 +197,7 @@ export function installAppTestEnvironment({
     const mediaSessionPositionStates = [];
     const elements = new Map();
     const title = new FakeElement();
-    const currentTitle = new FakeElement();
-    const incomingTitle = new FakeElement();
+    const titleText = new FakeElement();
     const audioElement = new FakeAudioElement();
     const documentHandlers = new Map();
     const intervals = new Map();
@@ -195,12 +207,7 @@ export function installAppTestEnvironment({
     let nextIntervalId = 1;
     let nextTimeoutId = 1;
 
-    currentTitle.classList.add("track-title-text--current");
-    incomingTitle.classList.add("track-title-text--incoming");
-    title.children = new Map([
-        [".track-title-text--current", currentTitle],
-        [".track-title-text--incoming", incomingTitle],
-    ]);
+    title.children = new Map([[".track-title-text", titleText]]);
 
     for (const id of [
         "volumeControl",
@@ -214,6 +221,9 @@ export function installAppTestEnvironment({
         "trackLoadingLabel",
         "trackStatus",
         "trackScene",
+        "trackPeek",
+        "trackPeekScene",
+        "trackPeekTitle",
         "gestureVolume",
         "gestureTutorial",
     ]) {

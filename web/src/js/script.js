@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.4";
+const VERSION = "2.1.5";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -56,7 +56,6 @@ const SWIPE_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const SWIPE_SETTLE_MS = 360;
 // How far across, as a share of the page, a swipe takes the sound down to nothing.
 const SWIPE_FADE_DISTANCE = 0.5;
-const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
 const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
 const LOADING_LABEL = "Loading soundscape";
 // A track already in the cache decodes in a few milliseconds, so showing the
@@ -76,8 +75,7 @@ customElements.define("volume-control", VolumeControl);
 
 const volumeControl = document.getElementById("volumeControl");
 const title = document.getElementById("title");
-const currentTitle = title.querySelector(".track-title-text--current");
-const incomingTitle = title.querySelector(".track-title-text--incoming");
+const titleText = title.querySelector(".track-title-text");
 const playPauseButton = document.getElementById("playPauseButton");
 const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
@@ -149,7 +147,6 @@ previousButton.addEventListener("click", playPreviousTrack);
 themeSelector.addEventListener("theme-change", (event) => {
     updateThemePreference(event.detail.theme);
 });
-title.addEventListener("animationend", handleTitleAnimationEnd);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
@@ -276,9 +273,7 @@ function placeSwipe(dx) {
     trackPeek.style.transform = `translateX(${dx + side * width}px)`;
 }
 
-function showPeek(side) {
-    const track = tracks[(currentTrackIndex + side + tracks.length) % tracks.length];
-
+function showPeek(side, track = tracks[(currentTrackIndex + side + tracks.length) % tracks.length]) {
     peekSide = side;
     trackPeekScene.setAttribute("track", track.id);
     trackPeekScene.toggleAttribute("playing", trackScene.hasAttribute("playing"));
@@ -354,14 +349,31 @@ async function handleSwipeGesture(direction, velocity) {
 
     // Once the peek is exactly where the current one sits, showing what it
     // will, the real one takes over, with the drawing's motion carried across
-    // so the change cannot be seen. The title's own slide would replay the
-    // change the swipe has already shown.
+    // so the change cannot be seen.
     await whenSlid(slide(end, duration), () => {
-        const changing = changeTrack(side, direction, { animateTitle: false });
+        const changing = changeTrack(side, { turn: false });
 
         takeOverMotion(trackPeekScene, trackScene);
         return changing;
     });
+}
+
+// A change made other than by a swipe (a key, the earphones, a shortcut)
+// turns the page as a swipe let go still would. It is made at once: the peek
+// takes the page that is leaving, so the real one can show the new track
+// while it comes in. Under a finger, the drag carries on with the new track.
+function turnPage(side) {
+    swipeMotion?.();
+    if (swipeDragging) {
+        peekSide = 0;
+        return;
+    }
+    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+    showPeek(-side, getCurrentTrack());
+    takeOverMotion(trackScene, trackPeekScene);
+    swipeDx = side * pageWidth();
+    whenSlid(slide(0, SWIPE_MAX_MS), () => {});
 }
 
 function handleSwipeCancel() {
@@ -483,11 +495,11 @@ function syncRest() {
 // --- Track selection and navigation ---------------------------------------
 
 async function playNextTrack() {
-    return changeTrack(1, "next");
+    return changeTrack(1);
 }
 
 async function playPreviousTrack() {
-    return changeTrack(-1, "previous");
+    return changeTrack(-1);
 }
 
 // An app shortcut is an explicit "play this soundscape", so it starts playback
@@ -499,7 +511,7 @@ async function playPreviousTrack() {
 async function selectTrack(requestedIndex) {
     if (requestedIndex !== currentTrackIndex) {
         const offset = requestedIndex - currentTrackIndex;
-        const didChangeTrack = await changeTrack(offset, offset > 0 ? "next" : "previous");
+        const didChangeTrack = await changeTrack(offset);
 
         // A change that failed has already reported itself and rolled back to
         // whatever was loaded before. Starting that would answer the shortcut
@@ -512,14 +524,15 @@ async function selectTrack(requestedIndex) {
     return true;
 }
 
-async function changeTrack(offset, direction, { animateTitle = true } = {}) {
+async function changeTrack(offset, { turn = true } = {}) {
+    if (turn) turnPage(Math.sign(offset));
     const trackChangeId = ++currentTrackChangeId;
     const previousTrackIndex = currentTrackIndex;
     currentTrackIndex = (currentTrackIndex + offset + tracks.length) % tracks.length;
     const attemptedTrack = getCurrentTrack();
 
     try {
-        const result = await playCurrentTrack(trackChangeId, direction, animateTitle);
+        const result = await playCurrentTrack(trackChangeId);
         if (trackChangeId !== currentTrackChangeId) {
             return false;
         }
@@ -643,56 +656,13 @@ function saveCurrentTrack() {
 
 // --- Title display --------------------------------------------------------
 
-function updateTrackTitle({ animate = false, direction = "next" } = {}) {
+function updateTrackTitle() {
     const trackTitle = getCurrentTrack().title;
 
     trackScene.setAttribute("track", getCurrentTrack().id);
-
-    if (
-        !animate
-        || currentTitle.textContent === trackTitle
-        || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-    ) {
-        resetTitleAnimation();
-        setTrackTitle(trackTitle);
-        return;
-    }
-
-    if (title.classList.contains("is-changing")) {
-        currentTitle.textContent = incomingTitle.textContent;
-    }
-
-    incomingTitle.textContent = trackTitle;
-    setDocumentTitle(trackTitle);
-    restartTitleChangeAnimation(direction);
-}
-
-function setTrackTitle(trackTitle) {
-    currentTitle.textContent = trackTitle;
-    incomingTitle.textContent = "";
-    setDocumentTitle(trackTitle);
-}
-
-// Keep the app name in the tab so bookmarks and window lists stay identifiable.
-function setDocumentTitle(trackTitle) {
+    titleText.textContent = trackTitle;
+    // Keep the app name in the tab so bookmarks and window lists stay identifiable.
     document.title = `${trackTitle} · Soundscape`;
-}
-
-function resetTitleAnimation() {
-    title.classList.remove(...TITLE_ANIMATION_CLASSES);
-}
-
-function handleTitleAnimationEnd(event) {
-    if (!event.target.classList.contains("track-title-text--incoming")) return;
-
-    setTrackTitle(incomingTitle.textContent);
-    resetTitleAnimation();
-}
-
-function restartTitleChangeAnimation(direction) {
-    resetTitleAnimation();
-    title.offsetWidth;
-    title.classList.add("is-changing", `is-changing-${direction}`);
 }
 
 // --- Volume ---------------------------------------------------------------
@@ -819,7 +789,7 @@ function updateThemePreference(value, shouldSave = true) {
 
 // --- Playback -------------------------------------------------------------
 
-async function playCurrentTrack(trackChangeId, direction = "next", animateTitle = true) {
+async function playCurrentTrack(trackChangeId) {
     const track = getCurrentTrack();
     // Decide from playback intent, not the media element's transient paused
     // state: during a track swap the element is briefly paused (src set +
@@ -828,7 +798,7 @@ async function playCurrentTrack(trackChangeId, direction = "next", animateTitle 
     const wasPlaying = activeOutput().isPlaybackRequested();
 
     saveCurrentTrack();
-    updateTrackTitle({ animate: animateTitle, direction });
+    updateTrackTitle();
 
     await activeOutput().startTrack(track, { wasPlaying });
 

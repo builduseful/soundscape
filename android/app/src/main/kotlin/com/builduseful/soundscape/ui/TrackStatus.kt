@@ -1,6 +1,5 @@
 package com.builduseful.soundscape.ui
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -15,14 +14,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -35,7 +30,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -51,7 +45,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.builduseful.soundscape.R
 import com.builduseful.soundscape.core.contract.DesignTokens
-import com.builduseful.soundscape.core.playback.Direction
 import com.builduseful.soundscape.core.playback.Notice
 import com.builduseful.soundscape.core.playback.PlayerState
 
@@ -67,7 +60,7 @@ internal fun TrackStatus(state: PlayerState, words: () -> Float, modifier: Modif
     val offset = (if (reduced) DesignTokens.Size.loadingOffsetReduced else DesignTokens.Size.loadingOffset).dp
     Layout(
         content = {
-            TrackTitle(state.track.title, state.trackChange, dim = state.isLoading, state.isPlaying, words, if (peek) UiTags.PEEK else UiTags.TITLE)
+            TrackTitle(state.track.title, dim = state.isLoading, state.isPlaying, words, if (peek) UiTags.PEEK else UiTags.TITLE)
             if (state.notice == Notice.Loading) LoadingIndicator()
         },
         modifier = modifier,
@@ -83,7 +76,7 @@ internal fun TrackStatus(state: PlayerState, words: () -> Float, modifier: Modif
 }
 
 @Composable
-private fun TrackTitle(title: String, change: Direction?, dim: Boolean, playing: Boolean, words: () -> Float, tag: String) {
+private fun TrackTitle(title: String, dim: Boolean, playing: Boolean, words: () -> Float, tag: String) {
     val palette = LocalPalette.current
     val reduced = LocalReducedMotion.current
     // In the drawing's colour, and dimmed with it while paused, so the name and the drawing read as one thing.
@@ -91,29 +84,6 @@ private fun TrackTitle(title: String, change: Direction?, dim: Boolean, playing:
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val minWidth = remember(style, density) { measurer.chars(style, density, DesignTokens.Size.titleMinWidthChars) }
-
-    var current by remember { mutableStateOf(title) }
-    var incoming by remember { mutableStateOf<String?>(null) }
-    var direction by remember { mutableStateOf(Direction.Next) }
-    val progress = remember { Animatable(1f) }
-
-    LaunchedEffect(title) {
-        if (title == current && incoming == null) return@LaunchedEffect
-        if (change == null || reduced) {
-            progress.snapTo(1f)
-            current = title
-            incoming = null
-            return@LaunchedEffect
-        }
-        // A change during a change starts from the title already on its way in.
-        incoming?.let { current = it }
-        incoming = title
-        direction = change
-        progress.snapTo(0f)
-        progress.animateTo(1f, tween(DesignTokens.Duration.titleChange.toInt(), easing = LinearEasing))
-        current = title
-        incoming = null
-    }
 
     val alpha by animateFloatAsState(
         if (dim) DesignTokens.Motion.loadingDim else 1f,
@@ -125,47 +95,18 @@ private fun TrackTitle(title: String, change: Direction?, dim: Boolean, playing:
         if (reduced) snap() else tween(DesignTokens.Duration.sceneDim.toInt(), easing = FadeEasing),
         label = "paused",
     )
-    val slide = with(density) { DesignTokens.Size.titleSlide.dp.toPx() }
-    val exitX = if (direction == Direction.Next) -slide else slide
-    val easing = DesignTokens.Motion.emphasizedEasing.easing()
-
-    Box(
+    BasicText(
+        title,
         Modifier
             .testTag(tag)
             .widthIn(min = minWidth)
             .graphicsLayer { this.alpha = alpha * paused * words() }
-            .clipToBounds()
             .semantics {
                 heading()
                 liveRegion = LiveRegionMode.Polite
             },
-        contentAlignment = Alignment.Center,
-    ) {
-        // The web's keyframes: the old title leaves over the first 58%, the new
-        // one arrives over the last 66%, each eased on its own stretch.
-        BasicText(
-            current,
-            Modifier.graphicsLayer {
-                val out = if (incoming == null) 0f else easing.transform((progress.value / 0.58f).coerceIn(0f, 1f))
-                this.alpha = 1f - out
-                translationX = exitX * out
-            },
-            style = style,
-        )
-        if (incoming != null) {
-            BasicText(
-                incoming.orEmpty(),
-                Modifier
-                    .clearAndSetSemantics {}
-                    .graphicsLayer {
-                        val into = easing.transform(((progress.value - 0.34f) / 0.66f).coerceIn(0f, 1f))
-                        this.alpha = into
-                        translationX = -exitX * (1f - into)
-                    },
-                style = style,
-            )
-        }
-    }
+        style = style,
+    )
 }
 
 /**

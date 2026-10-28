@@ -30,8 +30,7 @@ function getTitleParts(elements) {
     const title = elements.get("title");
 
     return {
-        current: title.querySelector(".track-title-text--current"),
-        incoming: title.querySelector(".track-title-text--incoming"),
+        current: title.querySelector(".track-title-text"),
         title,
     };
 }
@@ -189,10 +188,9 @@ test("invalid saved preferences fall back to safe defaults", async () => {
             "soundscape.volume": "loud",
         },
     });
-    const { current, incoming } = getTitleParts(elements);
+    const { current } = getTitleParts(elements);
 
     assert.equal(current.textContent, tracks[0].title);
-    assert.equal(incoming.textContent, "");
     assert.equal(document.title, `${tracks[0].title} · Soundscape`);
     assert.equal(document.documentElement.dataset.theme, undefined);
     assert.equal(elements.get("themeSelector").getAttribute("value"), "system");
@@ -309,37 +307,37 @@ test("global keyboard shortcuts leave modified keys alone", async () => {
     assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
 });
 
-test("track title changes animate and settle after animationend", async () => {
+// A change from the media keys turns the page as a swipe would: the page
+// leaving is carried off on the peek while the real one, already showing the
+// new track, comes in.
+test("a track change from the media keys turns the page", async () => {
     const { elements, mediaActions, navigator } = await startAppTestEnvironment();
-    const { current, incoming, title } = getTitleParts(elements);
+    const { current } = getTitleParts(elements);
+    const trackStatus = elements.get("trackStatus");
+    const trackPeek = elements.get("trackPeek");
 
+    document.documentElement.clientWidth = 400;
     await mediaActions.next();
 
-    assert.equal(current.textContent, tracks[0].title);
-    assert.equal(incoming.textContent, tracks[1].title);
+    assert.equal(current.textContent, tracks[1].title);
     assert.equal(document.title, `${tracks[1].title} · Soundscape`);
-    assert.equal(title.classList.contains("is-changing"), true);
-    assert.equal(title.classList.contains("is-changing-next"), true);
+    assert.equal(elements.get("trackPeekTitle").textContent, tracks[0].title);
+    assert.deepEqual(trackStatus.animations[0].keyframes, [{ transform: "translateX(400px)" }, { transform: "translateX(0px)" }]);
+    assert.deepEqual(trackPeek.animations[0].keyframes, [{ transform: "translateX(0px)" }, { transform: "translateX(-400px)" }]);
+    assert.equal(trackStatus.animations[0].options.duration, 420);
     assert.equal(navigator.mediaSession.playbackState, "paused");
 
-    await title.dispatch("animationend", { target: incoming });
-
-    assert.equal(current.textContent, tracks[1].title);
-    assert.equal(incoming.textContent, "");
-    assert.equal(title.classList.contains("is-changing"), false);
-    assert.equal(title.classList.contains("is-changing-next"), false);
+    await waitFor(() => trackPeek.hidden);
 });
 
-test("reduced motion track changes update the title without animation state", async () => {
+test("reduced motion track changes show the new track without turning the page", async () => {
     const { elements, mediaActions } = await startAppTestEnvironment({ matchMediaMatches: true });
-    const { current, incoming, title } = getTitleParts(elements);
+    const { current } = getTitleParts(elements);
 
     await mediaActions.next();
 
     assert.equal(current.textContent, tracks[1].title);
-    assert.equal(incoming.textContent, "");
-    assert.equal(title.classList.contains("is-changing"), false);
-    assert.equal(title.classList.contains("is-changing-next"), false);
+    assert.equal(elements.get("trackStatus").animations.length, 0);
 });
 
 test("browser media element events can resume and pause app playback", async () => {
@@ -457,7 +455,7 @@ test("app handles track load failures gracefully", async () => {
 
     await mediaActions.play();
     const context = audioContexts[0];
-    const { current, incoming, title } = getTitleParts(elements);
+    const { current } = getTitleParts(elements);
 
     context.decodeAudioDataShouldFail = true;
 
@@ -467,8 +465,6 @@ test("app handles track load failures gracefully", async () => {
     assert.equal(audioElement.src, localSourceFor(tracks[0]).url);
     assert.equal(audioElement.playCalls, 1);
     assert.equal(current.textContent, tracks[0].title);
-    assert.equal(incoming.textContent, "");
-    assert.equal(title.classList.contains("is-changing"), false);
     assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
     assert.equal(navigator.mediaSession.playbackState, "playing");
     assert.equal(storage.get("soundscape.currentTrackId"), tracks[0].id);
@@ -521,7 +517,7 @@ async function startFailingPlay(mediaActions, audioContexts) {
 
 // Read from source rather than re-declared, so the timer a test filters on
 // cannot drift from the one the app arms; component-contract.test.js pins the
-// value against the title change animation it has to outlast.
+// value against the page turn it has to outlast.
 const LOADING_INDICATOR_DELAY_MS = Number(
     /LOADING_INDICATOR_DELAY_MS = (\d+)/u.exec(
         readFileSync(new URL("../src/js/script.js", import.meta.url), "utf8"),
@@ -745,13 +741,11 @@ test("media play failures after a track switch keep the switched track selected"
 
     assert.equal(await mediaActions.next(), false);
 
-    const { current, incoming, title } = getTitleParts(elements);
+    const { current } = getTitleParts(elements);
 
     assert.equal(audioElement.src, localSourceFor(tracks[1]).url);
     assert.equal(audioElement.playCalls, 2);
     assert.equal(current.textContent, tracks[1].title);
-    assert.equal(incoming.textContent, "");
-    assert.equal(title.classList.contains("is-changing"), false);
     assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
     assert.equal(navigator.mediaSession.playbackState, "paused");
     assert.equal(elements.get("playPauseButton").getAttribute("aria-label"), "Play");
@@ -796,11 +790,9 @@ test("concurrent track switches do not cause title/state reversion on intermedia
     resolveFirstPlay();
     await firstNext;
 
-    const { current, incoming, title } = getTitleParts(elements);
+    const { current } = getTitleParts(elements);
 
     assert.equal(current.textContent, tracks[2].title);
-    assert.equal(incoming.textContent, "");
-    assert.equal(title.classList.contains("is-changing"), false);
     assert.equal(navigator.mediaSession.metadata.title, tracks[2].title);
     assert.equal(storage.get("soundscape.currentTrackId"), tracks[2].id);
 });

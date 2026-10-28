@@ -36,22 +36,16 @@ test("playback status messages are exposed as live regions", async () => {
     }
 });
 
-// These two numbers live in different files but are one decision. The h1's
-// accessible text only settles when the title animation ends, so an indicator
-// that appeared sooner would announce "Loading soundscape" before the name of
-// the track it refers to.
-test("the loading indicator waits for the title change to settle", async () => {
+// These two numbers are one decision: a page turned by a key has landed
+// before the indicator can appear, so it never shows on a page still moving.
+test("the loading indicator waits for a page turn to land", async () => {
     const script = await readFile(SCRIPT_URL, "utf8");
-    const styles = await readFile(STYLE_URL, "utf8");
     const delayMs = Number(/LOADING_INDICATOR_DELAY_MS = (\d+)/u.exec(script)?.[1]);
-    const animationSeconds = Number(/track-title-current-out ([\d.]+)s/u.exec(styles)?.[1]);
+    const turnMs = Number(/SWIPE_MAX_MS = (\d+)/u.exec(script)?.[1]);
 
     assert.ok(Number.isFinite(delayMs), "script.js should define LOADING_INDICATOR_DELAY_MS.");
-    assert.ok(Number.isFinite(animationSeconds), "style.css should define the title change animation.");
-    assert.ok(
-        delayMs >= animationSeconds * 1000,
-        `The ${delayMs}ms indicator delay should not precede the ${animationSeconds * 1000}ms title change.`,
-    );
+    assert.ok(Number.isFinite(turnMs), "script.js should define SWIPE_MAX_MS.");
+    assert.ok(delayMs >= turnMs, `The ${delayMs}ms indicator delay should not precede the ${turnMs}ms page turn.`);
 });
 
 // Found by directory: every app-owned custom element lives in js/components/.

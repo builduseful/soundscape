@@ -246,10 +246,6 @@ body {
     grid-area: 1 / 1;
 }
 
-.track-title-text--incoming {
-    opacity: 0;
-}
-
 /* Dimmed while the audio for the shown title is still on its way; fades back
    to full opacity the instant it's ready. Not gated behind reduced-motion:
    it's a two-state opacity change, not a decorative loop. */
@@ -683,50 +679,6 @@ textarea {
 
         100% {
             left: 100%;
-        }
-    }
-
-    .track-title.is-changing .track-title-text--current {
-        animation: track-title-current-out 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-    }
-
-    .track-title.is-changing .track-title-text--incoming {
-        animation: track-title-incoming-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-    }
-
-    .track-title.is-changing-next {
-        --title-exit-x: -12px;
-        --title-enter-x: 12px;
-    }
-
-    .track-title.is-changing-previous {
-        --title-exit-x: 12px;
-        --title-enter-x: -12px;
-    }
-
-    @keyframes track-title-current-out {
-        0% {
-            opacity: 1;
-            transform: translateX(0);
-        }
-
-        58%,
-        100% {
-            opacity: 0;
-            transform: translateX(var(--title-exit-x));
-        }
-    }
-
-    @keyframes track-title-incoming-in {
-        0%,
-        34% {
-            opacity: 0;
-            transform: translateX(var(--title-enter-x));
-        }
-
-        100% {
-            opacity: 1;
-            transform: translateX(0);
         }
     }
 }
