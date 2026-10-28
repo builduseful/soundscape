@@ -95,6 +95,10 @@ is always the copy that goes stale.
 
 - Do not run `git commit`, `git push`, `git reset`, `git rebase`, or any other
   git mutations unless explicitly asked.
+- **A patch bump need not wait.** When a change calls for only the smallest
+  version increment (a patch) on any platform and the maintainer has not
+  answered the proposal within about a minute, make the bump and commit it with
+  the change, but do not push. Anything larger waits for a yes.
 - **Never stage or unstage anything on your own initiative.** Staging here is a
   review marker, not a commit being assembled: the maintainer stages a file once
   they have read it and are happy with it, so the index is the record of what
