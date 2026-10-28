@@ -87,6 +87,14 @@ class MainActivity : ComponentActivity() {
             if (persist) diagnostics.action("volume ${(volume * 100).toInt()}%")
             controller?.setVolume(volume, persist)
         }
+
+        override fun setPresence(level: Float, millis: Long) {
+            controller?.setPresence(level, millis)
+        }
+
+        override fun handOver(millis: Long) {
+            controller?.handOver(millis)
+        }
     }
 
     // A link with nowhere to open (no browser) does nothing, rather than crash.

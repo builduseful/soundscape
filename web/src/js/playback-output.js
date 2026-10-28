@@ -20,6 +20,10 @@
  *   play() / pause()          Drive the transport.
  *   canControlVolume()        Does this output's volume belong to the app.
  *   getVolume() / setVolume() Only meaningful while the above is true.
+ *   setPresence(level, s)     How much is let through, apart from the volume:
+ *                             a swipe's fade, following the finger or eased.
+ *   handOver(s)               Fade out and stay out until the next track starts,
+ *                             which rises in; if it fails, the held one does.
  *   canReportPosition()       Can this transport ever report a position.
  *   getMediaSessionPositionState()  The reading now, or null.
  *   failureMessage()          What to tell the user when this output fails,
@@ -63,6 +67,8 @@ export const PLAYBACK_OUTPUT_MEMBERS = [
     "canControlVolume",
     "getVolume",
     "setVolume",
+    "setPresence",
+    "handOver",
     "canReportPosition",
     "getMediaSessionPositionState",
     "failureMessage",

@@ -431,6 +431,85 @@ class PlaybackControllerTest {
         }
     }
 
+    // --- A swipe's fade ------------------------------------------------------------
+
+    // The finger thins the sound under the listener's own volume, and a swipe
+    // let go of brings it back smoothly rather than in a step.
+    @Test
+    fun aSwipeThinsTheSoundAndACancelBringsItBack() {
+        val controller = playing()
+        controller.setVolume(0.5f)
+        controller.setPresence(0.4f)
+        assertEquals(0.2f, engine.appliedVolume, 1e-6f)
+
+        controller.setPresence(1f, DesignTokens.Duration.swipeSettle)
+        scheduler.advance(DesignTokens.Duration.swipeSettle / 2)
+        assertEquals(0.35f, engine.appliedVolume, 0.02f)
+        scheduler.advance(DesignTokens.Duration.swipeSettle)
+        assertEquals(0.5f, engine.appliedVolume, 1e-6f)
+        assertEquals(0, scheduler.pending)
+    }
+
+    // By the time the next page is in, the last sound is gone; the next one
+    // rises only once it is playing, and nothing the finger does meanwhile
+    // brings the old one back.
+    @Test
+    fun aCommittedSwipeHandsTheSoundOverToTheNextTrack() {
+        val controller = playing()
+        controller.handOver(300)
+        scheduler.advance(300)
+        assertEquals(0f, engine.appliedVolume)
+
+        controller.setPresence(1f)
+        controller.next()
+        scheduler.advance(DesignTokens.Duration.swipeFadeIn)
+        assertEquals("held until the track is in", 0f, engine.appliedVolume)
+
+        engine.succeed()
+        scheduler.advance(DesignTokens.Duration.swipeFadeIn / 2)
+        assertEquals(0.5f, engine.appliedVolume, 0.02f)
+        scheduler.advance(DesignTokens.Duration.swipeFadeIn)
+        assertEquals(1f, engine.appliedVolume)
+    }
+
+    @Test
+    fun aHandOverIsReleasedByAFailedLoadAPauseOrNoLoadAtAll() {
+        val controller = playing()
+        controller.handOver(300)
+        controller.next()
+        engine.fail()
+        scheduler.advance(DesignTokens.Duration.swipeFadeIn)
+        assertEquals("failed", 1f, engine.appliedVolume)
+
+        controller.handOver(300)
+        controller.pause()
+        assertEquals("paused: at once", 1f, engine.appliedVolume)
+
+        controller.play()
+        controller.handOver(300)
+        scheduler.advance(300 + DesignTokens.Duration.swipeSettle + DesignTokens.Duration.swipeFadeIn)
+        assertEquals("no load followed", 1f, engine.appliedVolume)
+        assertEquals(0, scheduler.pending)
+    }
+
+    // Swiping again before the last swipe's track is in: that load finishing
+    // must not bring in the sound this swipe is taking away.
+    @Test
+    fun aHandOverWaitsForItsOwnTrack() {
+        val controller = playing()
+        controller.handOver(300)
+        controller.next()
+        controller.handOver(300)
+        engine.succeed()
+        scheduler.advance(300)
+        assertEquals(0f, engine.appliedVolume)
+
+        controller.next()
+        engine.succeed()
+        scheduler.advance(DesignTokens.Duration.swipeFadeIn)
+        assertEquals(1f, engine.appliedVolume)
+    }
+
     // --- Observing ---------------------------------------------------------------
 
     // A listener may act on what it is told — audio focus pauses when its

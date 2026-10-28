@@ -2,6 +2,8 @@ package com.builduseful.soundscape.core.playback
 
 import com.builduseful.soundscape.core.Track
 import com.builduseful.soundscape.core.contract.DesignTokens
+import kotlin.math.PI
+import kotlin.math.cos
 
 /**
  * The player's rules, apart from any platform: which track is on, whether it
@@ -42,6 +44,16 @@ class PlaybackController(
 
     private val listeners = mutableListOf<(PlayerState) -> Unit>()
 
+    /**
+     * How much of the sound a swipe leaves in the room, multiplying the
+     * volume. While [presenceHeld] it stays at what a hand-over set, whatever
+     * the finger does, until the next track is in.
+     */
+    private var presence = 1f
+    private var presenceHeld = false
+    private var presenceFade: Cancellable? = null
+    private var handOverLapse: Cancellable? = null
+
     init {
         engine.setVolume(state.volume)
         engine.setOnStopped(::outputStopped)
@@ -76,6 +88,7 @@ class PlaybackController(
     fun pause() {
         engine.pause()
         state = state.copy(isPlaying = false)
+        releaseHandOver()
     }
 
     fun next() = load((index + 1) % tracks.size, play = state.isPlaying, change = Direction.Next)
@@ -101,13 +114,37 @@ class PlaybackController(
     fun setVolume(volume: Float, persist: Boolean = true) {
         if (volume.isNaN()) return
         val clamped = volume.coerceIn(0f, 1f)
-        engine.setVolume(clamped)
+        engine.setVolume(clamped * presence)
         state = state.copy(volume = clamped)
         if (persist) preferences.write(VOLUME_KEY, clamped.toString())
     }
 
+    /**
+     * A swipe's hold on the sound: [level] (0 to 1) of the volume, reached over
+     * [millis] or at once. Ignored while a hand-over holds it.
+     */
+    fun setPresence(level: Float, millis: Long = 0) {
+        if (presenceHeld) return
+        fadePresence(level.coerceIn(0f, 1f), millis)
+    }
+
+    /**
+     * A swipe has committed: the sound leaves over [millis] and stays away
+     * until the next track is in, which then rises in its place.
+     */
+    fun handOver(millis: Long) {
+        fadePresence(0f, millis)
+        presenceHeld = true
+        handOverLapse?.cancel()
+        // A hand-over no track change follows (the screen went before its
+        // slide ended) must not leave the room silent.
+        handOverLapse = scheduler.schedule(millis + DesignTokens.Duration.swipeSettle) { releaseHandOver() }
+    }
+
     private fun load(target: Int, play: Boolean, change: Direction?) {
         val previousIndex = index
+        handOverLapse?.cancel()
+        handOverLapse = null
         val attempted = tracks[target]
         val loadGeneration = ++generation
 
@@ -125,6 +162,8 @@ class PlaybackController(
             } else {
                 failed(attempted, previousIndex)
             }
+            // Unless a hand-over began since: that one waits for its own track.
+            if (handOverLapse == null) releaseHandOver()
         }
         state = state.copy(track = attempted, trackChange = change ?: state.trackChange, isPlaying = play)
     }
@@ -175,11 +214,48 @@ class PlaybackController(
         state = state.copy(isLoading = false, notice = state.notice.takeUnless { it == Notice.Loading })
     }
 
+    private fun releaseHandOver() {
+        if (!presenceHeld) return
+        presenceHeld = false
+        handOverLapse?.cancel()
+        handOverLapse = null
+        fadePresence(1f, if (engine.isPlaying) DesignTokens.Duration.swipeFadeIn else 0)
+    }
+
+    // Stepped a frame at a time on the controller's thread, along a sine ease
+    // in and out, so neither end of the fade is heard as an edge. Nothing runs
+    // between fades.
+    private fun fadePresence(level: Float, millis: Long) {
+        presenceFade?.cancel()
+        presenceFade = null
+        if (millis <= 0) {
+            applyPresence(level)
+            return
+        }
+        val from = presence
+        val steps = ((millis + FADE_STEP_MILLIS - 1) / FADE_STEP_MILLIS).toInt()
+        var step = 0
+        fun at(i: Int) = millis * i / steps
+        fun next() {
+            step++
+            val eased = (1 - cos(PI * step / steps).toFloat()) / 2
+            applyPresence(from + (level - from) * eased)
+            presenceFade = if (step < steps) scheduler.schedule(at(step + 1) - at(step), ::next) else null
+        }
+        presenceFade = scheduler.schedule(at(1), ::next)
+    }
+
+    private fun applyPresence(level: Float) {
+        presence = level
+        engine.setVolume(state.volume * level)
+    }
+
     private fun Notice?.withoutFailure() = takeUnless { it is Notice.Failed }
 
     // An unknown or missing id falls back to the first track.
     companion object {
         const val TRACK_KEY = "currentTrackId"
         const val VOLUME_KEY = "volume"
+        private const val FADE_STEP_MILLIS = 16L
     }
 }

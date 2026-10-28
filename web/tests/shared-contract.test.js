@@ -234,6 +234,7 @@ describe("the web app matches shared/design-tokens.json", () => {
     test("the audio and loading timings", () => {
         assert.equal(jsConstant(sources.audioPlayer, "LOOP_CROSSFADE_MS"), duration.loopCrossfade);
         assert.equal(jsConstant(sources.audioPlayer, "TRACK_CROSSFADE_SECONDS") * 1000, duration.trackCrossfade);
+        assert.equal(jsConstant(sources.audioPlayer, "SWIPE_FADE_IN_SECONDS") * 1000, duration.swipeFadeIn);
         assert.equal(jsConstant(sources.audioPlayer, "FADE_DURATION_SECONDS") * 1000, duration.volumeRamp);
         assert.equal(jsConstant(sources.script, "LOADING_INDICATOR_DELAY_MS"), duration.loadingIndicatorDelay);
     });
@@ -248,6 +249,7 @@ describe("the gestures, the drawing and the resting screen match shared/design-t
         assert.equal(jsConstant(sources.gestures, "SWIPE_MIN_PX"), gesture.swipeMin);
         assert.equal(jsConstant(sources.gestures, "SWIPE_PROJECTION_MS"), gesture.swipeProjectionMs);
         assert.equal(jsConstant(sources.gestures, "VELOCITY_WINDOW_MS"), gesture.velocityWindowMs);
+        assert.equal(jsConstant(sources.script, "SWIPE_FADE_DISTANCE"), gesture.swipeFadeDistance);
         assert.equal(jsConstant(sources.gestures, "VOLUME_TRAVEL_PX"), gesture.volumeTravel);
         assert.equal(jsConstant(sources.script, "SWIPE_MIN_SPEED"), gesture.swipeMinSpeed);
     });

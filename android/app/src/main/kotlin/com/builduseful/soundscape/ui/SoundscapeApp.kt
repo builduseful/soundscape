@@ -76,6 +76,10 @@ import com.builduseful.soundscape.core.gestures.GestureTracker
 import com.builduseful.soundscape.core.gestures.SwipeDirection
 import com.builduseful.soundscape.core.playback.Notice
 import com.builduseful.soundscape.core.playback.PlayerState
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.min
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -87,6 +91,12 @@ interface PlayerActions {
 
     /** [persist] is false while a slider is still moving. */
     fun setVolume(volume: Float, persist: Boolean)
+
+    /** How much of the sound a swipe leaves, 0 to 1, reached over [millis]. */
+    fun setPresence(level: Float, millis: Long)
+
+    /** A swipe has committed: the sound leaves over [millis] until the next track rises in its place. */
+    fun handOver(millis: Long)
 }
 
 /**
@@ -316,16 +326,25 @@ private class PlayerGestures(
     override fun onSwipeMove(dx: Float) {
         volume.hide()
         pager.drag(dx * pager.density)
+        // The sound thins as the page turns, and is gone by half a page.
+        if (state().isPlaying && pager.width > 0) {
+            val turned = min(1f, abs(dx * pager.density) / (pager.width * DesignTokens.Gesture.swipeFadeDistance))
+            actions().setPresence(cos(turned * PI.toFloat() / 2), 0)
+        }
     }
 
     override fun onSwipe(direction: SwipeDirection, velocity: Float) {
         guide.completed(Gesture.Swipe)
-        pager.swipe(direction, velocity, reduced()) {
+        val millis = pager.swipe(direction, velocity, reduced()) {
             if (it == SwipeDirection.Next) actions().next() else actions().previous()
         }
+        if (state().isPlaying) actions().handOver(millis.toLong())
     }
 
-    override fun onSwipeCancel() = pager.cancel()
+    override fun onSwipeCancel() {
+        actions().setPresence(1f, DesignTokens.Duration.swipeSettle)
+        pager.cancel()
+    }
 
     override fun onVolumeStart() = volume.start(state().volume)
 

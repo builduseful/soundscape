@@ -410,6 +410,10 @@ export function installAppTestEnvironment({
                         this.calls.push({ name: "setValueCurveAtTime", curve, time, duration });
                         this.value = curve[curve.length - 1];
                     },
+                    setTargetAtTime(target, time, timeConstant) {
+                        this.calls.push({ name: "setTargetAtTime", target, time, timeConstant });
+                        this.value = target;
+                    },
                 },
                 connect(node) {
                     this.connectedTo = node;

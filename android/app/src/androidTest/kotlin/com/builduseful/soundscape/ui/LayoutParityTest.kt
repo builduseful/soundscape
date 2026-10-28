@@ -108,6 +108,10 @@ class LayoutParityTest(private val window: Window) {
         override fun previous() = Unit
 
         override fun setVolume(volume: Float, persist: Boolean) = Unit
+
+        override fun setPresence(level: Float, millis: Long) = Unit
+
+        override fun handOver(millis: Long) = Unit
     }
 
     companion object {

@@ -109,6 +109,7 @@
         "swipeMin": 160,
         "swipeMax": 420,
         "swipeSettle": 360,
+        "swipeFadeIn": 900,
         "sceneDim": 900,
         "tutorialDelay": 900,
         "tutorialFade": 320,
@@ -126,6 +127,7 @@
         "swipeProjectionMs": 150,
         "velocityWindowMs": 80,
         "swipeMinSpeed": 0.6,
+        "swipeFadeDistance": 0.5,
         "volumeTravel": 240
     },
     "motion": {

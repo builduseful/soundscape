@@ -353,4 +353,8 @@ private class RecordingPlayer : PlayerActions {
     override fun setVolume(volume: Float, persist: Boolean) {
         calls += "volume $volume" + if (persist) " saved" else ""
     }
+
+    override fun setPresence(level: Float, millis: Long) = Unit
+
+    override fun handOver(millis: Long) = Unit
 }

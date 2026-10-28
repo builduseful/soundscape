@@ -2,6 +2,10 @@ import { createLocalSourceResolver } from "./local-source.js";
 
 const FADE_DURATION_SECONDS = 0.25;
 const TRACK_CROSSFADE_SECONDS = 0.25;
+// How long the next soundscape takes to rise in after a swipe let the last one go.
+const SWIPE_FADE_IN_SECONDS = 0.9;
+// Following a finger: smoothed just enough that its steps are not heard.
+const PRESENCE_FOLLOW_SECONDS = 0.04;
 const LOOP_CROSSFADE_MS = 10;
 const CROSSFADE_CURVE_STEPS = 64;
 
@@ -77,6 +81,8 @@ export class AudioPlayer {
         this.mediaElementSourceNode = undefined;
         this.currentTrackGainNode = undefined;
         this.outgoingGainNode = undefined;
+        this.presenceGainNode = undefined;
+        this.presenceHeld = false;
         this.outgoingSource = null;
         this.volume = 1;
 
@@ -178,7 +184,82 @@ export class AudioPlayer {
      * see playback-output.js.
      */
     async startTrack(track, { wasPlaying = true } = {}) {
-        await this.playTrack(track, true, true, !wasPlaying);
+        try {
+            await this.playTrack(track, true, true, !wasPlaying);
+        } catch (error) {
+            // A swipe handed the room over to a soundscape that will not
+            // come: the one still loaded comes back instead.
+            this.releaseHandOver();
+            throw error;
+        }
+    }
+
+    // --- Presence --------------------------------------------------------
+    //
+    // How much of the soundscape is let through, apart from its volume. A
+    // swipe across turns it down as the page turns: following the finger,
+    // settling back if the swipe is let go, and once it goes ahead, staying
+    // down until the next soundscape is playing, which then rises in. One gain
+    // after both tracks', so the change's crossfade and the volume are left
+    // as they are.
+
+    /** To `level`, 0 to 1: over `seconds`, eased in and out, or at once following a finger. */
+    setPresence(level, seconds = 0) {
+        // Handed over, the room stays quiet until the next soundscape plays:
+        // nothing a finger does meanwhile brings the last one back.
+        if (!this.hasContext() || this.presenceHeld) return;
+
+        if (seconds > 0) {
+            this.fadePresence(level, seconds);
+            return;
+        }
+
+        const gain = this.presenceGainNode.gain;
+        const now = this.audioContext.currentTime;
+
+        gain.cancelScheduledValues(now);
+        gain.setValueAtTime(gain.value, now);
+        gain.setTargetAtTime(level, now, PRESENCE_FOLLOW_SECONDS);
+    }
+
+    /** Down to silence over `seconds`, and held there until the next track starts, which rises in. */
+    handOver(seconds) {
+        if (!this.hasContext()) return;
+
+        this.fadePresence(0, seconds);
+        this.presenceHeld = true;
+    }
+
+    releaseHandOver(seconds = SWIPE_FADE_IN_SECONDS) {
+        if (!this.presenceHeld) return;
+
+        this.presenceHeld = false;
+        this.fadePresence(1, this.playbackRequested ? seconds : 0);
+    }
+
+    fadePresence(level, seconds) {
+        const gain = this.presenceGainNode.gain;
+        const now = this.audioContext.currentTime;
+        const from = gain.value;
+
+        gain.cancelScheduledValues(now);
+
+        if (seconds <= 0 || from === level) {
+            gain.setValueAtTime(level, now);
+            return;
+        }
+
+        // Eased in and out, as every fade here is, so neither end is heard as an edge.
+        const curve = new Float32Array(CROSSFADE_CURVE_STEPS + 1);
+
+        for (let i = 0; i <= CROSSFADE_CURVE_STEPS; i++) {
+            const t = i / CROSSFADE_CURVE_STEPS;
+            curve[i] = from + (level - from) * (1 - Math.cos(t * Math.PI)) / 2;
+        }
+        curve[CROSSFADE_CURVE_STEPS] = level;
+
+        gain.setValueAtTime(from, now);
+        gain.setValueCurveAtTime(curve, now, seconds);
     }
 
     /**
@@ -399,6 +480,7 @@ export class AudioPlayer {
         }
 
         nextSource.start(now);
+        this.releaseHandOver();
 
         this.activeSource = nextSource;
         this.activeBuffer = buffer;
@@ -528,13 +610,18 @@ export class AudioPlayer {
 
         this.currentTrackGainNode = this.audioContext.createGain();
         this.currentTrackGainNode.gain.value = this.volume;
-        this.currentTrackGainNode.connect(this.audioContext.destination);
 
         // Reused for inter-track crossfades so we don't create/destroy a gain
         // node every time the user skips tracks.
         this.outgoingGainNode = this.audioContext.createGain();
         this.outgoingGainNode.gain.value = 0;
-        this.outgoingGainNode.connect(this.audioContext.destination);
+
+        // After both: see setPresence.
+        this.presenceGainNode = this.audioContext.createGain();
+        this.presenceGainNode.gain.value = 1;
+        this.presenceGainNode.connect(this.audioContext.destination);
+        this.currentTrackGainNode.connect(this.presenceGainNode);
+        this.outgoingGainNode.connect(this.presenceGainNode);
     }
 
     handleAudioContextStateChange() {

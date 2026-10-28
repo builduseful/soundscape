@@ -120,6 +120,10 @@ function installAudioContext({ initialState = "suspended" } = {}) {
                     },
                     setValueCurveAtTime(curve, when, duration) {
                         this.valueCurve = { curve, when, duration };
+                        this.value = curve[curve.length - 1];
+                    },
+                    setTargetAtTime(target, when, timeConstant) {
+                        this.target = { target, when, timeConstant };
                     },
                 },
                 connect(node) {
@@ -549,7 +553,10 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
     assert.equal(audibleSource.loopEnd, loopEndForDuration(context.decodedBuffers[0].duration));
     assert.deepEqual(audibleSource.startCalls, [context.currentTime]);
     assert.equal(audibleSource.connectedTo, audibleGainNode);
-    assert.equal(audibleGainNode.connectedTo, context.destination);
+    // Through the swipe's presence, last before the speakers.
+    assert.equal(audibleGainNode.connectedTo, context.gains[3]);
+    assert.equal(context.gains[2].connectedTo, context.gains[3]);
+    assert.equal(context.gains[3].connectedTo, context.destination);
 });
 
 test("playTrack reuses the media element audio graph when replacing tracks", async () => {
@@ -710,6 +717,51 @@ test("playTrack crossfades between two different playing tracks with equal-power
     assert.equal(currentGainNode.gain.valueCurve.duration, 0.25);
     assert.ok(Math.abs(currentGainNode.gain.valueCurve.curve[0]) < 1e-15);
     assert.equal(currentGainNode.gain.valueCurve.curve[currentGainNode.gain.valueCurve.curve.length - 1], 1);
+});
+
+// A swipe lets the room go as the page turns, and the next soundscape rises in
+// only once it plays: however long it takes to load, the last one does not come
+// back meanwhile, whatever a finger does.
+test("a hand-over holds the sound out until the next track starts, then rises it in", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const player = createPlayer(createAudioElement());
+
+    await player.startTrack({ id: "first", url: "/first.ogg" });
+    const presence = contexts[0].gains[3].gain;
+
+    player.setPresence(0.6);
+    assert.equal(presence.target.target, 0.6);
+
+    player.handOver(0.3);
+    assert.equal(presence.valueCurve.duration, 0.3);
+    assert.equal(presence.value, 0);
+
+    presence.target = undefined;
+    player.setPresence(0.9);
+    player.setPresence(1, 0.36);
+    assert.equal(presence.target, undefined);
+    assert.equal(presence.value, 0);
+
+    await player.startTrack({ id: "second", url: "/second.ogg" });
+    assert.equal(presence.valueCurve.duration, 0.9);
+    assert.equal(presence.valueCurve.curve[0], 0);
+    assert.equal(presence.value, 1);
+});
+
+test("a hand-over to a track that fails gives the room back to the one still loaded", async () => {
+    const contexts = installAudioContext();
+    const player = createPlayer(createAudioElement());
+
+    globalThis.fetch = async (url) => (url === "/broken.ogg"
+        ? { ok: false, status: 404, statusText: "Not Found" }
+        : { ok: true, async arrayBuffer() { return new ArrayBuffer(8); } });
+
+    await player.startTrack({ id: "first", url: "/first.ogg" });
+    player.handOver(0.3);
+    await assert.rejects(() => player.startTrack({ id: "broken", url: "/broken.ogg" }));
+
+    assert.equal(contexts[0].gains[3].gain.value, 1);
 });
 
 test("playTrack keeps the current track active if a replacement track fails to load", async () => {

@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.1";
+const VERSION = "2.1.2";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -54,6 +54,8 @@ const SWIPE_MAX_MS = 420;
 // swipe is timed to carry on at the finger's speed.
 const SWIPE_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const SWIPE_SETTLE_MS = 360;
+// How far across, as a share of the page, a swipe takes the sound down to nothing.
+const SWIPE_FADE_DISTANCE = 0.5;
 const TITLE_ANIMATION_CLASSES = ["is-changing", "is-changing-next", "is-changing-previous"];
 const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
 const LOADING_LABEL = "Loading soundscape";
@@ -307,6 +309,13 @@ function handleSwipeMove(dx) {
     swipeDragging = true;
     swipeDx = dx;
     placeSwipe(dx);
+    // The sound goes as the page turns: gently at first, so a touch that
+    // wanders is not heard, and gone by halfway.
+    if (isOutputPlaying()) {
+        const turned = Math.min(1, Math.abs(dx) / (pageWidth() * SWIPE_FADE_DISTANCE));
+
+        activeOutput().setPresence(Math.cos((turned * Math.PI) / 2));
+    }
 }
 
 // Both moved from where the drag left them to `to`, the current one's offset.
@@ -340,6 +349,9 @@ async function handleSwipeGesture(direction, velocity) {
     const speed = Math.max(-velocity * side, SWIPE_MIN_SPEED);
     const duration = reduced ? 0 : Math.min(Math.max((3 * Math.abs(end - swipeDx)) / speed, SWIPE_MIN_MS), SWIPE_MAX_MS);
 
+    // Gone by the time the next one is in place, and quiet until it plays.
+    if (isOutputPlaying()) activeOutput().handOver(duration / 1000);
+
     // Once the peek is exactly where the current one sits, showing what it
     // will, the real one takes over, with the drawing's motion carried across
     // so the change cannot be seen. The title's own slide would replay the
@@ -353,6 +365,7 @@ async function handleSwipeGesture(direction, velocity) {
 }
 
 function handleSwipeCancel() {
+    activeOutput().setPresence(1, SWIPE_SETTLE_MS / 1000);
     whenSlid(slide(0, SWIPE_SETTLE_MS), () => {});
 }
 

@@ -100,7 +100,8 @@ internal class Pager(private val scope: CoroutineScope) {
     }
 
     /** [velocity] is the finger's as it let go, in dp/ms. */
-    fun swipe(direction: SwipeDirection, velocity: Float, reduced: Boolean, change: (SwipeDirection) -> Unit) {
+    /** Returns how long the slide takes, in ms. */
+    fun swipe(direction: SwipeDirection, velocity: Float, reduced: Boolean, change: (SwipeDirection) -> Unit): Int {
         val to = if (direction == SwipeDirection.Next) 1 else -1
         release()
         show(to)
@@ -114,6 +115,7 @@ internal class Pager(private val scope: CoroutineScope) {
             shown = arrived
             change(direction)
         }.start(millis)
+        return millis
     }
 
     fun cancel() {
