@@ -169,6 +169,17 @@ class PlaybackServiceTest {
         assertFalse(audio.isMusicActive)
     }
 
+    // Swiped from recents, the app closes even while it plays.
+    @Test
+    fun swipingTheAppAwayStopsIt() {
+        harness.playing("rain")
+        val service = harness.service
+        val id = service.notificationId
+        harness.onMain { service.onTaskRemoved(null) }
+        harness.waitUntil("the notification to go") { notifications.activeNotifications.none { it.id == id } }
+        assertFalse(harness.isSounding)
+    }
+
     // SystemUI clears away a stopped player's notification a second or so
     // later, as if the person had dismissed it. On API 33, when the new
     // notification shared its id, that landed on it and stopped the sound.

@@ -134,13 +134,11 @@ class PlaybackService : Service() {
         return START_NOT_STICKY
     }
 
-    // Swiped away from recents: playing carries on, as for any media app;
-    // paused, there is nothing left to come back to.
+    // Swiped away from recents, it closes, playing or not, as Spotify, YouTube
+    // Music and Audible do: that is what a listener expects of a swipe away.
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!controller.state.isPlaying) {
-            diagnostics.stopping("swiped away while paused")
-            stop()
-        }
+        diagnostics.stopping("swiped away")
+        stop()
     }
 
     override fun onDestroy() {

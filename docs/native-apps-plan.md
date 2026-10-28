@@ -530,7 +530,7 @@ pre-removal state.
 > - **In the foreground from the first play until stopped, paused included**
 >   (the API 37 design note above). Stop is a notification action (Android 8
 >   to 13 cannot swipe a foreground notification away) and the swipe on 14+;
->   swiping the app from recents while paused stops too.
+>   swiping the app from recents stops too, playing or not.
 > - **No media-button resumption.** Once stopped, the session is gone and a
 >   headset key does nothing; that is tested, and is what "fail gracefully"
 >   came to.

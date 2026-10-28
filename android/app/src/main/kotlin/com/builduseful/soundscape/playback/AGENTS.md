@@ -10,8 +10,8 @@ package only delivers the OS's events to it and shows its state.
 - **In the foreground from the first play until stopped, paused included.** On
   API 37 a paused app outside the foreground cannot be resumed from its
   notification or a headset. Stop (notification action, swipe on 14+, the
-  session's stop, or swiping the app from recents while paused) is the only way
-  out.
+  session's stop, or swiping the app from recents, playing or not) is the only
+  way out.
 - **Foreground before focus.** The service observes the controller before
   `AudioFocusRules` does, so it is in the foreground before focus is asked for.
 - **No POST_NOTIFICATIONS.** A media-session notification is exempt on 13+;
