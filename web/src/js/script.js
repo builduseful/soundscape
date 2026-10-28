@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.0";
+const VERSION = "2.1.1";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -167,6 +167,7 @@ attachGestures(document.querySelector(".container"), {
     onVolumeStart: handleVolumeGestureStart,
     onVolumeChange: handleVolumeGestureChange,
     onVolumeEnd: handleVolumeGestureEnd,
+    onVolumeCancel: handleVolumeGestureCancel,
 });
 
 updateThemePreference(loadThemePreference(), false);
@@ -400,6 +401,12 @@ function handleVolumeGestureChange(change) {
 function handleVolumeGestureEnd() {
     savePreference(SAVED_VOLUME_KEY, volumeControl.value);
     gestureTutorial.completed("volume");
+}
+
+function handleVolumeGestureCancel() {
+    volumeControl.value = String(volumeAtGestureStart);
+    applyVolume(volumeAtGestureStart);
+    hideGestureVolume();
 }
 
 // The level a drag set stays to be read until the screen rests, and goes with

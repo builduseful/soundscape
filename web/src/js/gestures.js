@@ -21,6 +21,15 @@ export const SWIPE_PROJECTION_MS = 150;
 const VELOCITY_WINDOW_MS = 80;
 /** How far a drag travels to cross the whole volume range: one easy thumb stroke. */
 export const VOLUME_TRAVEL_PX = 240;
+/**
+ * How far in from the side a swipe across is the system's back gesture. A page
+ * cannot ask where that begins, as Android's app does, so this is a little over
+ * the phones' own: Android's 24dp by default, iOS's 20pt.
+ */
+export const SYSTEM_EDGE_PX = 32;
+
+/** Where a touch began, as far as the system's own gestures are concerned (see down). */
+const NO_REACH = { across: false, upDown: false };
 
 /**
  * Classifies one pointer's movement into a gesture. Free of the DOM, so the
@@ -39,11 +48,17 @@ export const VOLUME_TRAVEL_PX = 240;
  * @param {() => void} handlers.onVolumeStart
  * @param {(change: number) => void} handlers.onVolumeChange - The change since the drag began, as a fraction of the range; up is louder.
  * @param {() => void} handlers.onVolumeEnd
+ * @param {() => void} handlers.onVolumeCancel - Taken away by the system before it ended: the level goes back to where the drag found it.
  */
 export function createGestureTracker(handlers) {
     let start = null;
     let axis = null;
+    let reach = NO_REACH;
     let samples = [];
+
+    function isReached() {
+        return reach.across || reach.upDown;
+    }
 
     function velocity() {
         const last = samples.at(-1);
@@ -57,11 +72,20 @@ export function createGestureTracker(handlers) {
             return start !== null;
         },
 
-        down(x, y, time) {
+        /**
+         * From the sides the system swipes across (back); from the top and
+         * bottom it drags up and down. Begun there, that way is left to it;
+         * the other way, and a tap, are still the player's. Such a touch is not
+         * pressed in: it is most likely the system's, and the press would only
+         * flicker as the system takes it.
+         * @param {{ across: boolean, upDown: boolean }} [systemReach]
+         */
+        down(x, y, time, systemReach = NO_REACH) {
             start = { x, y, time };
             axis = null;
+            reach = systemReach;
             samples = [{ x, time }];
-            handlers.onPress();
+            if (!isReached()) handlers.onPress();
         },
 
         move(x, y, time) {
@@ -74,7 +98,9 @@ export function createGestureTracker(handlers) {
             const dy = y - start.y;
 
             if (!axis && Math.max(Math.abs(dx), Math.abs(dy)) > TAP_SLOP_PX) {
-                axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+                // "system": the way the system's own gesture goes, from where it began.
+                if (Math.abs(dx) > Math.abs(dy)) axis = reach.across ? "system" : "x";
+                else axis = reach.upDown ? "system" : "y";
                 if (axis === "y") handlers.onVolumeStart();
             }
 
@@ -102,19 +128,20 @@ export function createGestureTracker(handlers) {
                 } else {
                     handlers.onSwipeCancel();
                 }
-            } else if (time - began.time <= TAP_MAX_MS) {
+            } else if (!axis && time - began.time <= TAP_MAX_MS) {
                 handlers.onTap();
             }
-            handlers.onRelease();
+            if (!isReached()) handlers.onRelease();
         },
 
+        /** Taken away before it ended, most often by the system claiming it as its own gesture: undone. */
         cancel() {
             if (!start) return;
 
             start = null;
-            if (axis === "y") handlers.onVolumeEnd();
+            if (axis === "y") handlers.onVolumeCancel();
             else if (axis === "x") handlers.onSwipeCancel();
-            handlers.onRelease();
+            if (!isReached()) handlers.onRelease();
         },
     };
 }
@@ -135,7 +162,9 @@ export function attachGestures(surface, handlers) {
 
         pointerId = event.pointerId;
         surface.setPointerCapture(pointerId);
-        tracker.down(event.clientX, event.clientY, event.timeStamp);
+        // Only the sides: a page stops short of the system's bars, where home and the shade begin.
+        const edge = event.clientX < SYSTEM_EDGE_PX || event.clientX > document.documentElement.clientWidth - SYSTEM_EDGE_PX;
+        tracker.down(event.clientX, event.clientY, event.timeStamp, { across: edge, upDown: false });
     });
     surface.addEventListener("pointermove", (event) => {
         if (event.pointerId === pointerId) tracker.move(event.clientX, event.clientY, event.timeStamp);

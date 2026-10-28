@@ -193,6 +193,13 @@ internal class DragVolume {
         active = false
     }
 
+    /** Back to where the drag found it, and gone. Returns that level. */
+    fun cancel(): Float {
+        level = from
+        active = false
+        return from
+    }
+
     fun rest() {
         if (!active) return
         active = false

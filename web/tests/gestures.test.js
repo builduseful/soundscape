@@ -16,6 +16,7 @@ function track() {
         onVolumeStart: () => calls.push("volume start"),
         onVolumeChange: (change) => calls.push(`volume ${change.toFixed(2)}`),
         onVolumeEnd: () => calls.push("volume end"),
+        onVolumeCancel: () => calls.push("volume cancelled"),
     });
 
     return { calls, presses, tracker };
@@ -135,7 +136,9 @@ test("a volume drag that wanders sideways stays a volume drag", () => {
     assert.deepEqual(calls, ["volume start", "volume 0.08", "volume 0.08", "volume end"]);
 });
 
-test("a cancelled drag still ends what it began, and a cancelled tap is nothing", () => {
+// A cancel is the system taking the touch for its own gesture: what the
+// drag had done is undone, rather than kept as if it were meant.
+test("a cancelled drag is undone, and a cancelled tap is nothing", () => {
     const { calls, tracker } = track();
 
     tracker.down(100, 300, 0);
@@ -147,5 +150,32 @@ test("a cancelled drag still ends what it began, and a cancelled tap is nothing"
     tracker.down(100, 300, 2000);
     tracker.cancel();
 
-    assert.deepEqual(calls, ["volume start", "volume 0.08", "volume end", `across ${-2 * TAP_SLOP_PX}`, "swipe cancelled"]);
+    assert.deepEqual(calls, ["volume start", "volume 0.08", "volume cancelled", `across ${-2 * TAP_SLOP_PX}`, "swipe cancelled"]);
+});
+
+// Back is a swipe in from the side, home and the shade a drag from the bottom
+// and top. Begun there, that way is the system's, and the player neither moves
+// with it nor acts on it; the other way, and a tap, are still the player's.
+// Nothing is pressed in: it is most likely the system's.
+test("the system's own gestures are left to it where they begin", () => {
+    const { calls, presses, tracker } = track();
+    const side = { across: true, upDown: false };
+    const bottom = { across: false, upDown: true };
+
+    tracker.down(2, 300, 0, side);
+    tracker.move(2 + 2 * SWIPE_MIN_PX, 300, 100);
+    tracker.up(2 + 2 * SWIPE_MIN_PX, 300, 150);
+    tracker.down(200, 790, 1000, bottom);
+    tracker.move(200, 790 - VOLUME_TRAVEL_PX / 2, 1100);
+    tracker.up(200, 790 - VOLUME_TRAVEL_PX / 2, 1150);
+    assert.deepEqual(calls, []);
+
+    tracker.down(2, 300, 2000, side);
+    tracker.move(2, 300 - VOLUME_TRAVEL_PX / 2, 2100);
+    tracker.up(2, 300 - VOLUME_TRAVEL_PX / 2, 2200);
+    tracker.down(2, 300, 3000, side);
+    tracker.up(2, 300, 3100);
+
+    assert.deepEqual(calls, ["volume start", "volume 0.50", "volume end", "tap"]);
+    assert.deepEqual(presses, []);
 });

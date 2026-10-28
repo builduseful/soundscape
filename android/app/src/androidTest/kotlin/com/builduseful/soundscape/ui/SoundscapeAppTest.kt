@@ -102,12 +102,13 @@ class SoundscapeAppTest {
         assertEquals(listOf("playPause", "playPause"), player.calls)
     }
 
+    // Begun clear of the sides: a swipe in from the very edge is the system's back.
     @Test
     fun aSwipeChangesTheTrack() {
         show()
-        tag(UiTags.PAGE).performTouchInput { swipeLeft() }
+        tag(UiTags.PAGE).performTouchInput { swipeLeft(startX = width * 0.8f, endX = width * 0.2f) }
         rule.waitForIdle()
-        tag(UiTags.PAGE).performTouchInput { swipeRight() }
+        tag(UiTags.PAGE).performTouchInput { swipeRight(startX = width * 0.2f, endX = width * 0.8f) }
         rule.waitForIdle()
         assertEquals(listOf("next", "previous"), player.calls)
     }

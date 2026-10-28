@@ -47,6 +47,10 @@ class GestureTrackerTest {
             override fun onVolumeEnd() {
                 calls += "volume end"
             }
+
+            override fun onVolumeCancel() {
+                calls += "volume cancelled"
+            }
         },
     )
 
@@ -159,8 +163,10 @@ class GestureTrackerTest {
         assertEquals(listOf("volume start", "volume 0.08", "volume 0.08", "volume end"), calls)
     }
 
+    // A cancel is the system taking the touch for its own gesture: what the
+    // drag had done is undone, rather than kept as if it were meant.
     @Test
-    fun aCancelledDragStillEndsWhatItBeganAndACancelledTapIsNothing() {
+    fun aCancelledDragIsUndoneAndACancelledTapIsNothing() {
         tracker.down(100f, 300f, 0)
         tracker.move(100f, 300f - 2 * slop, 100)
         tracker.cancel()
@@ -171,9 +177,36 @@ class GestureTrackerTest {
         tracker.cancel()
 
         assertEquals(
-            listOf("volume start", "volume 0.08", "volume end", "across ${(-2 * slop).toInt()}", "swipe cancelled"),
+            listOf("volume start", "volume 0.08", "volume cancelled", "across ${(-2 * slop).toInt()}", "swipe cancelled"),
             calls,
         )
+    }
+
+    // Back is a swipe in from the side, home and the shade a drag from the
+    // bottom and top. Begun there, that way is the system's, and the player
+    // neither moves with it nor acts on it; the other way, and a tap, are
+    // still the player's. Nothing is pressed in: it is most likely the system's.
+    @Test
+    fun theSystemsOwnGesturesAreLeftToItWhereTheyBegin() {
+        val side = SystemReach(across = true, upDown = false)
+        val bottom = SystemReach(across = false, upDown = true)
+
+        tracker.down(2f, 300f, 0, side)
+        tracker.move(2f + 2 * swipe, 300f, 100)
+        tracker.up(2f + 2 * swipe, 300f, 150)
+        tracker.down(200f, 790f, 1000, bottom)
+        tracker.move(200f, 790f - travel / 2, 1100)
+        tracker.up(200f, 790f - travel / 2, 1150)
+        assertEquals(emptyList<String>(), calls)
+
+        tracker.down(2f, 300f, 2000, side)
+        tracker.move(2f, 300f - travel / 2, 2100)
+        tracker.up(2f, 300f - travel / 2, 2200)
+        tracker.down(2f, 300f, 3000, side)
+        tracker.up(2f, 300f, 3100)
+
+        assertEquals(listOf("volume start", "volume 0.50", "volume end", "tap"), calls)
+        assertEquals(emptyList<String>(), presses)
     }
 
     // The speed is the finger's as it let go, over its last stretch only: a
@@ -194,6 +227,7 @@ class GestureTrackerTest {
                 override fun onVolumeStart() = Unit
                 override fun onVolumeChange(change: Float) = Unit
                 override fun onVolumeEnd() = Unit
+                override fun onVolumeCancel() = Unit
             },
         )
         flick.down(300f, 100f, 0)

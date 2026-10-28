@@ -30,6 +30,21 @@ interface GestureHandlers {
     fun onVolumeChange(change: Float)
 
     fun onVolumeEnd()
+
+    /** Taken away by the system before it ended: the level goes back to where the drag found it. */
+    fun onVolumeCancel()
+}
+
+/**
+ * Where a touch began, as far as the system's own gestures are concerned.
+ * From the sides the system swipes across (back); from the top and bottom it
+ * drags up and down (the shade, home). Each is left to it there; the other
+ * way, and a tap, are still the player's.
+ */
+data class SystemReach(val across: Boolean, val upDown: Boolean) {
+    companion object {
+        val None = SystemReach(across = false, upDown = false)
+    }
 }
 
 /** Leftward is next and rightward previous, as pages turn. */
@@ -52,6 +67,7 @@ class GestureTracker(private val handlers: GestureHandlers) {
     private var startY = 0f
     private var startTime = 0L
     private var axis: Axis? = null
+    private var reach = SystemReach.None
 
     // The last stretch of movement, which the release speed is taken over.
     private val times = LongArray(SAMPLES)
@@ -61,15 +77,20 @@ class GestureTracker(private val handlers: GestureHandlers) {
     var active = false
         private set
 
-    fun down(x: Float, y: Float, time: Long) {
+    /**
+     * A touch in the system's reach is not pressed in: it is most likely the
+     * system's, and the press would only flicker as the system takes it.
+     */
+    fun down(x: Float, y: Float, time: Long, reach: SystemReach = SystemReach.None) {
         startX = x
         startY = y
         startTime = time
         axis = null
+        this.reach = reach
         active = true
         samples = 0
         sample(x, time)
-        handlers.onPress()
+        if (reach == SystemReach.None) handlers.onPress()
     }
 
     fun move(x: Float, y: Float, time: Long) {
@@ -79,13 +100,16 @@ class GestureTracker(private val handlers: GestureHandlers) {
         val dx = x - startX
         val dy = y - startY
         if (axis == null && max(abs(dx), abs(dy)) > Gesture.tapSlop) {
-            axis = if (abs(dx) > abs(dy)) Axis.X else Axis.Y
+            axis = when {
+                abs(dx) > abs(dy) -> if (reach.across) Axis.System else Axis.X
+                else -> if (reach.upDown) Axis.System else Axis.Y
+            }
             if (axis == Axis.Y) handlers.onVolumeStart()
         }
         when (axis) {
             Axis.Y -> handlers.onVolumeChange(-dy / Gesture.volumeTravel)
             Axis.X -> handlers.onSwipeMove(dx)
-            null -> Unit
+            Axis.System, null -> Unit
         }
     }
 
@@ -106,20 +130,22 @@ class GestureTracker(private val handlers: GestureHandlers) {
                     handlers.onSwipeCancel()
                 }
             }
+            Axis.System -> Unit
             null -> if (time - startTime <= Gesture.tapMaxMs) handlers.onTap()
         }
-        handlers.onRelease()
+        if (reach == SystemReach.None) handlers.onRelease()
     }
 
+    /** Taken away before it ended, most often by the system claiming it as its own gesture: undone. */
     fun cancel() {
         if (!active) return
         active = false
         when (axis) {
-            Axis.Y -> handlers.onVolumeEnd()
+            Axis.Y -> handlers.onVolumeCancel()
             Axis.X -> handlers.onSwipeCancel()
-            null -> Unit
+            Axis.System, null -> Unit
         }
-        handlers.onRelease()
+        if (reach == SystemReach.None) handlers.onRelease()
     }
 
     private fun sample(x: Float, time: Long) {
@@ -148,7 +174,8 @@ class GestureTracker(private val handlers: GestureHandlers) {
         return if (times[last] > times[first]) (xs[last] - xs[first]) / (times[last] - times[first]) else 0f
     }
 
-    private enum class Axis { X, Y }
+    // System: the way the system's own gesture goes, from where it began; left to it.
+    private enum class Axis { X, Y, System }
 
     private companion object {
         // Far more than arrive in the window at any touch rate a screen has.

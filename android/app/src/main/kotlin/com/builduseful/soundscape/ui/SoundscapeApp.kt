@@ -335,6 +335,8 @@ private class PlayerGestures(
         actions().setVolume(volume.level, true)
         guide.completed(Gesture.Volume)
     }
+
+    override fun onVolumeCancel() = actions().setVolume(volume.cancel(), false)
 }
 
 /**
