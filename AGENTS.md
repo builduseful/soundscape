@@ -93,6 +93,7 @@ is always the copy that goes stale.
 
 ## Agent Workflow
 
+- **Work on `trunk`** unless asked to use another branch.
 - Do not run `git commit`, `git push`, `git reset`, `git rebase`, or any other
   git mutations unless explicitly asked.
 - **A patch bump need not wait.** When a change calls for only the smallest
