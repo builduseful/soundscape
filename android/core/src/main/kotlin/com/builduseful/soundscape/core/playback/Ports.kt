@@ -15,12 +15,14 @@ interface AudioEngine {
 
     /**
      * Switches to [track], playing iff [play], crossfading from whatever is
-     * playing. Calls [done] exactly once: with null once the switch has
-     * happened, or with the failure, in which case the engine is left as it
-     * was. A later [load] supersedes this one, which must then never become
-     * the engine's track; [pause] makes it land paused.
+     * playing — or, if [cut], at once, with nothing of the old track left to
+     * be heard: for when its sound has already been taken away. Calls [done]
+     * exactly once: with null once the switch has happened (after a cut, once
+     * the new track is being heard), or with the failure, in which case the
+     * engine is left as it was. A later [load] supersedes this one, which must
+     * then never become the engine's track; [pause] makes it land paused.
      */
-    fun load(track: Track, play: Boolean, done: (Throwable?) -> Unit)
+    fun load(track: Track, play: Boolean, cut: Boolean, done: (Throwable?) -> Unit)
 
     /** Resumes [loadedTrack]. Throws if the output will not start. */
     fun play()

@@ -55,6 +55,12 @@ class LoopingAudioEngine(
     private val changed = lock.newCondition()
     private var output: Output? = null
     private var wantPlaying = false
+    /**
+     * A cut's [load], waiting for its track to be heard: told once the render
+     * thread has let go of the old track's queued audio and started afresh,
+     * or once paused, when nothing is heard anyway.
+     */
+    private var cutHeard: (() -> Unit)? = null
     /** Counts requests to play, so news that the output failed is not applied to a later one. */
     private var playRequest = 0
     private var released = false
@@ -63,7 +69,7 @@ class LoopingAudioEngine(
     @Volatile internal var renderThreadId = 0
         private set
 
-    override fun load(track: Track, play: Boolean, done: (Throwable?) -> Unit) {
+    override fun load(track: Track, play: Boolean, cut: Boolean, done: (Throwable?) -> Unit) {
         val id = ++loadId
         pendingPlay = play
         val requestedAt = SystemClock.uptimeMillis()
@@ -78,13 +84,15 @@ class LoopingAudioEngine(
                 }
                 else -> {
                     val startedAt = SystemClock.uptimeMillis()
-                    val error = runCatching { install(track, mapLoop(assets, "soundscapes/${track.id}.wav")) }.exceptionOrNull()
+                    val error = runCatching {
+                        install(track, mapLoop(assets, "soundscapes/${track.id}.wav"), cut) { done(null) }
+                    }.exceptionOrNull()
                     Diagnostics.log(
                         if (error == null) "load" else "issue",
                         "load ${track.id}: ${error ?: "mapped"} in ${SystemClock.uptimeMillis() - startedAt} ms, " +
                             "${startedAt - requestedAt} ms after it was asked for",
                     )
-                    done(error)
+                    if (error != null) done(error)
                 }
             }
         }
@@ -127,8 +135,9 @@ class LoopingAudioEngine(
         }
     }
 
-    private fun install(track: Track, loop: LoopAsset) {
-        lock.withLock {
+    /** Calls [switched] once the switch has happened: at once, or after a cut, once it is heard. */
+    private fun install(track: Track, loop: LoopAsset, cut: Boolean, switched: () -> Unit) {
+        val waits = lock.withLock {
             val out = output ?: Output(loop.sampleRate, loop.channels).also {
                 it.track.setVolume(volume)
                 output = it
@@ -136,11 +145,18 @@ class LoopingAudioEngine(
             check(out.sampleRate == loop.sampleRate && out.channels == loop.channels) {
                 "${track.id} is ${loop.sampleRate} Hz × ${loop.channels}; the output is ${out.sampleRate} Hz × ${out.channels}"
             }
-            out.mixer.switchTo(LoopReader(loop.pcm, loop.channels), crossfade = wantPlaying && pendingPlay)
+            out.mixer.switchTo(LoopReader(loop.pcm, loop.channels), crossfade = !cut && wantPlaying && pendingPlay)
             out.start()
+            // Paused, the old track's audio is already let go of.
+            if (!cut || !wantPlaying) return@withLock false
+            // One this supersedes is past waiting: its switch has happened.
+            tellCutHeard()
+            cutHeard = switched
+            true
         }
         loadedTrack = track
         setPlaying(pendingPlay)
+        if (!waits) switched()
     }
 
     private fun setPlaying(playing: Boolean) {
@@ -219,26 +235,35 @@ class LoopingAudioEngine(
             var running = false
             // TEMPORARY diagnostics: underruns so far, read afresh at each start as a flush may count as one.
             var underruns = 0
+
+            // Stops the output and drops what is queued: none of it is heard.
+            fun letGo() {
+                if (!running) return
+                track.pause()
+                track.flush()
+                running = false
+            }
+
             while (true) {
                 lock.withLock {
                     while (!wantPlaying && !released) {
-                        if (running) {
-                            // Flushed, so a track changed while paused does not
-                            // begin with the old one's last quarter of a second.
-                            track.pause()
-                            track.flush()
-                            running = false
-                        }
+                        // So a track changed while paused does not begin
+                        // with the old one's last quarter of a second.
+                        letGo()
+                        tellCutHeard()
                         changed.await()
                     }
                     if (released) {
                         if (running) track.stop()
                         return
                     }
+                    // A cut: what is queued is the old track.
+                    if (cutHeard != null) letGo()
                     if (!running) {
                         running = startTrack(chunk)
                         underruns = track.underrunCount
                     }
+                    tellCutHeard()
                     mixer.render(chunk, chunkFrames)
                 }
                 if (!running) continue
@@ -276,6 +301,13 @@ class LoopingAudioEngine(
                 false
             }
         }
+    }
+
+    // Under [lock].
+    private fun tellCutHeard() {
+        val heard = cutHeard ?: return
+        cutHeard = null
+        main.post { heard() }
     }
 
     private fun outputStopped(request: Int) {

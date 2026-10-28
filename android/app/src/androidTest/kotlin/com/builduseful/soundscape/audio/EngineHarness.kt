@@ -23,12 +23,12 @@ class EngineHarness : AutoCloseable {
     }
 
     /** Starts a load from the test thread and returns a handle to wait on its result. */
-    fun load(id: String, play: Boolean): PendingLoad = onMain { startLoad(id, play) }
+    fun load(id: String, play: Boolean, cut: Boolean = false): PendingLoad = onMain { startLoad(id, play, cut) }
 
     /** [load], for use inside [onMain]. */
-    fun startLoad(id: String, play: Boolean): PendingLoad {
+    fun startLoad(id: String, play: Boolean, cut: Boolean = false): PendingLoad {
         val pending = PendingLoad()
-        engine.load(track(id), play) { pending.finish(it) }
+        engine.load(track(id), play, cut) { pending.finish(it) }
         return pending
     }
 

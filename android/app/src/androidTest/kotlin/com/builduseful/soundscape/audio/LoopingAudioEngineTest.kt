@@ -76,6 +76,29 @@ class LoopingAudioEngineTest {
         assertEquals(0, engine.underrunCount)
     }
 
+    // A cut is done only once the new track is being heard, however it ends:
+    // played, superseded by another cut, or paused. Each is told exactly once.
+    @Test
+    fun aCutIsDoneOnceItsTrackIsHeard() {
+        harness.loaded("rain", play = true)
+        assertNull(harness.load("garden-rain", play = true, cut = true).await())
+        assertTrue(harness.onMain { engine.isPlaying })
+
+        // Each installed in its own turn, the second most likely while the
+        // first still waits on the render thread.
+        val first = harness.load("pink-noise", play = true, cut = true)
+        val second = harness.load("brown-noise", play = true, cut = true)
+        assertNull(first.await())
+        assertNull(second.await())
+        assertEquals("brown-noise", harness.onMain { engine.loadedTrack?.id })
+
+        val paused = harness.onMain {
+            harness.startLoad("rain", play = true, cut = true).also { engine.pause() }
+        }
+        assertNull(paused.await())
+        assertFalse(harness.onMain { engine.isPlaying })
+    }
+
     @Test
     fun pausingDuringALoadLandsItPaused() {
         val load = harness.load("garden-rain", play = true)
@@ -97,7 +120,7 @@ class LoopingAudioEngineTest {
     fun anUnknownTrackFailsItsLoadAndLeavesTheEngineAsItWas() {
         harness.loaded("rain", play = false)
         val pending = EngineHarness.PendingLoad()
-        harness.onMain { engine.load(harness.track("rain").copy(id = "no-such-track"), play = true) { pending.finish(it) } }
+        harness.onMain { engine.load(harness.track("rain").copy(id = "no-such-track"), play = true, cut = false) { pending.finish(it) } }
         val error = pending.await()
 
         assertTrue(error != null && error !is CancellationException)

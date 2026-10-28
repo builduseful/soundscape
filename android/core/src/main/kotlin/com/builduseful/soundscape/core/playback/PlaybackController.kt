@@ -155,7 +155,8 @@ class PlaybackController(
 
         // The engine is told before the listeners, so one that reacts by
         // pausing (focus refused) pauses this load rather than an older one.
-        engine.load(attempted, play) { error ->
+        // After a hand-over the old sound is already gone: nothing to fade from.
+        engine.load(attempted, play, cut = presenceHeld) { error ->
             if (loadGeneration != generation) return@load
             endLoading()
             if (error == null) {

@@ -4,7 +4,7 @@ import com.builduseful.soundscape.core.Track
 
 /** An engine whose loads finish only when a test says so, honouring the [AudioEngine] contract. */
 class FakeEngine : AudioEngine {
-    class Load(val track: Track, var play: Boolean, val done: (Throwable?) -> Unit)
+    class Load(val track: Track, var play: Boolean, val cut: Boolean, val done: (Throwable?) -> Unit)
 
     val loads = mutableListOf<Load>()
     var appliedVolume = -1f
@@ -14,8 +14,8 @@ class FakeEngine : AudioEngine {
     override var isPlaying = false
     private var onStopped: () -> Unit = {}
 
-    override fun load(track: Track, play: Boolean, done: (Throwable?) -> Unit) {
-        loads += Load(track, play, done)
+    override fun load(track: Track, play: Boolean, cut: Boolean, done: (Throwable?) -> Unit) {
+        loads += Load(track, play, cut, done)
     }
 
     override fun play() {

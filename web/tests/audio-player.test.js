@@ -719,6 +719,26 @@ test("playTrack crossfades between two different playing tracks with equal-power
     assert.equal(currentGainNode.gain.valueCurve.curve[currentGainNode.gain.valueCurve.curve.length - 1], 1);
 });
 
+// After a swipe's hand-over the old sound is already gone. A crossfade would
+// bring a little of it back as the new one rises: the change is a cut instead.
+test("a change after a hand-over is a cut, not a crossfade", async () => {
+    const contexts = installAudioContext();
+    installFetch();
+    const player = createPlayer(createAudioElement());
+
+    await player.playTrack({ id: "first", url: "/first.ogg" }, true);
+    const firstSource = contexts[0].bufferSources[0];
+    player.handOver(0.3);
+
+    await player.playTrack({ id: "second", url: "/second.ogg" }, true);
+
+    const [, currentGainNode, outgoingGainNode] = contexts[0].gains;
+    assert.equal(firstSource.stopCalls, 1);
+    assert.notEqual(firstSource.connectedTo, outgoingGainNode);
+    assert.equal(outgoingGainNode.gain.valueCurve, undefined);
+    assert.equal(currentGainNode.gain.value, 1);
+});
+
 // A swipe lets the room go as the page turns, and the next soundscape rises in
 // only once it plays: however long it takes to load, the last one does not come
 // back meanwhile, whatever a finger does.

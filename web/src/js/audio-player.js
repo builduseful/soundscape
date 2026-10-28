@@ -239,6 +239,20 @@ export class AudioPlayer {
         this.fadePresence(1, this.playbackRequested ? seconds : 0, (t) => Math.sin(t * Math.PI / 2));
     }
 
+    // A crossfade still under way is cut short: its outgoing track stops and
+    // the current one is at full volume, so nothing of it outlives a cut.
+    endCrossfade(now) {
+        if (this.outgoingSource) {
+            try {
+                this.outgoingSource.stop();
+                this.outgoingSource.disconnect(this.outgoingGainNode);
+            } catch {}
+            this.outgoingSource = null;
+        }
+        this.currentTrackGainNode.gain.cancelScheduledValues(now);
+        this.currentTrackGainNode.gain.setValueAtTime(this.volume, now);
+    }
+
     fadePresence(level, seconds, ease = (t) => (1 - Math.cos(t * Math.PI)) / 2) {
         const gain = this.presenceGainNode.gain;
         const now = this.audioContext.currentTime;
@@ -426,7 +440,9 @@ export class AudioPlayer {
         // scheduled from where the context's clock actually is once it is
         // running, not from before it resumed.
         const now = this.audioContext.currentTime;
-        const shouldCrossfade = previousSource && isTrackChange && startsPlaying;
+        // After a hand-over the old sound is already gone: nothing to fade from,
+        // so the change is a cut, and the new track rises in on its own.
+        const shouldCrossfade = previousSource && isTrackChange && startsPlaying && !this.presenceHeld;
 
         if (shouldCrossfade) {
             // End any previous crossfade that is still fading out so the
@@ -479,6 +495,7 @@ export class AudioPlayer {
             }, TRACK_CROSSFADE_SECONDS * 1000 + 100);
         } else {
             previousSource?.stop();
+            if (this.presenceHeld) this.endCrossfade(now);
         }
 
         nextSource.start(now);

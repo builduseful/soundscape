@@ -472,6 +472,20 @@ class PlaybackControllerTest {
         assertEquals(1f, engine.appliedVolume)
     }
 
+    // Once a hand-over has taken the sound away there is nothing to crossfade
+    // from: the change is a cut, so none of the old track is heard as the new
+    // one rises.
+    @Test
+    fun onlyAChangeAfterAHandOverIsACut() {
+        val controller = playing()
+        controller.next()
+        assertFalse(engine.loads.last().cut)
+
+        controller.handOver(300)
+        controller.next()
+        assertTrue(engine.loads.last().cut)
+    }
+
     @Test
     fun aHandOverIsReleasedByAFailedLoadAPauseOrNoLoadAtAll() {
         val controller = playing()
