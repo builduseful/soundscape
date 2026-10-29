@@ -7,6 +7,7 @@ const originalHTMLElement = globalThis.HTMLElement;
 const originalLocalStorage = globalThis.localStorage;
 const originalLaunchQueue = globalThis.launchQueue;
 const originalMatchMedia = globalThis.matchMedia;
+const originalGetComputedStyle = globalThis.getComputedStyle;
 const originalMediaMetadata = globalThis.MediaMetadata;
 const originalNavigator = globalThis.navigator;
 const originalClearInterval = globalThis.clearInterval;
@@ -80,7 +81,7 @@ class FakeElement {
 
     // Each motion is recorded, and finishes at once.
     animate(keyframes, options) {
-        const animation = { keyframes, options, finished: Promise.resolve(), cancel() {} };
+        const animation = { keyframes, options, finished: Promise.resolve(), cancel() {}, pause() {} };
 
         this.animations.push(animation);
         return animation;
@@ -230,6 +231,8 @@ export function installAppTestEnvironment({
         elements.set(id, new FakeElement());
     }
 
+    // Each drawing sits on its stage, which breathes while paused.
+    for (const id of ["trackScene", "trackPeekScene"]) elements.get(id).parentElement = new FakeElement();
     // Mirrors the `hidden` attribute on the real elements so tests can assert
     // whether a playback failure — or a slow load — is actually surfaced.
     elements.get("playbackError").hidden = true;
@@ -251,6 +254,7 @@ export function installAppTestEnvironment({
         title: "",
         hidden: false,
         documentElement: new FakeElement(),
+        timeline: { currentTime: 0 },
         addEventListener(type, handler) {
             const handlers = documentHandlers.get(type) ?? [];
 
@@ -304,6 +308,7 @@ export function installAppTestEnvironment({
         addEventListener() {},
         removeEventListener() {},
     });
+    globalThis.getComputedStyle = () => ({ opacity: "1", scale: "1" });
     globalThis.MediaMetadata = function FakeMediaMetadata(metadata) {
         Object.assign(this, metadata);
     };
@@ -559,6 +564,7 @@ export function restoreAppTestEnvironment() {
     globalThis.localStorage = originalLocalStorage;
     globalThis.launchQueue = originalLaunchQueue;
     globalThis.matchMedia = originalMatchMedia;
+    globalThis.getComputedStyle = originalGetComputedStyle;
     globalThis.MediaMetadata = originalMediaMetadata;
     globalThis.clearInterval = originalClearInterval;
     globalThis.setInterval = originalSetInterval;

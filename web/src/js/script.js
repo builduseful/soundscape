@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.6";
+const VERSION = "2.1.7";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -54,6 +54,18 @@ const SWIPE_MAX_MS = 420;
 // swipe is timed to carry on at the finger's speed.
 const SWIPE_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const SWIPE_SETTLE_MS = 360;
+// Paused, the drawing is this faint, and breathes out to PAUSED_SCENE_BREATH
+// and SCENE_BREATH_SCALE of its size and back in over SCENE_BREATH_MS.
+const PAUSED_SCENE = 0.55;
+const PAUSED_SCENE_BREATH = 0.4;
+const SCENE_BREATH_SCALE = 0.96;
+const SCENE_BREATH_MS = 5000;
+// The breath is slow enough that a step this often moves it less than a pixel,
+// so it reads as smooth; drawn every frame instead, it would cost a frame at
+// each refresh of the screen.
+const SCENE_BREATH_STEP_MS = 100;
+const SCENE_DIM_MS = 900;
+const FADE_EASING = "cubic-bezier(0.37, 0, 0.63, 1)";
 // How far across, as a share of the page, a swipe takes the sound down to nothing.
 const SWIPE_FADE_DISTANCE = 0.5;
 const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
@@ -61,10 +73,9 @@ const LOADING_LABEL = "Loading soundscape";
 // A track already in the cache decodes in a few milliseconds, so showing the
 // indicator the instant loading starts would flash it on almost every skip.
 // Holding it back until the wait is long enough to notice means it only ever
-// appears when there is a real delay to explain. It also has to outlast the
-// title change animation: the h1's accessible text only settles when that ends,
-// so announcing "loading" sooner would reach a screen reader before the name of
-// the track it refers to. A test pins it against the animation duration.
+// appears when there is a real delay to explain. It also has to outlast a page
+// turned by a key, so it never shows on a page still moving. A test pins it
+// against the turn.
 const LOADING_INDICATOR_DELAY_MS = 450;
 
 customElements.define("app-menu", AppMenu);
@@ -108,6 +119,11 @@ let swipeDragging = false;
 let peekSide = 0;
 // Ends the name and drawing's carrying on after a drag, or settling back, at once.
 let swipeMotion = null;
+// When the paused drawings began to breathe, so every one breathes in step;
+// their breaths, and the timer for the next step.
+let breathStart = null;
+let breaths = [];
+let breathStep = null;
 
 // The local output. Always present, and the one the app falls back to.
 const localOutput = new AudioPlayer(audioElement, {
@@ -938,6 +954,52 @@ function syncPlaybackState(isPlaying) {
     syncRest();
     // The drawing moves while the sound plays, however it was asked to.
     trackScene.toggleAttribute("playing", isPlaying);
+    syncBreath(!isPlaying);
+}
+
+// Paused, the drawing breathes: out, a little smaller and fainter, and back
+// in, slowly. The browser eases it, but it is held and stepped a few times a
+// second (stepBreath), and a hidden page takes no steps. Both pages breathe in
+// step, so a swipe lands mid-breath unseen. Playing brings each up from
+// wherever its breath is: an animation that simply stopped would jump to full
+// strength.
+function syncBreath(paused) {
+    const breathing = paused && !globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (breathing === (breathStart !== null)) return;
+    clearTimeout(breathStep);
+    if (breathing) {
+        const out = { opacity: PAUSED_SCENE_BREATH / PAUSED_SCENE, scale: SCENE_BREATH_SCALE };
+        const options = { duration: SCENE_BREATH_MS / 2, direction: "alternate", iterations: Infinity, easing: FADE_EASING };
+
+        breathStart = document.timeline.currentTime;
+        breaths = stages().map((stage) => stage.animate([{ opacity: 1, scale: 1 }, out], options));
+        for (const breath of breaths) breath.pause();
+        stepBreath(breathStart);
+    } else {
+        breathStart = null;
+        for (const stage of stages()) {
+            const { opacity, scale } = getComputedStyle(stage);
+
+            stage.animate([{ opacity, scale }, { opacity: 1, scale: 1 }], { duration: SCENE_DIM_MS, easing: FADE_EASING });
+        }
+        for (const breath of breaths) breath.cancel();
+        breaths = [];
+    }
+}
+
+function stages() {
+    return [trackScene.parentElement, trackPeekScene.parentElement];
+}
+
+// Waiting for a frame after each pause is what stops the steps in a hidden page.
+function stepBreath(now) {
+    const these = breaths;
+
+    for (const breath of these) breath.currentTime = now - breathStart;
+    breathStep = setTimeout(() => requestAnimationFrame((next) => {
+        if (breaths === these) stepBreath(next);
+    }), SCENE_BREATH_STEP_MS);
 }
 
 // Asked of the active output, which answers null when it has no position yet.

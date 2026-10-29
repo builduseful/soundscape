@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.builduseful.soundscape.core.contract.DesignTokens
 import kotlin.math.tan
+import kotlinx.coroutines.delay
 
 /**
  * The soundscape, drawn, the centre of the screen (the web's `.track-stage`).
@@ -52,12 +53,17 @@ internal fun Stage(trackId: String, playing: Boolean, modifier: Modifier = Modif
         if (reduced) snap() else tween(DesignTokens.Duration.sceneDim.toInt(), easing = FadeEasing),
         label = "breath depth",
     )
+    // It is slow enough that a step each sceneBreathStep moves it less than a
+    // pixel, so it reads as smooth; drawn every frame instead, it would cost a
+    // frame at each refresh of the screen. Each step waits for a frame, so an
+    // app out of sight takes none.
     val breath = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(playing, reduced) {
         if (playing || reduced) return@LaunchedEffect
         val period = DesignTokens.Duration.sceneBreath * 1_000_000f
         var last = withFrameNanos { it }
         while (true) {
+            delay(DesignTokens.Duration.sceneBreathStep)
             withFrameNanos { now ->
                 breath.floatValue = (breath.floatValue + (now - last) / period) % 1f
                 last = now

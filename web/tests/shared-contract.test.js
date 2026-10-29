@@ -272,11 +272,14 @@ describe("the gestures, the drawing and the resting screen match shared/design-t
         assert.equal(rule(page, ".track-status").get("--name-reach"), `calc(${px(size.stageGap)} + ${tokens.type.title.lineHeight} * ${rem(tokens.type.title.size)})`);
         assert.equal(rule(page, ".track-stage track-scene:not([playing])").get("opacity"), String(motion.pausedScene));
         assert.equal(rule(page, ".track-stage track-scene").get("transition"), `opacity ${seconds(duration.sceneDim)} ${bezier(motion.fadeEasing)}`);
-        // Paused, it breathes out to pausedSceneBreath and pausedSceneBreathScale, deepening with the dim.
-        assert.equal(rule(page, MOTION, ".track-stage").get("animation"), `scene-breath ${seconds(duration.sceneBreath)} ${bezier(motion.fadeEasing)} infinite paused`);
-        assert.equal(rule(page, MOTION, ".track-stage").get("transition"), `--breath-depth ${seconds(duration.sceneDim)} ${bezier(motion.fadeEasing)}`);
-        assert.equal(rule(page, MOTION, ".track-stage").get("opacity"), `calc(1 - var(--breath-depth) * var(--breath) * (1 - ${motion.pausedSceneBreath} / ${motion.pausedScene}))`);
-        assert.equal(rule(page, MOTION, ".track-stage").get("scale"), `calc(1 - var(--breath-depth) * var(--breath) * (1 - ${motion.pausedSceneBreathScale}))`);
+        // Paused, it breathes out to pausedSceneBreath and pausedSceneBreathScale (script.js).
+        assert.equal(jsConstant(sources.script, "PAUSED_SCENE"), motion.pausedScene);
+        assert.equal(jsConstant(sources.script, "PAUSED_SCENE_BREATH"), motion.pausedSceneBreath);
+        assert.equal(jsConstant(sources.script, "SCENE_BREATH_SCALE"), motion.pausedSceneBreathScale);
+        assert.equal(jsConstant(sources.script, "SCENE_BREATH_MS"), duration.sceneBreath);
+        assert.equal(jsConstant(sources.script, "SCENE_BREATH_STEP_MS"), duration.sceneBreathStep);
+        assert.equal(jsConstant(sources.script, "SCENE_DIM_MS"), duration.sceneDim);
+        assert.ok(sources.script.includes(`const FADE_EASING = "${bezier(motion.fadeEasing)}";`));
         // The name is in the drawing's colour, dimmed with it while paused.
         assert.equal(rule(page, ".track-title").get("color"), "var(--color-text-muted)");
         assert.equal(rule(page, ".track-status:has(track-scene:not([playing])) .track-title").get("filter"), `opacity(${motion.pausedScene})`);
