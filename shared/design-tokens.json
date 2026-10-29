@@ -139,6 +139,7 @@
         "pausedScene": 0.55,
         "pausedSceneBreath": 0.4,
         "pausedSceneBreathScale": 0.96,
+        "sceneFrameRate": 60,
         "swipeEasing": [0.33, 1, 0.68, 1],
         "fadeEasing": [0.37, 0, 0.63, 1],
         "pressEasing": [0.33, 1, 0.68, 1]

@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.7";
+const VERSION = "2.1.8";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -292,6 +292,7 @@ function placeSwipe(dx) {
 function showPeek(side, track = tracks[(currentTrackIndex + side + tracks.length) % tracks.length]) {
     peekSide = side;
     trackPeekScene.setAttribute("track", track.id);
+    trackPeekScene.toggleAttribute("resting", trackScene.hasAttribute("resting"));
     trackPeekScene.toggleAttribute("playing", trackScene.hasAttribute("playing"));
     trackPeekTitle.textContent = track.title;
     trackPeek.hidden = false;
@@ -300,6 +301,7 @@ function showPeek(side, track = tracks[(currentTrackIndex + side + tracks.length
 function hidePeek() {
     peekSide = 0;
     trackPeek.hidden = true;
+    trackPeekScene.removeAttribute("playing");
     trackPeek.style.transform = "";
 }
 
@@ -369,7 +371,7 @@ async function handleSwipeGesture(direction, velocity) {
     await whenSlid(slide(end, duration), () => {
         const changing = changeTrack(side, { turn: false });
 
-        takeOverMotion(trackPeekScene, trackScene);
+        trackScene.takeOver(trackPeekScene);
         return changing;
     });
 }
@@ -387,7 +389,7 @@ function turnPage(side) {
     if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
     showPeek(-side, getCurrentTrack());
-    takeOverMotion(trackScene, trackPeekScene);
+    trackPeekScene.takeOver(trackScene);
     swipeDx = side * pageWidth();
     whenSlid(slide(0, SWIPE_MAX_MS), () => {});
 }
@@ -415,14 +417,6 @@ function whenSlid(motion, then) {
 
     swipeMotion = finish;
     return motion.finished.then(finish, () => {});
-}
-
-function takeOverMotion(from, to) {
-    const theirs = from.getAnimations({ subtree: true });
-
-    to.getAnimations({ subtree: true }).forEach((animation, index) => {
-        if (theirs[index]) animation.currentTime = theirs[index].currentTime;
-    });
 }
 
 function handleVolumeGestureStart() {
@@ -493,11 +487,13 @@ function wake() {
     clearTimeout(restTimer);
     restTimer = 0;
     delete document.documentElement.dataset.resting;
+    trackScene.removeAttribute("resting");
     if (!canRest()) return;
 
     restTimer = setTimeout(() => {
         restTimer = 0;
         document.documentElement.dataset.resting = "";
+        trackScene.setAttribute("resting", "");
         hideGestureVolume();
     }, REST_AFTER_MS);
 }

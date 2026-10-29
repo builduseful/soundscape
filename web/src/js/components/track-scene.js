@@ -9,15 +9,18 @@
  * markings grow and quicken as they near. Timings are kept apart from one
  * another so nothing visibly repeats in step.
  *
- * Paused, it stops where it is, and playing carries on from there.
+ * Paused, it stops where it is, and playing carries on from there. Resting,
+ * it runs down to a stop and holds still; woken, it comes back up to speed.
  * Under reduced motion nothing moves at all.
  *
- * CSS animations of a few strokes: a frame repaints a few hundred pixels, and
- * a paused or hidden one costs nothing.
+ * CSS animations of a few strokes, held paused and moved by the drawing's own
+ * clock: a frame repaints a few hundred pixels, and a still or hidden one
+ * costs nothing.
  *
  * @element track-scene
  * @attr {string} track - The soundscape's id; one without a drawing shows nothing.
  * @attr {boolean} playing - Whether the drawing moves.
+ * @attr {boolean} resting - Whether the screen is resting, and the drawing with it.
  */
 
 // Three true circles, left, crown and right, joined where they cross and
@@ -165,19 +168,120 @@ const FADE_MASK = "<defs><linearGradient id=\"track-scene-edge\"><stop offset=\"
     + "<mask id=\"track-scene-fade-y\" maskUnits=\"userSpaceOnUse\"><rect x=\"0\" y=\"9\" width=\"48\" height=\"31\" stroke=\"none\" "
     + "fill=\"url(#track-scene-edge-y)\"/></mask></defs>";
 
+// The motions are slow, so a step at SCENE_FRAME_RATE reads as smooth, and a
+// screen's own rate, 120 a second or more on many, would cost twice the frames
+// for nothing seen. A step once three-quarters of one has passed keeps them
+// even on any screen: every other frame at 120 Hz, every frame at 60.
+const SCENE_FRAME_RATE = 60;
+const MIN_STEP_MS = 750 / SCENE_FRAME_RATE;
+// Resting, it runs down over the words' fade; woken, back up over theirs.
+const REST_FADE_MS = 2400;
+const WAKE_MS = 600;
+// Turned on, it takes the motions away; set, a time would bring one back.
+const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
+
 export class TrackScene extends HTMLElement {
-    static observedAttributes = ["track"];
+    static observedAttributes = ["track", "playing", "resting"];
+
+    // The drawing's clock, in milliseconds, and how fast it runs: from 0,
+    // still, to 1. Running down at an even rate, it comes to rest eased, as a
+    // coasting thing does.
+    #time = 0;
+    #speed = { from: 0, to: 0, start: 0, duration: 0 };
+    #playing = false;
+    #motions = null;
+    #last = null;
+    #frame = 0;
 
     connectedCallback() {
+        reducedMotion?.addEventListener("change", this.#restyled);
         this.render();
+        this.#sync();
     }
 
-    attributeChangedCallback() {
-        if (this.isConnected) this.render();
+    disconnectedCallback() {
+        reducedMotion?.removeEventListener("change", this.#restyled);
+        cancelAnimationFrame(this.#frame);
+        this.#frame = 0;
+        this.#last = null;
+    }
+
+    attributeChangedCallback(name) {
+        if (!this.isConnected) return;
+        if (name === "track") this.render();
+        this.#sync();
+    }
+
+    // Carries on from the moment [other] has reached, so one drawing can take
+    // over from the other unseen.
+    takeOver(other) {
+        const theirs = other.getAnimations({ subtree: true });
+
+        this.#time = other.#time;
+        this.getAnimations({ subtree: true }).forEach((animation, index) => {
+            if (theirs[index]) animation.currentTime = theirs[index].currentTime;
+        });
+    }
+
+    // Playing starts and stops it at once, as the sound does; resting and
+    // waking change its speed gradually.
+    #sync() {
+        const now = document.timeline.currentTime;
+        const playing = this.hasAttribute("playing");
+        const to = playing && !this.hasAttribute("resting") ? 1 : 0;
+
+        if (playing !== this.#playing) {
+            this.#playing = playing;
+            this.#speed = { from: to, to, start: now, duration: 0 };
+            this.#last = null;
+        } else if (to !== this.#speed.to) {
+            this.#speed = { from: this.#speedAt(now), to, start: now, duration: to ? WAKE_MS : REST_FADE_MS };
+        }
+        if (!this.#frame && this.#moves(now)) this.#frame = requestAnimationFrame((time) => this.#step(time));
+    }
+
+    #speedAt(now) {
+        const { from, to, start, duration } = this.#speed;
+
+        return duration ? from + (to - from) * Math.min(1, (now - start) / duration) : to;
+    }
+
+    #restyled = () => {
+        this.#motions = null;
+        this.#sync();
+    };
+
+    // Found once the drawing's style is in place, and again after each new one.
+    #allMotions() {
+        this.#motions ??= this.getAnimations({ subtree: true }).filter((animation) => animation.animationName !== "scene-in");
+        return this.#motions;
+    }
+
+    #moves(now) {
+        return this.#playing && this.#allMotions().length > 0 && (this.#speedAt(now) > 0 || this.#speed.to > 0);
+    }
+
+    #step(now) {
+        this.#frame = 0;
+        if (this.#last === null) {
+            this.#last = now;
+        } else if (now - this.#last >= MIN_STEP_MS) {
+            this.#time += (now - this.#last) * this.#speedAt(now);
+            this.#last = now;
+            for (const motion of this.#allMotions()) motion.currentTime = this.#time;
+        }
+        if (this.#moves(now)) {
+            this.#frame = requestAnimationFrame((time) => this.#step(time));
+        } else {
+            this.#last = null;
+        }
     }
 
     render() {
         const track = this.getAttribute("track") ?? "";
+
+        this.#time = 0;
+        this.#motions = null;
         const scene = SCENES[track] ?? "";
 
         this.innerHTML = /* html */ `
@@ -261,7 +365,8 @@ export class TrackScene extends HTMLElement {
                             animation: scene-in 0.5s ease-out both;
                         }
 
-                        /* Every part keeps its motion and is only paused, so a
+                        /* Every part keeps its motion, held paused: the
+                           drawing's clock moves them (see the class), so a
                            pause stops it where it is and play carries on from
                            there. Before it first plays, each shows the first
                            frame of its motion: a moment of it, held. */
@@ -320,10 +425,6 @@ export class TrackScene extends HTMLElement {
 
                         .wave {
                             animation: drift var(--duration) linear infinite paused;
-                        }
-
-                        :scope[playing] :is(.streak, .dash, .drip, .ring, .bolt, .cloud, .flame, .ember, .wave) {
-                            animation-play-state: running;
                         }
                     }
 

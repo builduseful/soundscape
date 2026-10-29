@@ -30,6 +30,7 @@ const sources = {
     volumeControl: await readSrc("js/components/volume-control.js"),
     gestures: await readSrc("js/gestures.js"),
     gestureTutorial: await readSrc("js/components/gesture-tutorial.js"),
+    trackScene: await readSrc("js/components/track-scene.js"),
 };
 
 const page = parseCss(await readSrc("style.css"));
@@ -279,6 +280,11 @@ describe("the gestures, the drawing and the resting screen match shared/design-t
         assert.equal(jsConstant(sources.script, "SCENE_BREATH_MS"), duration.sceneBreath);
         assert.equal(jsConstant(sources.script, "SCENE_BREATH_STEP_MS"), duration.sceneBreathStep);
         assert.equal(jsConstant(sources.script, "SCENE_DIM_MS"), duration.sceneDim);
+        // Playing, it steps no faster than sceneFrameRate; resting, it runs down
+        // over the words' fade and wakes over theirs (track-scene.js).
+        assert.equal(jsConstant(sources.trackScene, "SCENE_FRAME_RATE"), motion.sceneFrameRate);
+        assert.equal(jsConstant(sources.trackScene, "REST_FADE_MS"), duration.restFade);
+        assert.equal(jsConstant(sources.trackScene, "WAKE_MS"), duration.wake);
         assert.ok(sources.script.includes(`const FADE_EASING = "${bezier(motion.fadeEasing)}";`));
         // The name is in the drawing's colour, dimmed with it while paused.
         assert.equal(rule(page, ".track-title").get("color"), "var(--color-text-muted)");

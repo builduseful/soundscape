@@ -231,8 +231,11 @@ export function installAppTestEnvironment({
         elements.set(id, new FakeElement());
     }
 
-    // Each drawing sits on its stage, which breathes while paused.
-    for (const id of ["trackScene", "trackPeekScene"]) elements.get(id).parentElement = new FakeElement();
+    // Each drawing sits on its stage, which breathes while paused, and can take
+    // over the other's moment when the page turns.
+    for (const id of ["trackScene", "trackPeekScene"]) {
+        Object.assign(elements.get(id), { parentElement: new FakeElement(), takeOver() {} });
+    }
     // Mirrors the `hidden` attribute on the real elements so tests can assert
     // whether a playback failure — or a slow load — is actually surfaced.
     elements.get("playbackError").hidden = true;

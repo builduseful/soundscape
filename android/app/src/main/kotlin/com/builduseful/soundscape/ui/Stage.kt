@@ -2,6 +2,7 @@ package com.builduseful.soundscape.ui
 
 import android.graphics.Matrix
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -38,7 +39,7 @@ import kotlinx.coroutines.delay
  * says it.
  */
 @Composable
-internal fun Stage(trackId: String, playing: Boolean, modifier: Modifier = Modifier) {
+internal fun Stage(trackId: String, playing: Boolean, resting: Boolean, modifier: Modifier = Modifier) {
     val reduced = LocalReducedMotion.current
     val dim by animateFloatAsState(
         if (playing) 1f else DesignTokens.Motion.pausedScene,
@@ -74,6 +75,7 @@ internal fun Stage(trackId: String, playing: Boolean, modifier: Modifier = Modif
     TrackSceneView(
         trackId,
         playing,
+        resting,
         modifier.size(size).graphicsLayer {
             // Out and back in over each breath, eased each way.
             val way = if (breath.floatValue < 0.5f) breath.floatValue * 2 else (1 - breath.floatValue) * 2
@@ -91,23 +93,33 @@ internal fun Stage(trackId: String, playing: Boolean, modifier: Modifier = Modif
 /**
  * [trackId]'s drawing, moving while [playing]. Its clock is its own and runs
  * only while it moves, read in the draw phase alone, so a frame redraws a few
- * strokes and recomposes nothing; still, nothing runs at all. It arrives
- * rising a little as it fades in, as each new drawing does on the web.
+ * strokes and recomposes nothing; still, nothing runs at all. [resting], it
+ * runs down to a stop over the words' fade, and woken comes back up to speed.
+ * It arrives rising a little as it fades in, as each new drawing does on the
+ * web.
  */
 @Composable
-internal fun TrackSceneView(trackId: String, playing: Boolean, modifier: Modifier = Modifier) {
+internal fun TrackSceneView(trackId: String, playing: Boolean, resting: Boolean, modifier: Modifier = Modifier) {
     val scene = scenes[trackId]
     val reduced = LocalReducedMotion.current
     val color = LocalPalette.current.textMuted
     val time = remember(trackId) { mutableFloatStateOf(0f) }
     val moving = playing && !reduced
-    LaunchedEffect(trackId, moving) {
+    // Running down at an even rate, it comes to rest eased, as a coasting thing does.
+    val speed = animateFloatAsState(
+        if (resting) 0f else 1f,
+        tween((if (resting) DesignTokens.Duration.restFade else DesignTokens.Duration.wake).toInt(), easing = LinearEasing),
+        label = "scene speed",
+    )
+    LaunchedEffect(trackId, moving, resting) {
         if (!moving) return@LaunchedEffect
         var last = withFrameNanos { it }
-        while (true) {
+        while (!resting || speed.value > 0f) {
             withFrameNanos { now ->
-                time.floatValue += (now - last) / 1_000_000_000f
-                last = now
+                if (now - last >= SCENE_FRAME_NANOS) {
+                    time.floatValue += (now - last) / 1_000_000_000f * speed.value
+                    last = now
+                }
             }
         }
     }
@@ -130,6 +142,12 @@ internal fun TrackSceneView(trackId: String, playing: Boolean, modifier: Modifie
         with(drawer) { draw(time.floatValue, reduced, color) }
     }
 }
+
+// The motions are slow, so a step at sceneFrameRate reads as smooth, and a
+// screen's own rate, 120 a second on many phones, would cost twice the frames
+// for nothing seen. A step once three-quarters of one has passed keeps them
+// even on any screen: every other frame at 120 Hz, every frame at 60.
+private val SCENE_FRAME_NANOS = (750_000_000 / DesignTokens.Motion.sceneFrameRate).toLong()
 
 /**
  * Draws a scene at one moment. Each element's path is moved into place by one
