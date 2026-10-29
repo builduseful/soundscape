@@ -100,6 +100,9 @@ is always the copy that goes stale.
   version increment (a patch) on any platform and the maintainer has not
   answered the proposal within about a minute, make the bump and commit it with
   the change, but do not push. Anything larger waits for a yes.
+- **Close what you started before you report back**, unless asked to keep it:
+  browsers (`playwright-cli -s=<session> close`), emulators
+  (`adb -s <serial> emu kill`), dev servers. Left running, they keep using CPU.
 - **Never stage or unstage anything on your own initiative.** Staging here is a
   review marker, not a commit being assembled: the maintainer stages a file once
   they have read it and are happy with it, so the index is the record of what
