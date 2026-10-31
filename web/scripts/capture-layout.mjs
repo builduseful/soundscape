@@ -32,14 +32,16 @@ const PARTS = {
     previous: "#previousButton",
     playPause: "#playPauseButton",
     next: "#nextButton",
-    title: "#title .track-title-text--current",
+    title: "#title .track-title-text",
     volumeButton: "#volumeControl button[aria-controls]",
 };
 
 const round = (value) => Math.round(value * 10) / 10;
 
+// As a touch screen: that is the layout the other platforms have. A mouse's
+// controls sit in a row of their own (style.css).
 async function measure(browser, url, size) {
-    const page = await browser.newPage({ viewport: size, colorScheme: "light", reducedMotion: "reduce" });
+    const page = await browser.newPage({ viewport: size, colorScheme: "light", reducedMotion: "reduce", hasTouch: true });
     try {
         await page.goto(url, { waitUntil: "networkidle" });
         await page.waitForSelector("#playPauseButton");

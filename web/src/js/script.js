@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.9";
+const VERSION = "2.1.10";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -462,11 +462,8 @@ function offerGestureTutorial() {
 
 // Left alone, the screen rests: the controls step back and the rest dims to
 // a trace, so the sound has the room rather than the screen. A touch, a moving
-// mouse or a key brings it all back.
-//
-// With a mouse it rests only while the sound plays: paused, the way to start
-// it should be in sight. A touch screen has no controls to show, so it rests
-// either way, though not while the guide is still talking to it.
+// mouse or a key brings it all back. Playing or paused alike, and with a mouse
+// as with a finger, though not while the guide is still talking to it.
 function handleActivity(event) {
     if (event.type === "pointermove" && event.pointerType !== "mouse") return;
 
@@ -474,7 +471,7 @@ function handleActivity(event) {
 }
 
 function canRest() {
-    return !tutorialOpen && (isOutputPlaying() || isTouchScreen());
+    return !tutorialOpen;
 }
 
 // The same question style.css asks, and for the same reason.
@@ -495,10 +492,9 @@ function wake() {
     }, REST_AFTER_MS);
 }
 
-// Starting the sound starts the countdown without waiting for a touch;
-// stopping it, where that brings the controls back, does so at once.
+// The sound starting or stopping starts the countdown without waiting for a touch.
 function syncRest() {
-    if (!canRest() || (!restTimer && !("resting" in document.documentElement.dataset))) wake();
+    if (!restTimer && !("resting" in document.documentElement.dataset)) wake();
 }
 
 // --- Track selection and navigation ---------------------------------------

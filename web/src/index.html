@@ -59,21 +59,6 @@
                 <div class="track-stage" aria-hidden="true">
                     <track-scene id="trackScene"></track-scene>
                 </div>
-                <div class="controls" aria-label="Playback controls">
-                    <div class="transport-controls">
-                        <button class="prev" id="previousButton" type="button" aria-label="Previous track">
-                            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                <path d="M17 6.5 9 12l8 5.5ZM6.5 6.5v11"></path>
-                            </svg>
-                        </button>
-                        <button class="play" id="playPauseButton" type="button" aria-label="Play" data-playing="false"></button>
-                        <button class="next" id="nextButton" type="button" aria-label="Next track">
-                            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                <path d="M7 6.5 15 12l-8 5.5ZM17.5 6.5v11"></path>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
                 <h1 id="title" class="track-title" aria-live="polite">
                     <span class="track-title-text">Soundscape</span>
                 </h1>
@@ -96,6 +81,28 @@
                     <track-scene id="trackPeekScene"></track-scene>
                 </div>
                 <p class="track-title"><span id="trackPeekTitle" class="track-title-text"></span></p>
+            </div>
+            <div class="controls" aria-label="Playback controls">
+                <div class="transport-controls">
+                    <button class="prev" id="previousButton" type="button" aria-label="Previous track">
+                        <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M17 6.5 9 12l8 5.5ZM6.5 6.5v11"></path>
+                        </svg>
+                    </button>
+                    <button class="play" id="playPauseButton" type="button" aria-label="Play" data-playing="false">
+                        <svg class="button-icon play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8.5 6.5v11L17 12Z"></path>
+                        </svg>
+                        <svg class="button-icon pause-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M9 6.5v11M15 6.5v11"></path>
+                        </svg>
+                    </button>
+                    <button class="next" id="nextButton" type="button" aria-label="Next track">
+                        <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M7 6.5 15 12l-8 5.5ZM17.5 6.5v11"></path>
+                        </svg>
+                    </button>
+                </div>
             </div>
             <p id="playbackError" class="playback-error" role="status" hidden></p>
         </main>

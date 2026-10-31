@@ -191,6 +191,7 @@ body {
 /* Across the whole page, not just the room between header and footer, which
    differ in height: the drawing is the middle of the screen. */
 .player {
+    --name-reach: calc(20px + 1.2 * 1.09375rem);
     align-self: center;
     display: grid;
     grid-area: 1 / 1 / -1;
@@ -207,7 +208,6 @@ body {
    its centre: as much room above it as the name takes below, so it stays put
    whether or not the name, which fades as the screen rests, is there. */
 .track-status {
-    --name-reach: calc(20px + 1.2 * 1.09375rem);
     display: grid;
     gap: 20px;
     grid-area: 1 / 1;
@@ -457,10 +457,12 @@ volume-control {
     width: calc(var(--level, 1) * 100%);
 }
 
-/* No buttons to see: the drawing is the play button, and the skips are two
-   marks either side of it, in its line. They sit over the drawing, out of the
-   flow, so the page is laid out the same with or without them. */
-.track-status > .controls {
+/* On a touch screen, no buttons to see: the drawing is the play button, and
+   the skips are two marks either side of it, in its line. They sit over the
+   drawing, out of the flow, so the page is laid out the same with or without
+   them. Beside the page rather than in it, so a swipe leaves them where they
+   are. */
+.player > .controls {
     height: 88px;
     inset: var(--name-reach) 0 auto;
     position: absolute;
@@ -533,6 +535,49 @@ button.play {
 /* The press-in is the drawing's, not this transparent square's. */
 button.play:active {
     transform: none;
+}
+
+/* Its marks are a mouse's alone (below). */
+@media (hover: none) and (pointer: coarse) {
+    button.play .button-icon {
+        display: none;
+    }
+}
+
+/* With a mouse the controls are buttons, in a row under the name, and the
+   page is laid out around them: as much room again above the drawing, so it
+   is still the centre. */
+@media not ((hover: none) and (pointer: coarse)) {
+    .player {
+        padding-top: calc(44px + 34px);
+    }
+
+    .player > .controls {
+        grid-row: 2;
+        height: auto;
+        position: static;
+    }
+
+    /* Spaced for the drawing between them on a touch screen; side by side
+       here, they are one group. */
+    .player .transport-controls {
+        gap: 0;
+    }
+
+    button.play {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+    }
+
+    button.play:active {
+        transform: scale(0.95);
+    }
+
+    button.play[data-playing="false"] .pause-icon,
+    button.play[data-playing="true"] .play-icon {
+        display: none;
+    }
 }
 
 button.prev,

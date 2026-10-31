@@ -1,9 +1,8 @@
 // Gestures over the player: a tap plays or pauses, a swipe across changes
 // soundscape, and a drag up or down sets the volume.
 //
-// A mouse clicks anywhere to play or pause, as a finger taps, and that is all:
-// it has the controls, which show while it moves, for the rest. A click that
-// focuses the window plays or pauses too, as it does on a video.
+// A mouse does all three as a finger does, and has the controls besides. A
+// click that focuses the window plays or pauses too, as it does on a video.
 
 /** Movement under this is still a tap: a fingertip never lands perfectly still. */
 export const TAP_SLOP_PX = 10;
@@ -155,36 +154,26 @@ export function createGestureTracker(handlers) {
 export function attachGestures(surface, handlers) {
     const tracker = createGestureTracker(handlers);
     let pointerId = null;
-    let click = null;
 
     surface.addEventListener("pointerdown", (event) => {
-        const onControl = event.target instanceof Element && event.target.closest(INTERACTIVE);
+        if (!event.isPrimary || tracker.active) return;
+        if (event.target instanceof Element && event.target.closest(INTERACTIVE)) return;
 
-        if (event.pointerType === "mouse") {
-            // A click that closes an open panel is only that.
-            const closing = document.querySelector(":popover-open");
-
-            click = !onControl && !closing && event.button === 0 ? { x: event.clientX, y: event.clientY, time: event.timeStamp } : null;
-            return;
-        }
-        if (onControl || !event.isPrimary || tracker.active) return;
+        const mouse = event.pointerType === "mouse";
+        // A click that closes an open panel is only that.
+        if (mouse && (event.button !== 0 || document.querySelector(":popover-open"))) return;
 
         pointerId = event.pointerId;
         surface.setPointerCapture(pointerId);
         // Only the sides: a page stops short of the system's bars, where home and the shade begin.
-        const edge = event.clientX < SYSTEM_EDGE_PX || event.clientX > document.documentElement.clientWidth - SYSTEM_EDGE_PX;
+        // A mouse is never the system's.
+        const edge = !mouse && (event.clientX < SYSTEM_EDGE_PX || event.clientX > document.documentElement.clientWidth - SYSTEM_EDGE_PX);
         tracker.down(event.clientX, event.clientY, event.timeStamp, { across: edge, upDown: false });
     });
     surface.addEventListener("pointermove", (event) => {
         if (event.pointerId === pointerId) tracker.move(event.clientX, event.clientY, event.timeStamp);
     });
     surface.addEventListener("pointerup", (event) => {
-        if (event.pointerType === "mouse") {
-            if (click && Math.hypot(event.clientX - click.x, event.clientY - click.y) <= TAP_SLOP_PX
-                && event.timeStamp - click.time <= TAP_MAX_MS) handlers.onTap();
-            click = null;
-            return;
-        }
         if (event.pointerId !== pointerId) return;
 
         pointerId = null;

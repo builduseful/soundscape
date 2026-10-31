@@ -270,7 +270,7 @@ describe("the gestures, the drawing and the resting screen match shared/design-t
         assert.equal(rule(page, ".track-stage").get("height"), px(size.stage));
         assert.equal(rule(page, ".track-status").get("gap"), px(size.stageGap));
         // As much room above the drawing as the name takes below it, so the drawing is the centre.
-        assert.equal(rule(page, ".track-status").get("--name-reach"), `calc(${px(size.stageGap)} + ${tokens.type.title.lineHeight} * ${rem(tokens.type.title.size)})`);
+        assert.equal(rule(page, ".player").get("--name-reach"), `calc(${px(size.stageGap)} + ${tokens.type.title.lineHeight} * ${rem(tokens.type.title.size)})`);
         assert.equal(rule(page, ".track-stage track-scene:not([playing])").get("opacity"), String(motion.pausedScene));
         assert.equal(rule(page, ".track-stage track-scene").get("transition"), `opacity ${seconds(duration.sceneDim)} ${bezier(motion.fadeEasing)}`);
         // Paused, it breathes out to pausedSceneBreath and pausedSceneBreathScale (script.js).
