@@ -238,7 +238,6 @@ internal fun Pages(
     volume: DragVolume,
     actions: PlayerActions,
     words: () -> Float,
-    resting: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val reduced = LocalReducedMotion.current
@@ -266,7 +265,6 @@ internal fun Pages(
                     actions,
                     volume,
                     words,
-                    resting,
                     Modifier.graphicsLayer {
                         translationX = pager.offset + if (page.centre) 0f else pager.side * pager.width
                         scaleX = press.value
@@ -295,7 +293,6 @@ private fun TrackPage(
     actions: PlayerActions,
     volume: DragVolume,
     words: () -> Float,
-    resting: () -> Boolean,
     modifier: Modifier,
 ) {
     Layout(
@@ -305,7 +302,7 @@ private fun TrackPage(
                 verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.stageGap.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Stage(state.track.id, state.isPlaying, resting())
+                    Stage(state.track.id, state.isPlaying)
                     if (centre) {
                         TransportControls(
                             isPlaying = state.isPlaying,

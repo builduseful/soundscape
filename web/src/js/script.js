@@ -31,7 +31,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.8";
+const VERSION = "2.1.9";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -292,7 +292,6 @@ function placeSwipe(dx) {
 function showPeek(side, track = tracks[(currentTrackIndex + side + tracks.length) % tracks.length]) {
     peekSide = side;
     trackPeekScene.setAttribute("track", track.id);
-    trackPeekScene.toggleAttribute("resting", trackScene.hasAttribute("resting"));
     trackPeekScene.toggleAttribute("playing", trackScene.hasAttribute("playing"));
     trackPeekTitle.textContent = track.title;
     trackPeek.hidden = false;
@@ -487,13 +486,11 @@ function wake() {
     clearTimeout(restTimer);
     restTimer = 0;
     delete document.documentElement.dataset.resting;
-    trackScene.removeAttribute("resting");
     if (!canRest()) return;
 
     restTimer = setTimeout(() => {
         restTimer = 0;
         document.documentElement.dataset.resting = "";
-        trackScene.setAttribute("resting", "");
         hideGestureVolume();
     }, REST_AFTER_MS);
 }

@@ -34,8 +34,8 @@ android {
         applicationId = appId
         minSdk = 26
         targetSdk = 37
-        versionCode = 14
-        versionName = "1.0.5"
+        versionCode = 15
+        versionName = "1.0.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Screenshots for scripts/parity-report.mjs, not a check: run only by android/scripts/capture-parity.mjs.
         testInstrumentationRunnerArguments["notClass"] = "$appId.ui.ParityScreenshots"

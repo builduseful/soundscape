@@ -9,9 +9,8 @@
  * markings grow and quicken as they near. Timings are kept apart from one
  * another so nothing visibly repeats in step.
  *
- * Paused, it stops where it is, and playing carries on from there. Resting,
- * it runs down to a stop and holds still; woken, it comes back up to speed.
- * Under reduced motion nothing moves at all.
+ * Paused, it stops where it is, and playing carries on from there. Under
+ * reduced motion nothing moves at all.
  *
  * CSS animations of a few strokes, held paused and moved by the drawing's own
  * clock: a frame repaints a few hundred pixels, and a still or hidden one
@@ -20,7 +19,6 @@
  * @element track-scene
  * @attr {string} track - The soundscape's id; one without a drawing shows nothing.
  * @attr {boolean} playing - Whether the drawing moves.
- * @attr {boolean} resting - Whether the screen is resting, and the drawing with it.
  */
 
 // Three true circles, left, crown and right, joined where they cross and
@@ -174,21 +172,14 @@ const FADE_MASK = "<defs><linearGradient id=\"track-scene-edge\"><stop offset=\"
 // even on any screen: every other frame at 120 Hz, every frame at 60.
 const SCENE_FRAME_RATE = 60;
 const MIN_STEP_MS = 750 / SCENE_FRAME_RATE;
-// Resting, it runs down over the words' fade; woken, back up over theirs.
-const REST_FADE_MS = 2400;
-const WAKE_MS = 600;
 // Turned on, it takes the motions away; set, a time would bring one back.
 const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
 
 export class TrackScene extends HTMLElement {
-    static observedAttributes = ["track", "playing", "resting"];
+    static observedAttributes = ["track", "playing"];
 
-    // The drawing's clock, in milliseconds, and how fast it runs: from 0,
-    // still, to 1. Running down at an even rate, it comes to rest eased, as a
-    // coasting thing does.
+    // The drawing's clock, in milliseconds.
     #time = 0;
-    #speed = { from: 0, to: 0, start: 0, duration: 0 };
-    #playing = false;
     #motions = null;
     #last = null;
     #frame = 0;
@@ -223,27 +214,15 @@ export class TrackScene extends HTMLElement {
         });
     }
 
-    // Playing starts and stops it at once, as the sound does; resting and
-    // waking change its speed gradually.
+    // Playing starts and stops it at once, as the sound does.
     #sync() {
-        const now = document.timeline.currentTime;
-        const playing = this.hasAttribute("playing");
-        const to = playing && !this.hasAttribute("resting") ? 1 : 0;
-
-        if (playing !== this.#playing) {
-            this.#playing = playing;
-            this.#speed = { from: to, to, start: now, duration: 0 };
+        if (this.#moves()) {
+            this.#frame ||= requestAnimationFrame((time) => this.#step(time));
+        } else {
+            cancelAnimationFrame(this.#frame);
+            this.#frame = 0;
             this.#last = null;
-        } else if (to !== this.#speed.to) {
-            this.#speed = { from: this.#speedAt(now), to, start: now, duration: to ? WAKE_MS : REST_FADE_MS };
         }
-        if (!this.#frame && this.#moves(now)) this.#frame = requestAnimationFrame((time) => this.#step(time));
-    }
-
-    #speedAt(now) {
-        const { from, to, start, duration } = this.#speed;
-
-        return duration ? from + (to - from) * Math.min(1, (now - start) / duration) : to;
     }
 
     #restyled = () => {
@@ -257,8 +236,8 @@ export class TrackScene extends HTMLElement {
         return this.#motions;
     }
 
-    #moves(now) {
-        return this.#playing && this.#allMotions().length > 0 && (this.#speedAt(now) > 0 || this.#speed.to > 0);
+    #moves() {
+        return this.hasAttribute("playing") && this.#allMotions().length > 0;
     }
 
     #step(now) {
@@ -266,11 +245,11 @@ export class TrackScene extends HTMLElement {
         if (this.#last === null) {
             this.#last = now;
         } else if (now - this.#last >= MIN_STEP_MS) {
-            this.#time += (now - this.#last) * this.#speedAt(now);
+            this.#time += now - this.#last;
             this.#last = now;
             for (const motion of this.#allMotions()) motion.currentTime = this.#time;
         }
-        if (this.#moves(now)) {
+        if (this.#moves()) {
             this.#frame = requestAnimationFrame((time) => this.#step(time));
         } else {
             this.#last = null;

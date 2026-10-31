@@ -233,7 +233,7 @@ private fun Page(
                     verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.playerGap.dp),
                 ) {
                     Pages(
-                        state, pager, volume, actions, { words.value }, { rest.resting },
+                        state, pager, volume, actions, { words.value },
                         Modifier.onFocusChanged { keys.transportFocused = it.hasFocus },
                     )
                     (state.notice as? Notice.Failed)?.let { PlaybackError(it.track.title) }

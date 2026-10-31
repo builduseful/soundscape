@@ -1,9 +1,9 @@
-// Touch gestures over the player: a tap plays or pauses, a swipe across changes
+// Gestures over the player: a tap plays or pauses, a swipe across changes
 // soundscape, and a drag up or down sets the volume.
 //
-// Touch and pen only. A mouse has the controls, which show while it moves, and
-// a click on empty page that started the sound would surprise anyone who only
-// meant to focus the window.
+// A mouse clicks anywhere to play or pause, as a finger taps, and that is all:
+// it has the controls, which show while it moves, for the rest. A click that
+// focuses the window plays or pauses too, as it does on a video.
 
 /** Movement under this is still a tap: a fingertip never lands perfectly still. */
 export const TAP_SLOP_PX = 10;
@@ -147,18 +147,27 @@ export function createGestureTracker(handlers) {
 }
 
 /**
- * Listens on `surface` for touch and pen gestures, leaving alone any press that
- * starts on something interactive.
+ * Listens on `surface` for gestures, leaving alone any press that starts on
+ * something interactive.
  * @param {HTMLElement} surface
  * @param {Parameters<typeof createGestureTracker>[0]} handlers
  */
 export function attachGestures(surface, handlers) {
     const tracker = createGestureTracker(handlers);
     let pointerId = null;
+    let click = null;
 
     surface.addEventListener("pointerdown", (event) => {
-        if (event.pointerType === "mouse" || !event.isPrimary || tracker.active) return;
-        if (event.target instanceof Element && event.target.closest(INTERACTIVE)) return;
+        const onControl = event.target instanceof Element && event.target.closest(INTERACTIVE);
+
+        if (event.pointerType === "mouse") {
+            // A click that closes an open panel is only that.
+            const closing = document.querySelector(":popover-open");
+
+            click = !onControl && !closing && event.button === 0 ? { x: event.clientX, y: event.clientY, time: event.timeStamp } : null;
+            return;
+        }
+        if (onControl || !event.isPrimary || tracker.active) return;
 
         pointerId = event.pointerId;
         surface.setPointerCapture(pointerId);
@@ -170,6 +179,12 @@ export function attachGestures(surface, handlers) {
         if (event.pointerId === pointerId) tracker.move(event.clientX, event.clientY, event.timeStamp);
     });
     surface.addEventListener("pointerup", (event) => {
+        if (event.pointerType === "mouse") {
+            if (click && Math.hypot(event.clientX - click.x, event.clientY - click.y) <= TAP_SLOP_PX
+                && event.timeStamp - click.time <= TAP_MAX_MS) handlers.onTap();
+            click = null;
+            return;
+        }
         if (event.pointerId !== pointerId) return;
 
         pointerId = null;
