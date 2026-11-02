@@ -3,10 +3,12 @@
 ## Overview
 
 Soundscape plays looping ambient background audio — rain, thunderstorms,
-fireplace, open road, and white/pink/brown noise. It has play/pause/prev/next
-controls, a volume slider, light/dark/system themes, and it remembers your
-volume, theme and track. It responds to the media keys and to the playback
-controls the OS shows in its notification area. The loops are gapless, which is
+fireplace, open road, and white/pink/brown noise. The page is the control: a
+tap plays or pauses, a swipe changes soundscape, a drag up or down sets the
+volume (with a mouse there are play/pause/prev/next buttons too). It has
+light/dark/system themes, and it remembers your volume, theme and track. It
+responds to the media keys and to the playback controls the OS shows in its
+notification area. The loops are gapless, which is
 harder than it sounds and is the reason for most of the audio rules.
 
 It ships as a web app (a PWA that works offline once installed). A native

@@ -52,11 +52,6 @@
         "themeOption": 34,
         "themeSelectorPadding": 4,
         "themeIcon": 18,
-        "volumeButton": 50,
-        "volumeIcon": 22,
-        "volumePanelGap": 8,
-        "volumePanelPadding": 18,
-        "volumeSliderLength": 120,
         "loadingBarWidth": 72,
         "loadingBarHeight": 2,
         "loadingOffset": 12,
@@ -94,7 +89,6 @@
         "themeFade": 200,
         "themeThumb": 180,
         "popoverFade": 160,
-        "volumeWipe": 240,
         "appEnter": 900,
         "appEnterStagger": 80,
         "restAfter": 3000,
@@ -114,9 +108,7 @@
         "tutorialDoneHold": 1400
     },
     "volume": {
-        "wheelStep": 0.05,
-        "mutedAtOrBelow": 0.001,
-        "mutedWaveOpacity": 0.22
+        "step": 0.05
     },
     "gesture": {
         "tapSlop": 10,

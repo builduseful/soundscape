@@ -15,8 +15,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 
-/** The two panels that float over the page: the menu and the volume slider. */
-internal enum class Panel { Menu, Volume }
+/** The panel that floats over the page: the menu. */
+internal enum class Panel { Menu }
 
 /**
  * Which panel is open — at most one, as with the web's `popover="auto"` — and

@@ -1,5 +1,5 @@
 /**
- * DOM stand-ins for testing the popover panels, `app-menu` and `volume-control`.
+ * DOM stand-ins for testing the popover panel of `app-menu`.
  *
  * None of these parses HTML — one that did would be a browser — so tests stub
  * `render()`, and `FakeHost` hands back the nodes a render would have built.

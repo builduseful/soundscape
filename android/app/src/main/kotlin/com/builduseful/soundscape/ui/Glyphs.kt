@@ -24,10 +24,7 @@ import androidx.compose.ui.unit.Dp
 internal class Glyph(val paths: List<String>, val style: GlyphStyle)
 
 internal enum class GlyphStyle {
-    /** `fill: none`, a 1.5-unit round stroke: the transport's skips. */
-    Line,
-
-    /** `fill: none`, a 2-unit round stroke: the menu's, theme and volume icons. */
+    /** `fill: none`, a 2-unit round stroke: the theme icons. */
     Outline,
 
     /** Fill only: the menu's dots. */
@@ -35,10 +32,6 @@ internal enum class GlyphStyle {
 }
 
 internal object Glyphs {
-    // The skips, as marks in the drawing's line either side of it.
-    val previous = Glyph(listOf("M17 6.5 9 12l8 5.5Z", "M6.5 6.5v11"), GlyphStyle.Line)
-    val next = Glyph(listOf("M7 6.5 15 12l-8 5.5Z", "M17.5 6.5v11"), GlyphStyle.Line)
-
     val menu = Glyph(
         listOf("M10 5a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z", "M10 19a2 2 0 1 0 4 0a2 2 0 1 0-4 0Z"),
         GlyphStyle.Filled,
@@ -57,11 +50,6 @@ internal object Glyphs {
         GlyphStyle.Outline,
     )
     val themeDark = Glyph(listOf("M20 14.4A7.7 7.7 0 0 1 9.6 4a8 8 0 1 0 10.4 10.4z"), GlyphStyle.Outline)
-
-    // The volume icon's parts, which the mute state fades separately.
-    val speaker = Glyph(listOf("M4 9v6h4l5 4V5L8 9H4z"), GlyphStyle.Outline)
-    val waves = Glyph(listOf("M16 9.5a4 4 0 0 1 0 5", "M18.5 7a7.5 7.5 0 0 1 0 10"), GlyphStyle.Outline)
-    val muteSlash = Glyph(listOf("M6 18L19 6"), GlyphStyle.Outline)
 }
 
 /**
@@ -88,8 +76,6 @@ internal fun GlyphIcon(
             if (alpha <= 0f) return@forEachIndexed
             for (path in paths) {
                 when (glyph.style) {
-                    GlyphStyle.Line ->
-                        drawPath(path, color, alpha, Stroke(width = 1.5f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
                     GlyphStyle.Outline ->
                         drawPath(path, color, alpha, Stroke(width = 2 * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
                     GlyphStyle.Filled -> drawPath(path, color, alpha, Fill)

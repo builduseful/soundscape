@@ -187,4 +187,4 @@ export function attachGestures(surface, handlers) {
     });
 }
 
-const INTERACTIVE = "a, button, input, select, textarea, label, [popover], app-menu, volume-control";
+const INTERACTIVE = "a, button, input, select, textarea, label, [popover], app-menu";

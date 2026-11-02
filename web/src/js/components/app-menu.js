@@ -334,7 +334,7 @@ export class AppMenu extends HTMLElement {
                         flex-shrink: 0;
                     }
 
-                    /* The author display above beats the UA's [hidden] rule; see volume-control. */
+                    /* The author display above beats the UA's [hidden] rule. */
                     .menu-install[hidden] {
                         display: none;
                     }

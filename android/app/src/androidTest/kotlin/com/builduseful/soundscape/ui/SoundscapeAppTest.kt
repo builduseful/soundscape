@@ -10,9 +10,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertIsDisplayed
@@ -186,35 +189,25 @@ class SoundscapeAppTest {
         assertEquals(listOf("playPause"), player.calls)
     }
 
-    // At most one panel is open, as with the web's popover="auto".
-    @Test
-    fun openingOnePanelClosesTheOther() {
-        show()
-        tag(UiTags.MENU_BUTTON).performClick()
-        tag(UiTags.VOLUME_BUTTON).activate()
-        tag(UiTags.MENU_PANEL).assertDoesNotExist()
-        tag(UiTags.VOLUME_PANEL).assertExists()
-    }
-
     @Test
     fun backClosesAnOpenPanelFirst() {
         show()
-        tag(UiTags.VOLUME_BUTTON).activate()
-        tag(UiTags.VOLUME_PANEL).assertExists()
+        tag(UiTags.MENU_BUTTON).performClick()
+        tag(UiTags.MENU_PANEL).assertExists()
         rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }
-        tag(UiTags.VOLUME_PANEL).assertDoesNotExist()
+        tag(UiTags.MENU_PANEL).assertDoesNotExist()
         assertFalse(rule.activity.isFinishing)
     }
 
+    // For TalkBack the drag's bar is the volume, adjusted as a slider is.
     @Test
-    fun theSliderSetsAndSavesTheVolume() {
+    fun theBarSetsAndSavesTheVolume() {
         show()
-        tag(UiTags.VOLUME_BUTTON).activate()
-        tag(UiTags.VOLUME_SLIDER).performSemanticsAction(SemanticsActions.SetProgress) { it(0.25f) }
+        tag(UiTags.DRAG_VOLUME).performSemanticsAction(SemanticsActions.SetProgress) { it(0.25f) }
         assertEquals(listOf("volume 0.25 saved"), player.calls)
     }
 
-    // Space plays and pauses and the arrows skip, from the page and the transport.
+    // Space plays and pauses, the left and right arrows skip, as on the web.
     @Test
     fun thePageKeysDriveThePlayer() {
         show()
@@ -224,26 +217,25 @@ class SoundscapeAppTest {
         assertEquals(listOf("playPause", "next", "previous"), player.calls)
     }
 
-    // A focused button takes Space for itself only through the page's rule: once.
+    // Up and down step the volume by the shared step, as on the web.
     @Test
-    fun spaceOnAFocusedTransportButtonActsOnce() {
+    fun upAndDownStepTheVolume() {
+        state = state.copy(volume = 0.5f)
         show()
-        press(Key.Tab, times = 3)
-        tag(UiTags.PREVIOUS).assertIsFocused()
-        press(Key.Spacebar)
-        assertEquals(listOf("playPause"), player.calls)
+        press(Key.DirectionUp)
+        press(Key.DirectionDown)
+        assertEquals(listOf("volume 0.55 saved", "volume 0.45 saved"), player.calls)
     }
 
-    // Tab follows reading order, as on the web: byline, menu, transport, volume.
+    // Tab follows reading order, as on the web: the byline, then the menu. The
+    // transport is not a stop: it is for TalkBack, and the keyboard has its keys.
     @Test
     fun tabFollowsReadingOrder() {
         show()
         press(Key.Tab, times = 2)
         tag(UiTags.MENU_BUTTON).assertIsFocused()
-        press(Key.Tab)
-        tag(UiTags.PREVIOUS).assertIsFocused()
-        press(Key.Tab, times = 3)
-        tag(UiTags.VOLUME_BUTTON).assertIsFocused()
+        // Nothing to see, so nothing for focus to land on.
+        tag(UiTags.PREVIOUS).assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Focused))
     }
 
     // Moving between a panel's own controls is not leaving it.
@@ -276,18 +268,6 @@ class SoundscapeAppTest {
         tag(UiTags.MENU_PANEL).assertDoesNotExist()
     }
 
-    // Opened from the keyboard, the slider takes focus and the arrows step it.
-    @Test
-    fun theKeyboardOpensAndStepsTheSlider() {
-        state = state.copy(volume = 0.5f)
-        show()
-        press(Key.Tab, times = 6)
-        press(Key.Enter)
-        tag(UiTags.VOLUME_SLIDER).assertIsFocused()
-        press(Key.DirectionUp)
-        assertEquals(listOf("volume 0.51 saved"), player.calls)
-    }
-
     @Test
     fun aPhoneFitsTheWholePage() = fitsTheWindow(DpSize(360.dp, 640.dp), narrow = true)
 
@@ -305,14 +285,14 @@ class SoundscapeAppTest {
     fun aShortWindowScrollsRatherThanOverlap() = fitsTheWindow(DpSize(360.dp, 300.dp), narrow = true)
 
     /**
-     * Every control is reachable and none overlaps another; the header and the
-     * volume button keep to the page's padding; the play button is sized for
+     * Every control is reachable and none overlaps another; the header keeps
+     * to the page's padding; the play button is sized for
      * the width, as the web's breakpoint does.
      */
     private fun fitsTheWindow(size: DpSize, narrow: Boolean) {
         show(size)
 
-        val parts = listOf(UiTags.BYLINE, UiTags.MENU_BUTTON, UiTags.PREVIOUS, UiTags.PLAY_PAUSE, UiTags.NEXT, UiTags.TITLE, UiTags.VOLUME_BUTTON)
+        val parts = listOf(UiTags.BYLINE, UiTags.MENU_BUTTON, UiTags.PREVIOUS, UiTags.PLAY_PAUSE, UiTags.NEXT, UiTags.TITLE)
         // Laid out, before any scrolling moves them.
         val bounds = parts.associateWith { tag(it).bounds() }
         for ((a, first) in bounds) for ((b, second) in bounds) {
@@ -326,7 +306,6 @@ class SoundscapeAppTest {
         assertEquals("play button over the drawing", play, bounds.getValue(UiTags.PLAY_PAUSE).width, 1.5f)
         val padding = unit * if (narrow) DesignTokens.Size.pagePaddingNarrow else DesignTokens.Size.pagePadding
         assertEquals("menu at the trailing padding", page.right - padding, bounds.getValue(UiTags.MENU_BUTTON).right, 1.5f)
-        assertEquals("volume at the trailing padding", page.right - padding, bounds.getValue(UiTags.VOLUME_BUTTON).right, 1.5f)
         assertEquals("transport centred", page.center.x, bounds.getValue(UiTags.PLAY_PAUSE).center.x, 1.5f)
 
         for (part in parts) tag(part).performScrollTo().assertIsDisplayed()

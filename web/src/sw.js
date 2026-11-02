@@ -3,7 +3,7 @@
 // new SW, the activate handler wipes the old cache. Hardcoded here, not
 // imported, so the byte-change lands in sw.js itself — which is what the
 // browser's SW update is gated on.
-const VERSION = "2.1.10";
+const VERSION = "2.1.11";
 
 const CACHE_NAME = `soundscape-v${VERSION}`;
 
@@ -25,7 +25,6 @@ const APP_SHELL_ASSETS = [
     "./js/tracks.js",
     "./js/components/app-menu.js",
     "./js/components/theme-selector.js",
-    "./js/components/volume-control.js",
     "./js/components/gesture-tutorial.js",
     "./js/components/track-scene.js",
     "./js/gestures.js",

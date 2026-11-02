@@ -124,7 +124,6 @@ class LayoutParityTest(private val window: Window) {
             "playPause" to UiTags.PLAY_PAUSE,
             "next" to UiTags.NEXT,
             "title" to UiTags.TITLE,
-            "volumeButton" to UiTags.VOLUME_BUTTON,
         )
 
         @JvmStatic

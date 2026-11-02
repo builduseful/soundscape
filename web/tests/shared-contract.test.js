@@ -27,7 +27,6 @@ const sources = {
     audioPlayer: await readSrc("js/audio-player.js"),
     appMenu: await readSrc("js/components/app-menu.js"),
     themeSelector: await readSrc("js/components/theme-selector.js"),
-    volumeControl: await readSrc("js/components/volume-control.js"),
     gestures: await readSrc("js/gestures.js"),
     gestureTutorial: await readSrc("js/components/gesture-tutorial.js"),
     trackScene: await readSrc("js/components/track-scene.js"),
@@ -36,7 +35,6 @@ const sources = {
 const page = parseCss(await readSrc("style.css"));
 const menu = parseCss(componentCss(sources.appMenu));
 const themes = parseCss(componentCss(sources.themeSelector));
-const volume = parseCss(componentCss(sources.volumeControl));
 const tutorial = parseCss(componentCss(sources.gestureTutorial));
 
 const ROOT_REM_PX = 16;
@@ -103,7 +101,6 @@ describe("the web app matches shared/design-tokens.json", () => {
         ["pagePaddingNarrow", rule(page, NARROW, ".container").get("padding")],
         ["headerGap", rule(page, ".app-header").get("gap")],
         ["brandGap", rule(page, ".app-brand").get("gap")],
-        ["headerGap", rule(page, ".app-footer").get("gap")],
         ["playerGap", rule(page, ".player").get("gap")],
         ["playerMaxWidth", rule(page, ".player").get("max-width")],
         ["transportGap", rule(page, ".transport-controls").get("gap")],
@@ -124,11 +121,6 @@ describe("the web app matches shared/design-tokens.json", () => {
         ["themeSelectorPadding", rule(themes, "@scope (theme-selector)", ".theme-selector").get("padding")],
         ["themeSelectorPadding", rule(themes, "@scope (theme-selector)", ".theme-selector").get("gap")],
         ["themeIcon", rule(themes, "@scope (theme-selector)", "svg").get("width")],
-        ["volumeIcon", rule(volume, "@scope (volume-control)", "svg").get("width")],
-        ["volumeButton", rule(volume, "@scope (volume-control)", ":scope").get("--volume-button-size")],
-        ["volumePanelGap", rule(volume, "@scope (volume-control)", ":scope").get("--volume-panel-gap")],
-        ["volumePanelPadding", rule(volume, "@scope (volume-control)", ":scope").get("--volume-panel-padding")],
-        ["volumeSliderLength", rule(volume, "@scope (volume-control)", ":scope").get("--volume-slider-length")],
     ];
 
     for (const [name, actual] of sizes) {
@@ -194,8 +186,6 @@ describe("the web app matches shared/design-tokens.json", () => {
         ["duration.press", rule(page, MOTION, "button").get("transition"), `transform ${seconds(duration.press)}`],
         ["duration.themeThumb", rule(themes, "@scope (theme-selector)", ".theme-selector::before").get("transition"), `transform ${duration.themeThumb}ms ${bezier(motion.emphasizedEasing)}`],
         ["duration.popoverFade (menu)", rule(menu, "@scope (app-menu)", ".menu-panel").get("transition"), `opacity ${seconds(duration.popoverFade)}`],
-        ["duration.popoverFade (volume)", rule(volume, "@scope (volume-control)", ".volume-panel").get("transition"), `opacity ${seconds(duration.popoverFade)}`],
-        ["duration.volumeWipe", rule(volume, "@scope (volume-control)", ".volume-panel-surface").get("transition"), `clip-path ${seconds(duration.volumeWipe)} ${bezier(motion.wipeEasing)}`],
         ["motion.pressScale", rule(page, "button:active").get("transform"), `scale(${motion.pressScale})`],
     ];
 
@@ -213,9 +203,8 @@ describe("the web app matches shared/design-tokens.json", () => {
     });
 
     test("volume", () => {
-        assert.equal(jsConstant(sources.volumeControl, "WHEEL_STEP"), tokens.volume.wheelStep);
-        assert.ok(sources.volumeControl.includes(`Number(safeValue) <= ${tokens.volume.mutedAtOrBelow}`));
-        assert.equal(rule(volume, "@scope (volume-control)", ":scope[muted] .wave, :scope[muted] .wave-small").get("opacity"), String(tokens.volume.mutedWaveOpacity));
+        // A key or a notch of the wheel.
+        assert.equal(jsConstant(sources.script, "VOLUME_STEP"), tokens.volume.step);
     });
 
     test("motion.loadingDash", () => {
@@ -292,16 +281,16 @@ describe("the gestures, the drawing and the resting screen match shared/design-t
         const bar = rule(page, ".gesture-volume");
         assert.equal(bar.get("width"), px(size.gestureVolumeWidth));
         assert.equal(bar.get("height"), px(size.gestureVolumeHeight));
-        assert.equal(bar.get("top"), `calc(100% + ${px(size.gestureVolumeOffset)})`);
+        // Under the name's foot: the drawing, with the name's reach either side.
+        assert.equal(bar.get("top"), `calc(2 * var(--name-reach) + ${px(size.stage)} + ${px(size.gestureVolumeOffset)})`);
         assert.equal(rule(page, ":root[data-resting] .gesture-volume").get("transition"), `opacity ${seconds(duration.restFade)} ${bezier(motion.fadeEasing)}`);
     });
 
     test("the arrival", () => {
-        const arrival = rule(page, MOTION, ".app-header, .player, .app-footer").get("animation");
+        const arrival = rule(page, MOTION, ".app-header, .player").get("animation");
         assert.ok(arrival.includes(`app-enter ${seconds(duration.appEnter)} ${bezier(motion.emphasizedEasing)}`), arrival);
         assert.ok(arrival.includes(`app-fade ${seconds(duration.appEnter)} ${bezier(motion.fadeEasing)}`), arrival);
         assert.equal(rule(page, MOTION, ".player").get("animation-delay"), seconds(duration.appEnterStagger));
-        assert.equal(rule(page, MOTION, ".app-footer").get("animation-delay"), seconds(2 * duration.appEnterStagger));
     });
 
     test("the resting screen", () => {
@@ -342,7 +331,7 @@ describe("the web app matches shared/copy.json", () => {
         pause: [["script", (v) => `const PAUSE_LABEL = "${v}";`]],
         previousTrack: [["index", (v) => `id="previousButton" type="button" aria-label="${v}"`]],
         nextTrack: [["index", (v) => `id="nextButton" type="button" aria-label="${v}"`]],
-        volume: [["volumeControl", (v) => `const DEFAULT_LABEL = "${v}";`]],
+        volume: [["index", (v) => `role="slider" tabindex="0" aria-label="${v}"`]],
         menu: [["appMenu", (v) => `aria-label="${v}"`]],
         theme: [["appMenu", (v) => `<span class="menu-label">${v}</span>`], ["themeSelector", (v) => `role="radiogroup" aria-label="${v}"`]],
         themeSystem: [["themeSelector", (v) => `label: "${v}",`]],

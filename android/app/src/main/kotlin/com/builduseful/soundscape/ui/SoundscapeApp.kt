@@ -116,6 +116,7 @@ fun SoundscapeApp(
     val dark = theme.isDark(isSystemInDarkTheme())
     val panels = remember { Panels() }
     val keys = remember { Keys() }
+    val volume = remember { DragVolume() }
     val root = remember { FocusRequester() }
     val guideState = remember(guide) { GuideState(guide) }
     val rest = remember { Rest() }
@@ -131,7 +132,7 @@ fun SoundscapeApp(
         )
         CompositionLocalProvider(LocalPalette provides remember(darkness) { Palette(darkness) }) {
             Page(
-                state, actions, theme, onTheme, versionName, panels, keys, guideState, rest,
+                state, actions, theme, onTheme, versionName, panels, volume, guideState, rest,
                 modifier = Modifier
                     .then(with(panels) { Modifier.dismissOnPressOutside() })
                     .then(with(rest) { Modifier.wakesOnPress() })
@@ -139,7 +140,7 @@ fun SoundscapeApp(
                     .onFocusChanged { keys.rootFocused = it.isFocused }
                     .onPreviewKeyEvent {
                         rest.wake()
-                        keys.handle(it, panels, actions)
+                        keys.handle(it, panels, actions, volume, state.volume)
                     }
                     .focusable(),
             )
@@ -155,7 +156,7 @@ private fun Page(
     onTheme: (ThemePreference) -> Unit,
     versionName: String,
     panels: Panels,
-    keys: Keys,
+    volume: DragVolume,
     guide: GuideState,
     rest: Rest,
     modifier: Modifier,
@@ -164,7 +165,6 @@ private fun Page(
     val reduced = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
     val pager = remember { Pager(scope) }
-    val volume = remember { DragVolume() }
     val current by rememberUpdatedState(state)
     val currentActions by rememberUpdatedState(actions)
     val currentReduced by rememberUpdatedState(reduced)
@@ -204,7 +204,7 @@ private fun Page(
 
     // The page arrives rather than appears: each part rises a little into
     // place as it fades in, top to bottom.
-    val arrival = remember { List(3) { Animatable(if (reduced) 1f else 0f) } }
+    val arrival = remember { List(2) { Animatable(if (reduced) 1f else 0f) } }
     LaunchedEffect(Unit) {
         arrival.forEachIndexed { index, part ->
             launch {
@@ -232,17 +232,8 @@ private fun Page(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(DesignTokens.Size.playerGap.dp),
                 ) {
-                    Pages(
-                        state, pager, volume, actions, { words.value },
-                        Modifier.onFocusChanged { keys.transportFocused = it.hasFocus },
-                    )
+                    Pages(state, pager, volume, actions, { words.value })
                     (state.notice as? Notice.Failed)?.let { PlaybackError(it.track.title) }
-                }
-            },
-            footer = {
-                Row(Modifier.fillMaxWidth().arrives(arrival[2]), horizontalArrangement = Arrangement.End) {
-                    // A drag up or down sets the volume: the button is for the keyboard and TalkBack.
-                    VolumeControl(panels, state.volume, actions::setVolume, concealed = true)
                 }
             },
             // Scrolls only when the window is too short to hold the page. The page's
@@ -359,29 +350,26 @@ private class PlayerGestures(
 }
 
 /**
- * The web's `.container` grid: header and footer at their own heights, the
- * player centred across the whole, not just the room between them, which
- * differ in height; the whole at least the window's height. The header and
- * footer draw above the player, so their panels cover it.
+ * The web's `.container` grid: the header at its own height, the player
+ * centred across the whole, not just the room below the header; the whole at
+ * least the window's height. The header draws above the player, so its panel
+ * covers it.
  */
 @Composable
 private fun PageLayout(
     header: @Composable () -> Unit,
     player: @Composable () -> Unit,
-    footer: @Composable () -> Unit,
     modifier: Modifier,
 ) {
-    Layout(contents = listOf(header, player, footer), modifier = modifier) { (h, p, f), constraints ->
+    Layout(contents = listOf(header, player), modifier = modifier) { (h, p), constraints ->
         val loose = Constraints(maxWidth = constraints.maxWidth)
         val top = h.first().measure(loose)
-        val bottom = f.first().measure(loose)
         val middle = p.first().measure(loose)
-        val height = maxOf(constraints.minHeight, top.height + bottom.height, middle.height)
+        val height = maxOf(constraints.minHeight, top.height, middle.height)
         // Placed in reading order, which is the keyboard's order too.
         layout(constraints.maxWidth, height) {
             top.place(0, 0, zIndex = 1f)
             middle.place((constraints.maxWidth - middle.width) / 2, (height - middle.height) / 2)
-            bottom.place(0, height - bottom.height, zIndex = 1f)
         }
     }
 }
@@ -419,21 +407,31 @@ private fun Header(
 }
 
 /**
- * Space plays and pauses, the arrows skip, as on the web — from anywhere but
- * a control of another kind, which keeps its keys. Escape closes a panel.
+ * Space plays and pauses, the left and right arrows skip, and up and down step
+ * the volume, as on the web — from anywhere but a control of another kind,
+ * which keeps its keys. Escape closes a panel.
  */
 @Stable
 private class Keys {
     var rootFocused by mutableStateOf(false)
-    var transportFocused by mutableStateOf(false)
 
-    fun handle(event: KeyEvent, panels: Panels, actions: PlayerActions): Boolean {
+    fun handle(event: KeyEvent, panels: Panels, actions: PlayerActions, volume: DragVolume, level: Float): Boolean {
         if (event.key == Key.Escape && panels.open != null) {
             if (event.type == KeyEventType.KeyDown) panels.close()
             return true
         }
-        if (!rootFocused && !transportFocused) return false
+        if (!rootFocused) return false
         if (event.isAltPressed || event.isCtrlPressed || event.isMetaPressed) return false
+        // Held, it keeps going, as a slider's does.
+        val step = when (event.key) {
+            Key.DirectionUp -> DesignTokens.Volume.step
+            Key.DirectionDown -> -DesignTokens.Volume.step
+            else -> 0f
+        }
+        if (step != 0f) {
+            if (event.type == KeyEventType.KeyDown) actions.setVolume(volume.step(level, step), true)
+            return true
+        }
         val action: (() -> Unit) = when (event.key) {
             Key.Spacebar -> actions::playPause
             Key.DirectionLeft -> actions::previous
@@ -460,9 +458,6 @@ object UiTags {
     const val MENU_PANEL = "menuPanel"
     const val THEME_SELECTOR = "themeSelector"
     const val VERSION = "version"
-    const val VOLUME_BUTTON = "volumeButton"
-    const val VOLUME_PANEL = "volumePanel"
-    const val VOLUME_SLIDER = "volumeSlider"
     const val PEEK = "peek"
     const val DRAG_VOLUME = "dragVolume"
     const val GUIDE = "guide"

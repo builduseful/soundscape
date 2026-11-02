@@ -33,7 +33,6 @@ const PARTS = {
     playPause: "#playPauseButton",
     next: "#nextButton",
     title: "#title .track-title-text",
-    volumeButton: "#volumeControl button[aria-controls]",
 };
 
 const round = (value) => Math.round(value * 10) / 10;

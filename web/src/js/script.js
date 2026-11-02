@@ -20,7 +20,6 @@ import { AppMenu } from "./components/app-menu.js";
 import { GestureTutorial } from "./components/gesture-tutorial.js";
 import { ThemeSelector } from "./components/theme-selector.js";
 import { TrackScene } from "./components/track-scene.js";
-import { VolumeControl } from "./components/volume-control.js";
 import { attachGestures } from "./gestures.js";
 import { registerInstallPrompt, registerLaunchQueueConsumer, registerServiceWorker } from "./pwa.js";
 import {
@@ -31,14 +30,20 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.10";
+const VERSION = "2.1.11";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
 const KEY_SPACE = " ";
 const KEY_ARROW_RIGHT = "ArrowRight";
 const KEY_ARROW_LEFT = "ArrowLeft";
+const KEY_ARROW_UP = "ArrowUp";
+const KEY_ARROW_DOWN = "ArrowDown";
 const SAVED_VOLUME_KEY = "soundscape.volume";
+// How far a key or a notch of the wheel moves the volume, as a fraction of the
+// whole: small enough to land on a level, large enough that crossing the range
+// is a gesture rather than a chore.
+const VOLUME_STEP = 0.05;
 const SAVED_TRACK_ID_KEY = "soundscape.currentTrackId";
 const TUTORIAL_DONE_KEY = "soundscape.gestureTutorialDone";
 // After the page's own fade in, so the guide arrives into a settled screen.
@@ -82,9 +87,7 @@ customElements.define("app-menu", AppMenu);
 customElements.define("gesture-tutorial", GestureTutorial);
 customElements.define("theme-selector", ThemeSelector);
 customElements.define("track-scene", TrackScene);
-customElements.define("volume-control", VolumeControl);
 
-const volumeControl = document.getElementById("volumeControl");
 const title = document.getElementById("title");
 const titleText = title.querySelector(".track-title-text");
 const playPauseButton = document.getElementById("playPauseButton");
@@ -112,7 +115,10 @@ let mediaSessionPositionTimer = 0;
 let loadingIndicatorTimer = 0;
 let restTimer = 0;
 let tutorialOpen = false;
+// The level the sound is set to, from 0 to 1, and where a drag found it.
+let volume = 1;
 let volumeAtGestureStart = 0;
+let volumeDragging = false;
 let swipeDx = 0;
 let swipeDragging = false;
 // Which neighbour the peek shows: -1 the previous, 1 the next, 0 neither.
@@ -153,10 +159,6 @@ const mediaSessionActions = {
     onBrowserPlaybackPause: handleBrowserPlaybackPause,
 };
 
-volumeControl.addEventListener("input", () => {
-    applyVolume(volumeControl.value);
-    savePreference(SAVED_VOLUME_KEY, volumeControl.value);
-});
 playPauseButton.addEventListener("click", playPauseClick);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
@@ -166,6 +168,7 @@ themeSelector.addEventListener("theme-change", (event) => {
 document.addEventListener("visibilitychange", handleVisibilityChange);
 document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
+document.addEventListener("wheel", handleWheel, { passive: false });
 for (const type of ["pointermove", "pointerdown", "keydown"]) document.addEventListener(type, handleActivity);
 gestureTutorial.addEventListener("tutorial-done", () => {
     savePreference(TUTORIAL_DONE_KEY, "true");
@@ -210,7 +213,16 @@ async function playPauseClick() {
 }
 
 async function handleDocumentKeydown(event) {
-    if (event.repeat || shouldIgnoreGlobalShortcut(event)) return;
+    if (shouldIgnoreGlobalShortcut(event)) return;
+
+    // Held, it keeps going, as a slider's does.
+    if (event.key === KEY_ARROW_UP || event.key === KEY_ARROW_DOWN) {
+        event.preventDefault();
+        stepVolume(event.key === KEY_ARROW_UP ? 1 : -1);
+        return;
+    }
+
+    if (event.repeat) return;
 
     if (event.key === KEY_SPACE) {
         event.preventDefault();
@@ -419,32 +431,54 @@ function whenSlid(motion, then) {
 }
 
 function handleVolumeGestureStart() {
-    volumeAtGestureStart = Number(volumeControl.value);
-    gestureVolume.style.setProperty("--level", volumeControl.value);
-    gestureVolume.dataset.active = "";
+    volumeAtGestureStart = volume;
+    volumeDragging = true;
+    showGestureVolume();
 }
 
 function handleVolumeGestureChange(change) {
-    const volume = Math.min(1, Math.max(0, volumeAtGestureStart + change));
-
-    volumeControl.value = String(volume);
-    gestureVolume.style.setProperty("--level", String(volume));
-    applyVolume(volume);
+    setVolume(volumeAtGestureStart + change);
 }
 
 function handleVolumeGestureEnd() {
-    savePreference(SAVED_VOLUME_KEY, volumeControl.value);
+    volumeDragging = false;
+    savePreference(SAVED_VOLUME_KEY, String(volume));
     gestureTutorial.completed("volume");
 }
 
 function handleVolumeGestureCancel() {
-    volumeControl.value = String(volumeAtGestureStart);
-    applyVolume(volumeAtGestureStart);
+    volumeDragging = false;
+    setVolume(volumeAtGestureStart);
     hideGestureVolume();
 }
 
-// The level a drag set stays to be read until the screen rests, and goes with
-// the words; any other gesture is about something else, and clears it.
+// A notch of the wheel, as a key: up is louder. Not where the page is too
+// short for the window, which a wheel scrolls.
+function handleWheel(event) {
+    const direction = -Math.sign(event.deltaY);
+    const root = document.documentElement;
+
+    if (!direction || event.ctrlKey || root.scrollHeight > root.clientHeight) return;
+    if (event.target instanceof Element && event.target.closest("[popover]")) return;
+
+    event.preventDefault();
+    stepVolume(direction);
+}
+
+function stepVolume(direction) {
+    showGestureVolume();
+    setVolume(Math.round((volume + direction * VOLUME_STEP) * 100) / 100);
+    savePreference(SAVED_VOLUME_KEY, String(volume));
+}
+
+function showGestureVolume() {
+    gestureVolume.dataset.active = "";
+}
+
+// The level a drag, a key or the wheel set stays to be read until the screen
+// rests, and goes with the words; any other gesture is about something else,
+// and clears it. With a mouse it takes the controls' place, and moving the
+// mouse on gives them back.
 function hideGestureVolume() {
     delete gestureVolume.dataset.active;
 }
@@ -467,6 +501,7 @@ function offerGestureTutorial() {
 function handleActivity(event) {
     if (event.type === "pointermove" && event.pointerType !== "mouse") return;
 
+    if (event.type === "pointermove" && !volumeDragging) hideGestureVolume();
     wake();
 }
 
@@ -675,18 +710,25 @@ function updateTrackTitle() {
 function restoreSavedVolume() {
     const savedVolumeValue = loadPreference(SAVED_VOLUME_KEY);
     const savedVolume = savedVolumeValue === null ? Number.NaN : Number(savedVolumeValue);
-    const volume = Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1
-        ? savedVolume
-        : localOutput.getVolume();
 
-    volumeControl.value = String(volume);
-    applyVolume(volume);
+    setVolume(Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 1
+        ? savedVolume
+        : localOutput.getVolume());
 }
 
-function applyVolume(volume) {
+// The one place the level changes: the sound, the bar and what a screen reader
+// is told move together.
+function setVolume(value) {
     const output = activeOutput();
 
+    volume = Math.min(1, Math.max(0, value));
     if (output.canControlVolume()) output.setVolume(volume);
+
+    const percent = String(Math.round(volume * 100));
+
+    gestureVolume.style.setProperty("--level", String(volume));
+    gestureVolume.setAttribute("aria-valuenow", percent);
+    gestureVolume.setAttribute("aria-valuetext", `${percent}%`);
 }
 
 function isOutputPlaying() {

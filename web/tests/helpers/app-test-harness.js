@@ -211,7 +211,6 @@ export function installAppTestEnvironment({
     title.children = new Map([[".track-title-text", titleText]]);
 
     for (const id of [
-        "volumeControl",
         "playPauseButton",
         "nextButton",
         "previousButton",

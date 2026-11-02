@@ -40,12 +40,6 @@
           "y": 384,
           "width": 141.5,
           "height": 21
-        },
-        "volumeButton": {
-          "x": 292,
-          "y": 572,
-          "width": 50,
-          "height": 50
         }
       }
     },
@@ -88,12 +82,6 @@
           "y": 244,
           "width": 141.5,
           "height": 21
-        },
-        "volumeButton": {
-          "x": 724,
-          "y": 284,
-          "width": 50,
-          "height": 50
         }
       }
     },
@@ -136,12 +124,6 @@
           "y": 464,
           "width": 141.5,
           "height": 21
-        },
-        "volumeButton": {
-          "x": 1204,
-          "y": 724,
-          "width": 50,
-          "height": 50
         }
       }
     },
@@ -184,12 +166,6 @@
           "y": 484.5,
           "width": 141.5,
           "height": 21
-        },
-        "volumeButton": {
-          "x": 597,
-          "y": 765,
-          "width": 50,
-          "height": 50
         }
       }
     },
@@ -232,12 +208,6 @@
           "y": 214,
           "width": 141.5,
           "height": 21
-        },
-        "volumeButton": {
-          "x": 292,
-          "y": 232,
-          "width": 50,
-          "height": 50
         }
       }
     }

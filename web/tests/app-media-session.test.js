@@ -121,7 +121,7 @@ test("restores saved track, volume, and theme before the first play", async () =
     assert.equal(document.title, `${tracks[1].title} · Soundscape`);
     assert.equal(document.documentElement.dataset.theme, "dark");
     assert.equal(elements.get("themeSelector").getAttribute("value"), "dark");
-    assert.equal(elements.get("volumeControl").value, "0.42");
+    assert.equal(elements.get("gestureVolume").getAttribute("aria-valuenow"), "42");
     assert.equal(navigator.mediaSession.metadata.title, tracks[1].title);
     assert.equal(navigator.mediaSession.playbackState, "none");
 
@@ -194,19 +194,17 @@ test("invalid saved preferences fall back to safe defaults", async () => {
     assert.equal(document.title, `${tracks[0].title} · Soundscape`);
     assert.equal(document.documentElement.dataset.theme, undefined);
     assert.equal(elements.get("themeSelector").getAttribute("value"), "system");
-    assert.equal(elements.get("volumeControl").value, "1");
+    assert.equal(elements.get("gestureVolume").getAttribute("aria-valuenow"), "100");
     assert.equal(navigator.mediaSession.metadata.title, tracks[0].title);
     assert.equal(navigator.mediaSession.playbackState, "none");
 });
 
-test("volume and theme controls persist app preferences", async () => {
+test("volume keys and the theme control persist app preferences", async () => {
     const { audioContexts, audioElement, elements, mediaActions, storage } = await startAppTestEnvironment();
     const themeSelector = elements.get("themeSelector");
-    const volumeControl = elements.get("volumeControl");
 
     await themeSelector.dispatch("theme-change", { detail: { theme: "light" } });
-    volumeControl.value = "0.25";
-    await volumeControl.dispatch("input");
+    await pressVolumeKey("ArrowDown", 15);
     await mediaActions.play();
 
     assert.equal(document.documentElement.dataset.theme, "light");
@@ -271,7 +269,7 @@ test("global keyboard shortcuts drive playback and track changes", async () => {
 
 test("global keyboard shortcuts ignore repeats and editable controls", async () => {
     const { audioElement, elements, navigator } = await startAppTestEnvironment();
-    const editableTarget = elements.get("volumeControl");
+    const editableTarget = elements.get("themeSelector");
     editableTarget.closestMatch = (selector) => (
         selector === "input, select, textarea, [contenteditable='true']" ? editableTarget : null
     );
@@ -415,16 +413,14 @@ test("media previous key keeps working after changing tracks while paused", asyn
 });
 
 test("volume changes use linear ramping for smooth transitions", async () => {
-    const { audioContexts, elements, mediaActions } = await startAppTestEnvironment();
-    const volumeControl = elements.get("volumeControl");
+    const { audioContexts, mediaActions } = await startAppTestEnvironment();
 
     await mediaActions.play();
 
     const trackGain = audioContexts[0].gains[1];
     assert.equal(trackGain.gain.value, 1);
 
-    volumeControl.value = "0.5";
-    await volumeControl.dispatch("input");
+    await pressVolumeKey("ArrowDown", 10);
 
     const lastCall = trackGain.gain.calls.at(-1);
     assert.equal(lastCall.name, "linearRampToValueAtTime");
@@ -918,14 +914,12 @@ test("media stop key pauses the app", async () => {
 });
 
 test("app handles localStorage failures without crashing", async () => {
-    const { elements, storage } = await startAppTestEnvironment();
-    const volumeControl = elements.get("volumeControl");
+    const { storage } = await startAppTestEnvironment();
     const warnings = captureConsoleWarn();
 
     globalThis.localStorage.shouldFail = true;
 
-    volumeControl.value = "0.1";
-    await volumeControl.dispatch("input");
+    await pressVolumeKey("ArrowDown");
 
     assert.equal(storage.get("soundscape.volume"), undefined);
     assert.equal(warnings.length, 1);
@@ -954,4 +948,43 @@ test("media track keys keep playback running while already playing", async () =>
 
     await mediaActions.pause();
     assert.equal(navigator.mediaSession.playbackState, "paused");
+});
+
+async function pressVolumeKey(key, times = 1) {
+    for (let press = 0; press < times; press += 1) {
+        await document.dispatch("keydown", { key, repeat: press > 0 });
+    }
+}
+
+// The level is set by keys and the wheel as well as a drag, now that there is
+// no slider to reach: a step at a time, held keys repeating, and shown on the
+// bar a screen reader reads as the volume.
+test("arrow keys step the volume, held or not, and show the level", async () => {
+    const { elements, storage } = await startAppTestEnvironment();
+    const bar = elements.get("gestureVolume");
+
+    const first = await document.dispatch("keydown", { key: "ArrowDown", repeat: false });
+    await document.dispatch("keydown", { key: "ArrowDown", repeat: true });
+
+    assert.equal(first.defaultPrevented, true);
+    assert.equal(bar.getAttribute("aria-valuenow"), "90");
+    assert.equal(bar.getAttribute("aria-valuetext"), "90%");
+    assert.equal("active" in bar.dataset, true);
+    assert.equal(storage.get("soundscape.volume"), "0.9");
+
+    await pressVolumeKey("ArrowUp", 5);
+    assert.equal(bar.getAttribute("aria-valuenow"), "100", "it stops at the top.");
+});
+
+test("a notch of the wheel steps the volume, by its direction alone", async () => {
+    const { elements } = await startAppTestEnvironment();
+    const bar = elements.get("gestureVolume");
+
+    const down = await document.dispatch("wheel", { deltaY: 300 });
+    await document.dispatch("wheel", { deltaY: 3 });
+    const sideways = await document.dispatch("wheel", { deltaY: 0, deltaX: 40 });
+
+    assert.equal(down.defaultPrevented, true);
+    assert.equal(sideways.defaultPrevented, false);
+    assert.equal(bar.getAttribute("aria-valuenow"), "90");
 });

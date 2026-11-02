@@ -69,9 +69,6 @@
                          static text that only gets un-hidden gives it nothing. -->
                     <span id="trackLoadingLabel" class="track-loading-label"></span>
                 </p>
-                <div id="gestureVolume" class="gesture-volume" aria-hidden="true">
-                    <span class="gesture-volume-fill"></span>
-                </div>
             </div>
             <!-- The soundscape a swipe is bringing in, a screen's width away
                  beside this one; laid out as the real one is, so the change
@@ -104,11 +101,14 @@
                     </button>
                 </div>
             </div>
+            <!-- Seen while a drag, a key or the wheel sets the level; for a
+                 screen reader it is the volume, always there. -->
+            <div id="gestureVolume" class="gesture-volume" role="slider" tabindex="0" aria-label="Volume"
+                aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="100%">
+                <span class="gesture-volume-fill"></span>
+            </div>
             <p id="playbackError" class="playback-error" role="status" hidden></p>
         </main>
-        <footer class="app-footer">
-            <volume-control id="volumeControl" value="1"></volume-control>
-        </footer>
         <gesture-tutorial id="gestureTutorial" hidden></gesture-tutorial>
         <!-- Opted out of remote playback on purpose. This element's audio is
              diverted into the Web Audio graph by createMediaElementSource, so a

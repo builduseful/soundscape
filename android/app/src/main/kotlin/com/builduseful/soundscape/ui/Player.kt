@@ -28,8 +28,15 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.builduseful.soundscape.R
 import com.builduseful.soundscape.core.Track
 import com.builduseful.soundscape.core.contract.DesignTokens
 import com.builduseful.soundscape.core.contract.catalogTracks
@@ -41,6 +48,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * The soundscapes lie side by side, a screen's width apart, and a swipe turns
@@ -184,8 +192,9 @@ internal class Pager(private val scope: CoroutineScope) {
 private val SwipeEasing = DesignTokens.Motion.swipeEasing.easing()
 
 /**
- * The level a drag set, shown under the name until the screen rests, when it
- * goes with the words; any other gesture is about something else, and clears it.
+ * The level a drag or a key set, shown under the name until the screen rests,
+ * when it goes with the words; any other gesture is about something else, and
+ * clears it.
  */
 @Stable
 internal class DragVolume {
@@ -204,6 +213,14 @@ internal class DragVolume {
         level = volume
         active = true
         rested = false
+    }
+
+    /** A key's step from [volume], shown. Returns the level, to the hundredth. */
+    fun step(volume: Float, by: Float): Float {
+        level = ((volume + by) * 100).roundToInt().coerceIn(0, 100) / 100f
+        active = true
+        rested = false
+        return level
     }
 
     /** [change] is since the drag began, as a fraction of the range. Returns the level. */
@@ -314,7 +331,7 @@ private fun TrackPage(
                 }
                 TrackStatus(state, words, peek = !centre)
             }
-            if (centre) DragVolumeBar(volume)
+            if (centre) DragVolumeBar(volume, state.volume, actions::setVolume)
         },
         modifier = modifier,
     ) { measurables, constraints ->
@@ -331,9 +348,15 @@ private fun TrackPage(
     }
 }
 
+/**
+ * Seen while a drag or a key sets the level; for TalkBack it is the volume,
+ * always there, and adjusted as a slider is. The fade is on what it draws, not
+ * on the node: a node drawn at nothing is left out for TalkBack too.
+ */
 @Composable
-private fun DragVolumeBar(volume: DragVolume) {
+private fun DragVolumeBar(volume: DragVolume, level: Float, onVolume: (Float, Boolean) -> Unit) {
     val palette = LocalPalette.current
+    val label = stringResource(R.string.volume)
     val shown = animateFloatAsState(
         if (volume.active) 1f else 0f,
         when {
@@ -347,12 +370,16 @@ private fun DragVolumeBar(volume: DragVolume) {
         Modifier
             .testTag(UiTags.DRAG_VOLUME)
             .size(DesignTokens.Size.gestureVolumeWidth.dp, DesignTokens.Size.gestureVolumeHeight.dp)
-            .graphicsLayer { alpha = shown.value },
+            .semantics {
+                contentDescription = label
+                progressBarRangeInfo = ProgressBarRangeInfo(level, 0f..1f, steps = 99)
+                setProgress { onVolume(it.coerceIn(0f, 1f), true); true }
+            },
     ) {
         val radius = CornerRadius(size.height / 2)
         val track = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, radius)) }
-        drawRoundRect(palette.border, cornerRadius = radius)
-        clipPath(track) { drawRect(palette.textMuted, size = Size(size.width * volume.level, size.height)) }
+        drawRoundRect(palette.border, cornerRadius = radius, alpha = shown.value)
+        clipPath(track) { drawRect(palette.textMuted, size = Size(size.width * volume.level, size.height), alpha = shown.value) }
     }
 }
 
