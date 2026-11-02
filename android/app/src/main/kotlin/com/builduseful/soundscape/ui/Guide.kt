@@ -1,7 +1,6 @@
 package com.builduseful.soundscape.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -246,8 +245,8 @@ private fun Hint(gesture: Gesture?) {
 }
 
 private val Emphasized = DesignTokens.Motion.emphasizedEasing.easing()
-private val InOut = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
-private val Sweep = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)
+private val InOut = CssCubicBezier(0.42f, 0f, 0.58f, 1f)
+private val Sweep = CssCubicBezier(0.45f, 0f, 0.55f, 1f)
 
 // The web's tutorial-tap, tutorial-swipe and tutorial-volume keyframes.
 private val TapScale = Keyframes(floatArrayOf(0f, 0.45f, 0.6f, 1f), floatArrayOf(1f, 0.7f, 1.25f, 1f))

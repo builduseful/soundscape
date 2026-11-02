@@ -1,6 +1,5 @@
 package com.builduseful.soundscape.ui
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.ui.graphics.Path
@@ -105,8 +104,8 @@ private fun n(value: Double): String =
 
 private fun n(value: Float) = n(value.toDouble())
 
-private val easeOut = CubicBezierEasing(0f, 0f, 0.58f, 1f)
-private val easeInOut = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
+private val easeOut = CssCubicBezier(0f, 0f, 0.58f, 1f)
+private val easeInOut = CssCubicBezier(0.42f, 0f, 0.58f, 1f)
 
 // Three true circles, left, crown and right, joined where they cross and sat
 // on one flat base, so every join is smooth.
@@ -139,7 +138,7 @@ private fun streaks(
         width = width,
         layer = layer,
         motion = Motion(
-            duration, Math.round((delay.toFloat() - 0.45f * duration) * 100) / 100f, CubicBezierEasing(0.4f, 0f, 0.9f, 0.7f),
+            duration, Math.round((delay.toFloat() - 0.45f * duration) * 100) / 100f, CssCubicBezier(0.4f, 0f, 0.9f, 0.7f),
             opacity = frames(0 to 0, 0.25 to 1, 0.65 to 1, 1 to 0),
             x = frames(0 to 0, 1 to -travel * slant / length),
             y = frames(0 to 0, 1 to travel),
@@ -221,7 +220,7 @@ private fun landing(x: Float, from: Float, surface: Float, duration: Float, dela
         SceneElement(
             "M${n(x)} ${n(from)}v3",
             motion = Motion(
-                duration, delay, CubicBezierEasing(0.45f, 0f, 0.9f, 0.5f),
+                duration, delay, CssCubicBezier(0.45f, 0f, 0.9f, 0.5f),
                 opacity = frames(0 to 0, 0.12 to 1, 0.58 to 1, 0.62 to 0, 1 to 0),
                 y = frames(0 to 0, 0.58 to land, 0.62 to land, 1 to land),
             ),
@@ -229,7 +228,7 @@ private fun landing(x: Float, from: Float, surface: Float, duration: Float, dela
         SceneElement(
             ellipse(x, surface, rx, ry),
             motion = Motion(
-                duration, ringDelay, CubicBezierEasing(0.2f, 0.6f, 0.4f, 1f),
+                duration, ringDelay, CssCubicBezier(0.2f, 0.6f, 0.4f, 1f),
                 opacity = frames(0 to 0, 0.12 to 1, 1 to 0),
                 scaleX = frames(0 to 0.15, 1 to 1),
                 scaleY = frames(0 to 0.15, 1 to 1),
@@ -290,7 +289,7 @@ private val dashes = listOf(0f, -0.65f, -1.3f, -1.95f).map { delay ->
         width = 1.3f,
         shows = Shows.Moving,
         motion = Motion(
-            2.6f, delay, CubicBezierEasing(0.55f, 0f, 0.9f, 0.6f),
+            2.6f, delay, CssCubicBezier(0.55f, 0f, 0.9f, 0.6f),
             opacity = frames(0 to 0, 0.15 to 1, 0.85 to 1, 1 to 0),
             y = frames(0 to 0, 1 to 19),
             scaleX = frames(0 to 0.5, 1 to 1.6),

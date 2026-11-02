@@ -4,7 +4,6 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import android.os.Build
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
@@ -34,6 +33,7 @@ import com.builduseful.soundscape.core.contract.DesignTokens
 import com.builduseful.soundscape.core.contract.ShadowLayer
 import com.builduseful.soundscape.core.contract.ThemedColor
 import com.builduseful.soundscape.core.contract.TypeToken
+import kotlin.math.abs
 
 /**
  * The design tokens' colours at a point between the themes: [darkness] 0 is
@@ -131,9 +131,61 @@ internal fun rememberTouchExploration(): Boolean {
 internal val FadeEasing: Easing = DesignTokens.Motion.fadeEasing.easing()
 
 /** CSS's `ease`, which a web transition uses when it names no timing function. */
-internal val CssEase: Easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)
+internal val CssEase: Easing = CssCubicBezier(0.25f, 0.1f, 0.25f, 1f)
 
-internal fun CubicBezier.easing(): Easing = CubicBezierEasing(x1, y1, x2, y2)
+internal fun CubicBezier.easing(): Easing = CssCubicBezier(x1, y1, x2, y2)
+
+/**
+ * CSS's `cubic-bezier()`, solved as browsers solve it: Newton's method, then
+ * bisection. Not Compose's CubicBezierEasing, which throws when float error
+ * leaves it no root near an end — (0.55, 0, 0.9, 0.6) at 0.9999999 crashed the
+ * drawing mid-frame. With x1 and x2 in 0..1, as CSS requires, x(t) only rises,
+ * so the bisection always lands.
+ */
+internal class CssCubicBezier(x1: Float, y1: Float, x2: Float, y2: Float) : Easing {
+    private val cx = 3.0 * x1
+    private val bx = 3.0 * (x2 - x1) - cx
+    private val ax = 1.0 - cx - bx
+    private val cy = 3.0 * y1
+    private val by = 3.0 * (y2 - y1) - cy
+    private val ay = 1.0 - cy - by
+
+    override fun transform(fraction: Float): Float = when {
+        fraction <= 0f -> 0f
+        fraction >= 1f -> 1f
+        else -> y(solve(fraction.toDouble())).toFloat()
+    }
+
+    private fun x(t: Double) = ((ax * t + bx) * t + cx) * t
+    private fun y(t: Double) = ((ay * t + by) * t + cy) * t
+
+    private fun solve(x: Double): Double {
+        var t = x
+        repeat(NEWTON_STEPS) {
+            val error = x(t) - x
+            if (abs(error) < PRECISION) return t
+            val slope = (3.0 * ax * t + 2.0 * bx) * t + cx
+            if (abs(slope) < PRECISION) return@repeat
+            t -= error / slope
+        }
+        var low = 0.0
+        var high = 1.0
+        t = x
+        repeat(BISECTION_STEPS) {
+            val error = x(t) - x
+            if (abs(error) < PRECISION) return t
+            if (error > 0) high = t else low = t
+            t = (low + high) / 2
+        }
+        return t
+    }
+
+    private companion object {
+        const val NEWTON_STEPS = 8
+        const val BISECTION_STEPS = 40
+        const val PRECISION = 1e-7
+    }
+}
 
 /** A type token as a style. Text with no line height of its own inherits the body's, as on the web. */
 internal fun TypeToken.style(color: Color) = TextStyle(
