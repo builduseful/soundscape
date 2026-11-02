@@ -30,7 +30,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.11";
+const VERSION = "2.1.12";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -93,6 +93,8 @@ const titleText = title.querySelector(".track-title-text");
 const playPauseButton = document.getElementById("playPauseButton");
 const nextButton = document.getElementById("nextButton");
 const previousButton = document.getElementById("previousButton");
+// The same question style.css asks, and for the same reason.
+const touchScreen = globalThis.matchMedia?.("(hover: none) and (pointer: coarse)");
 const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
@@ -162,6 +164,8 @@ const mediaSessionActions = {
 playPauseButton.addEventListener("click", playPauseClick);
 nextButton.addEventListener("click", playNextTrack);
 previousButton.addEventListener("click", playPreviousTrack);
+touchScreen?.addEventListener("change", syncTransportTabStops);
+syncTransportTabStops();
 themeSelector.addEventListener("theme-change", (event) => {
     updateThemePreference(event.detail.theme);
 });
@@ -509,9 +513,15 @@ function canRest() {
     return !tutorialOpen;
 }
 
-// The same question style.css asks, and for the same reason.
 function isTouchScreen() {
-    return Boolean(globalThis.matchMedia?.("(hover: none) and (pointer: coarse)").matches);
+    return Boolean(touchScreen?.matches);
+}
+
+// On a touch screen the buttons are never drawn, but a screen reader still
+// finds them; a keyboard there has its keys, and should not stop on nothing.
+function syncTransportTabStops() {
+    const tabIndex = isTouchScreen() ? -1 : 0;
+    for (const button of [previousButton, playPauseButton, nextButton]) button.tabIndex = tabIndex;
 }
 
 function wake() {

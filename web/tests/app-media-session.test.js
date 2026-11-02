@@ -328,6 +328,18 @@ test("a track change from the media keys turns the page", async () => {
     await waitFor(() => trackPeek.hidden);
 });
 
+// On a touch screen the buttons are never drawn, only read: a keyboard there
+// must not tab onto something it cannot see. With a mouse they are stops.
+for (const touch of [true, false]) {
+    test(`the transport buttons are ${touch ? "not " : ""}tab stops ${touch ? "on a touch screen" : "with a mouse"}`, async () => {
+        const { elements } = await startAppTestEnvironment({ matchMediaMatches: touch });
+
+        for (const id of ["previousButton", "playPauseButton", "nextButton"]) {
+            assert.equal(elements.get(id).tabIndex, touch ? -1 : 0, id);
+        }
+    });
+}
+
 test("reduced motion track changes show the new track without turning the page", async () => {
     const { elements, mediaActions } = await startAppTestEnvironment({ matchMediaMatches: true });
     const { current } = getTitleParts(elements);
