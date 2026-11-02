@@ -35,8 +35,9 @@ import java.util.concurrent.TimeUnit
  * hears it, and the app killed between launches. Each rule is proven in core
  * and in the app's own tests; this proves they are joined up.
  *
- * The page is the control: a tap plays or pauses and a swipe changes track.
- * The buttons are there for TalkBack and are pressed as it presses them. On a
+ * The page is the control: a tap plays or pauses, a swipe changes track and a
+ * drag up or down sets the volume. The buttons are there for TalkBack and are
+ * pressed as it presses them; the volume is read as it reads the bar. On a
  * fresh install the guide is showing, and the screen does not rest while it
  * is, so the words stay on screen to be found.
  */
@@ -105,13 +106,10 @@ class EndToEndTest {
         swipe(next = true)
         title(catalogTracks[1].title)
 
-        activate("volume")
         val before = volume()
-        val slider = slider().visibleBounds
-        device.click(slider.centerX(), slider.bottom - slider.height() * 3 / 10)
+        drag(down = true)
         waitUntil("the volume to change") { volume() != before }
         val chosen = volume()
-        device.pressBack()
 
         // Whichever theme the system is not in, so only the saved choice can explain the page after the restart.
         val systemDark = pageColour() == DesignTokens.Color.page.dark.toInt()
@@ -129,9 +127,7 @@ class EndToEndTest {
 
         title(catalogTracks[1].title)
         waitUntil("the page in ${string(theme)}") { pageColour() == page }
-        activate("volume")
         assertEquals(chosen, volume(), 0.001f)
-        device.pressBack()
         control("menu").click()
         assertTrue(option(theme).isChecked)
         assertNotEquals(before, chosen)
@@ -178,6 +174,13 @@ class EndToEndTest {
         device.swipe((device.displayWidth * from).toInt(), y, (device.displayWidth * to).toInt(), y, SWIPE_STEPS)
     }
 
+    // A tenth of the screen: within the range from full, so the level lands short of silence.
+    private fun drag(down: Boolean) {
+        val (from, to) = if (down) 0.45 to 0.55 else 0.55 to 0.45
+        val x = device.displayWidth / 2
+        device.swipe(x, (device.displayHeight * from).toInt(), x, (device.displayHeight * to).toInt(), SWIPE_STEPS)
+    }
+
     // As TalkBack's double tap does: the button's own action, not a touch where it sits.
     private fun activate(label: String) {
         control(label)
@@ -194,8 +197,7 @@ class EndToEndTest {
 
     private fun title(text: String) = find("the title $text", By.pkg(APP).text(text))
 
-    // The slider shares the button's name; it is the one that is not a button.
-    private fun slider() = find("the volume slider", By.pkg(APP).desc(string("volume")).clickable(false))
+    private fun slider() = find("the volume bar", By.pkg(APP).desc(string("volume")))
 
     // The notification's own buttons, or from Android 13 the media controls the system draws from the session.
     private fun shade(label: String) = find("“${string(label)}” in the notification shade", By.desc(string(label)))
@@ -206,7 +208,7 @@ class EndToEndTest {
         return found
     }
 
-    /** The slider's value, as TalkBack reads it: the one node on screen with a range. */
+    /** The bar's level, as TalkBack reads it: the one node on screen with a range. */
     private fun volume(): Float {
         slider()
         fun ranged(node: AccessibilityNodeInfo): AccessibilityNodeInfo? =
