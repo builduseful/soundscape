@@ -3,23 +3,19 @@ const SERVICE_WORKER_URL = "./sw.js";
 export function registerServiceWorker({
     serviceWorker = globalThis.navigator?.serviceWorker,
     location = globalThis.location,
+    onFirstControl,
 } = {}) {
     if (!serviceWorker || location?.protocol === "file:") {
         return false;
     }
 
-    // On the very first visit the page may load before the service worker has
-    // claimed it. When a controller appears for the first time, reload once so
-    // subsequent navigations (and cached audio requests) are handled by the SW.
-    if (typeof serviceWorker.addEventListener === "function") {
-        let wasControlled = Boolean(serviceWorker.controller);
-
-        serviceWorker.addEventListener("controllerchange", () => {
-            if (!wasControlled) {
-                wasControlled = true;
-                location.reload();
-            }
-        });
+    // No reload when it first takes control: sw.js claims the page as it
+    // activates, so every request from then on goes through it, and a reload
+    // would cut off a soundscape a first-time listener had just started. What
+    // was fetched before then missed the worker's cache, though, so
+    // onFirstControl is the chance to fetch it again.
+    if (!serviceWorker.controller && typeof serviceWorker.addEventListener === "function") {
+        serviceWorker.addEventListener("controllerchange", () => onFirstControl?.(), { once: true });
     }
 
     serviceWorker.register(SERVICE_WORKER_URL).catch((error) => {

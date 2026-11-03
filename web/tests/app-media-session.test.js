@@ -366,34 +366,42 @@ test("browser media element events can resume and pause app playback", async () 
     assert.equal(audioElement.pauseCalls, 1);
 });
 
-test("media session position timer follows Web Audio time and stops on pause", async () => {
+// The OS carries the position on by itself between readings, so one a second
+// was a wake-up a second spent on nothing. A loop is the one thing it cannot
+// carry on through: the reading is renewed where the loop starts over.
+test("media session position is renewed where the loop wraps, and not on pause", async () => {
     const {
         audioContexts,
-        intervals,
         mediaActions,
         mediaSessionPositionStates,
-        triggerInterval,
+        timeouts,
+        triggerTimeout,
     } = await startAppTestEnvironment();
+    const loopMs = FAKE_TRACK_LOOP_SECONDS * 1000;
+    const timerFor = (ms) => [...timeouts].find(([, { delay }]) => Math.abs(delay - ms) < 1e-6)?.[0];
 
     await mediaActions.play();
-    assert.equal(intervals.size, 1);
     assert.deepEqual(getLastItem(mediaSessionPositionStates), {
         duration: FAKE_TRACK_LOOP_SECONDS,
         playbackRate: 1,
         position: 0,
     });
+    const atWrap = timerFor(loopMs);
+    assert.ok(atWrap, "armed for the end of the loop");
 
+    // Late, as timers are: what it reports is where the loop really is.
     audioContexts[0].currentTime += 5;
-    await triggerInterval(getLastItem([...intervals.keys()]));
+    await triggerTimeout(atWrap);
 
     assert.deepEqual(getLastItem(mediaSessionPositionStates), {
         duration: FAKE_TRACK_LOOP_SECONDS,
         playbackRate: 1,
         position: 5,
     });
+    assert.ok(timerFor(loopMs - 5000), "and armed again for the next wrap");
 
     await mediaActions.pause();
-    assert.equal(intervals.size, 0);
+    assert.equal(timerFor(loopMs - 5000), undefined);
     assert.deepEqual(getLastItem(mediaSessionPositionStates), {
         duration: FAKE_TRACK_LOOP_SECONDS,
         playbackRate: 1,

@@ -30,7 +30,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.12";
+const VERSION = "2.1.13";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -73,7 +73,10 @@ const SCENE_DIM_MS = 900;
 const FADE_EASING = "cubic-bezier(0.37, 0, 0.63, 1)";
 // How far across, as a share of the page, a swipe takes the sound down to nothing.
 const SWIPE_FADE_DISTANCE = 0.5;
-const MEDIA_SESSION_POSITION_INTERVAL_MS = 1000;
+// The OS carries the position on by itself from each reading, so it is given a
+// new one only where the loop starts over; before there is one, it is asked
+// again this soon.
+const MEDIA_SESSION_POSITION_RETRY_MS = 1000;
 const LOADING_LABEL = "Loading soundscape";
 // A track already in the cache decodes in a few milliseconds, so showing the
 // indicator the instant loading starts would flash it on almost every skip.
@@ -202,7 +205,8 @@ restoreSavedVolume();
 updateTrackTitle();
 applyRequestedTrack();
 startMediaSession();
-registerServiceWorker();
+// The local player's files, so asked of it by name: no other output has any.
+registerServiceWorker({ onFirstControl: () => localOutput.recacheBuffers() });
 registerInstallPrompt(installButton);
 initLaunchQueue();
 appVersion.textContent = VERSION;
@@ -620,10 +624,9 @@ function getCurrentTrack() {
 
 // A ?track=<slug> URL (e.g. from a manifest app shortcut) wins over the saved
 // track so shared/pinned links open on the requested soundscape. Once applied,
-// the param is persisted and removed: persisted because on a first visit the
-// service worker claims the page and reloads it once, which would otherwise
-// discard the choice; removed because leaving it in the address bar would make
-// every later reload of that URL override the user's saved soundscape.
+// the param is persisted and removed: persisted so the choice outlives the
+// param; removed because leaving it in the address bar would make every later
+// reload of that URL override the user's saved soundscape.
 function applyRequestedTrack() {
     if (requestedTrackIndex !== -1) {
         saveCurrentTrack();
@@ -1049,16 +1052,19 @@ function syncMediaSessionPositionState() {
 }
 
 function updateMediaSessionPositionTimer(isPlaying) {
-    // Nothing to poll on an output that cannot report a position.
-    if (!isPlaying || !activeOutput().canReportPosition()) {
-        clearInterval(mediaSessionPositionTimer);
+    clearTimeout(mediaSessionPositionTimer);
+    mediaSessionPositionTimer = 0;
+    // Nothing to keep up to date on an output that cannot report a position.
+    if (!isPlaying || !activeOutput().canReportPosition()) return;
+
+    const reading = activeOutput().getMediaSessionPositionState();
+    const untilWrap = reading ? (reading.duration - reading.position) * 1000 : MEDIA_SESSION_POSITION_RETRY_MS;
+
+    mediaSessionPositionTimer = setTimeout(() => {
         mediaSessionPositionTimer = 0;
-        return;
-    }
-
-    if (mediaSessionPositionTimer) return;
-
-    mediaSessionPositionTimer = setInterval(syncMediaSessionPositionState, MEDIA_SESSION_POSITION_INTERVAL_MS);
+        syncMediaSessionPositionState();
+        updateMediaSessionPositionTimer(isOutputPlaying());
+    }, untilWrap);
 }
 
 // --- Boot -----------------------------------------------------------------

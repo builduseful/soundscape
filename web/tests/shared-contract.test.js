@@ -373,7 +373,7 @@ describe("the web app matches shared/fixtures/loop-crossfade.json", () => {
             const source = context.createBuffer(input.channels.length, input.channels[0].length, input.sampleRate);
             input.channels.forEach((samples, channel) => source.getChannelData(channel).set(samples));
 
-            const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, context, input.crossfadeMs);
+            const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, input.crossfadeMs);
 
             assert.equal(loopStart, 0);
             assert.equal(Math.round(loopEnd * input.sampleRate), expected.loopEndSamples);

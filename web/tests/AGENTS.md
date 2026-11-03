@@ -51,10 +51,9 @@ without rebuilding:
   ```
 - After stopping the server the page still loads from the SW cache — this is
   correct offline behaviour, not a stale server.
-- On a first visit the page reloads once after the service worker claims the
-  client. This `controllerchange` auto-reload only fires on the **first-ever
-  claim** (null → SW), not on version-bump updates — after a version bump the
-  user must reload manually to see the new version label.
+- The page never reloads itself. On a first visit the service worker claims it
+  as it activates, so later requests go through the worker without a reload;
+  after a version bump, reload by hand to see the new version label.
 - Avoid hard reloads when testing offline behaviour, because they bypass the
   service worker.
 - Do not open `index.html` directly via `file://`; the app requires HTTP for
@@ -131,9 +130,9 @@ The `config.json` itself is gitignored: a fresh clone copies
   success and every later assertion silently describes the old page. Check the
   command list in `playwright-cli --help` rather than guessing the verb.
 - **Testing slow loads needs a reload, not just a cache purge** — `AudioPlayer`
-  keeps decoded buffers in an in-memory `bufferCache` for the page's lifetime,
-  so a track played earlier in the session replays instantly even after you
-  delete it from the SW cache. Reload the page to clear it. To throttle, use
+  keeps the current track and the one before it decoded in an in-memory
+  `bufferCache`, so going back to the last track replays instantly even after
+  you delete it from the SW cache. Reload the page to clear it. To throttle, use
   `context.route` (not `page.route`) — only the context-level route intercepts
   the service worker's own fetches — and delay with `page.waitForTimeout` inside
   the handler, since `run-code` route handlers have no `setTimeout`.

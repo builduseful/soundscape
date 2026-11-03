@@ -21,10 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
@@ -376,10 +373,11 @@ private fun DragVolumeBar(volume: DragVolume, level: Float, onVolume: (Float, Bo
                 setProgress { onVolume(it.coerceIn(0f, 1f), true); true }
             },
     ) {
+        if (shown.value == 0f) return@Canvas
         val radius = CornerRadius(size.height / 2)
-        val track = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, radius)) }
         drawRoundRect(palette.border, cornerRadius = radius, alpha = shown.value)
-        clipPath(track) { drawRect(palette.textMuted, size = Size(size.width * volume.level, size.height), alpha = shown.value) }
+        // The level is the track cut off at its share of the width.
+        clipRect(right = size.width * volume.level) { drawRoundRect(palette.textMuted, cornerRadius = radius, alpha = shown.value) }
     }
 }
 

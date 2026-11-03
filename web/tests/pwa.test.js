@@ -27,6 +27,47 @@ test("registerServiceWorker installs offline support when service workers are av
     assert.deepEqual(registrations, ["./sw.js"]);
 });
 
+// A first visit used to reload once the worker took control, which cut off a
+// soundscape started in those first seconds. The worker claims the page as it
+// activates, so nothing needs the reload; what was fetched before the claim is
+// handed to onFirstControl to fetch again, so it is cached for offline too.
+test("the service worker taking control fetches again what it missed, without a reload", async () => {
+    const listeners = [];
+    let firstControls = 0;
+    const location = { protocol: "https:", reload: () => assert.fail("the page reloaded") };
+    const serviceWorker = {
+        controller: null,
+        addEventListener: (type, listener) => listeners.push({ type, listener }),
+        register: () => Promise.resolve(),
+    };
+
+    registerServiceWorker({ location, serviceWorker, onFirstControl: () => firstControls++ });
+    assert.deepEqual(listeners.map(({ type }) => type), ["controllerchange"]);
+    listeners[0].listener();
+    assert.equal(firstControls, 1);
+
+    const worker = await readFile(new URL("../src/sw.js", import.meta.url), "utf8");
+    assert.match(worker, /self\.clients\.claim\(\)/u, "without a claim, a first visit's requests would bypass the worker.");
+});
+
+// Already controlled, everything went through the worker: a later change of
+// worker (a version bump) has nothing to fetch again.
+test("a page the worker already controls has nothing to fetch again", () => {
+    const listeners = [];
+
+    registerServiceWorker({
+        location: { protocol: "https:" },
+        serviceWorker: {
+            controller: {},
+            addEventListener: (type, listener) => listeners.push(listener),
+            register: () => Promise.resolve(),
+        },
+        onFirstControl: () => assert.fail("fetched again"),
+    });
+
+    assert.equal(listeners.length, 0);
+});
+
 test("registerServiceWorker skips unsupported and file protocol contexts", () => {
     assert.equal(registerServiceWorker({
         location: { protocol: "https:" },

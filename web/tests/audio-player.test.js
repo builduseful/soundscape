@@ -342,7 +342,7 @@ test("applyLoopCrossfade shortens the loop period by the overlap", () => {
     const source = fakeContext.createBuffer(1, length, sampleRate);
     fillWithNoise(source.getChannelData(0), 7);
 
-    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, 10);
     const overlap = overlapSamplesFor(length, sampleRate);
 
     assert.equal(loopStart, 0);
@@ -364,7 +364,7 @@ test("applyLoopCrossfade joins the loop on genuinely adjacent source samples", (
     const overlap = overlapSamplesFor(length, sampleRate);
     const loopLength = length - overlap;
 
-    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, 10);
     const out = buffer.getChannelData(0);
     const loopEndIndex = Math.round(loopEnd * sampleRate);
 
@@ -394,7 +394,7 @@ test("applyLoopCrossfade blends the overlap with equal-power curves", () => {
     const overlap = overlapSamplesFor(length, sampleRate);
     const loopLength = length - overlap;
 
-    const { buffer } = applyLoopCrossfade(source, fakeContext, 10);
+    const { buffer } = applyLoopCrossfade(source, 10);
     const out = buffer.getChannelData(0);
 
     // Equal-power (sin/cos) rather than linear: these files are noise-like, and
@@ -428,7 +428,7 @@ test("applyLoopCrossfade processes every channel in a stereo buffer", () => {
     const overlap = overlapSamplesFor(length, sampleRate);
     const loopLength = length - overlap;
 
-    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, 10);
     const loopEndIndex = Math.round(loopEnd * sampleRate);
 
     assert.equal(buffer.numberOfChannels, 2);
@@ -447,7 +447,7 @@ test("applyLoopCrossfade computes loopEnd from the source sample rate", () => {
     const source = fakeContext.createBuffer(1, length, sampleRate);
     source.getChannelData(0).fill(0.1);
 
-    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, fakeContext, 10);
+    const { buffer, loopStart, loopEnd } = applyLoopCrossfade(source, 10);
     const overlap = overlapSamplesFor(length, sampleRate);
 
     assert.equal(loopStart, 0);
@@ -468,7 +468,7 @@ test("applyLoopCrossfade clamps the overlap to half the buffer length", () => {
     // must stay centred so "no step at the wrap" still holds.
     const crossfadeMs = 100000;
     const overlap = overlapSamplesFor(length, sampleRate, crossfadeMs);
-    const { buffer, loopEnd } = applyLoopCrossfade(source, fakeContext, crossfadeMs);
+    const { buffer, loopEnd } = applyLoopCrossfade(source, crossfadeMs);
 
     assert.equal(overlap, Math.floor(length / 2));
     assert.equal(Math.round(loopEnd * sampleRate), length - overlap);
@@ -487,7 +487,7 @@ test("applyLoopCrossfade enforces a minimum one-sample overlap", () => {
     // A sub-sample crossfade rounds to zero, which would be no crossfade at all.
     const crossfadeMs = 0.005;
     const overlap = overlapSamplesFor(length, sampleRate, crossfadeMs);
-    const { buffer, loopEnd } = applyLoopCrossfade(source, fakeContext, crossfadeMs);
+    const { buffer, loopEnd } = applyLoopCrossfade(source, crossfadeMs);
 
     assert.equal(overlap, 1);
     assert.equal(Math.round(loopEnd * sampleRate), length - 1);
@@ -511,8 +511,47 @@ test("loadBuffer returns a crossfaded loop window and caches it", async () => {
     assert.equal(firstWindow, secondWindow);
     assert.equal(firstWindow.loopStart, 0);
     assert.ok(firstWindow.loopEnd > 0);
-    assert.equal(firstWindow.buffer.duration, contexts[0].decodedBuffers[0].duration);
-    assert.notEqual(firstWindow.buffer, contexts[0].decodedBuffers[0]);
+    // Crossfaded in place: the decoded buffer is the loop, not a copy of it.
+    assert.equal(firstWindow.buffer, contexts[0].decodedBuffers[0]);
+});
+
+// Decoded PCM is the app's largest cost in memory: kept for every track a
+// listener passed through, it reached about 70 MB. Only the track on and the
+// one it replaced are worth holding — that one may still be fading, and a swipe
+// back returns to it.
+test("only the current track and the one it replaced stay decoded", async () => {
+    installAudioContext();
+    const fetchCalls = installFetch();
+    const player = createPlayer(createAudioElement());
+
+    await player.playTrack({ id: "a", url: "/a.ogg" }, true);
+    await player.playTrack({ id: "b", url: "/b.ogg" }, true);
+    await player.playTrack({ id: "c", url: "/c.ogg" }, true);
+
+    assert.deepEqual([...player.bufferCache.keys()].sort(), ["/b.ogg", "/c.ogg"]);
+
+    await player.playTrack({ id: "b", url: "/b.ogg" }, true);
+    assert.deepEqual(fetchCalls, ["/a.ogg", "/b.ogg", "/c.ogg"], "back to the last one is not fetched again");
+
+    await player.playTrack({ id: "a", url: "/a.ogg" }, true);
+    assert.deepEqual(fetchCalls, ["/a.ogg", "/b.ogg", "/c.ogg", "/a.ogg"]);
+});
+
+// A service worker that takes control after the first track was fetched never
+// saw that fetch. Fetching what is held again lets it cache it for offline.
+test("recacheBuffers fetches again what is held decoded, leaving it decoded", async () => {
+    installAudioContext();
+    const fetchCalls = installFetch();
+    const player = createPlayer(createAudioElement());
+
+    await player.playTrack({ id: "a", url: "/a.ogg" }, true);
+    await player.playTrack({ id: "b", url: "/b.ogg" }, true);
+    const held = player.bufferCache.get("/b.ogg");
+
+    player.recacheBuffers();
+
+    assert.deepEqual(fetchCalls, ["/a.ogg", "/b.ogg", "/a.ogg", "/b.ogg"]);
+    assert.equal(player.bufferCache.get("/b.ogg"), held);
 });
 
 test("playTrack uses a decoded buffer for the audible loop and keeps the media element browser-visible", async () => {
@@ -546,8 +585,7 @@ test("playTrack uses a decoded buffer for the audible loop and keeps the media e
     assert.equal(mediaElementSource.connectedTo, silentGainNode);
     assert.equal(silentGainNode.gain.value, 0);
     assert.equal(silentGainNode.connectedTo, context.destination);
-    assert.notEqual(audibleSource.buffer, context.decodedBuffers[0]);
-    assert.equal(audibleSource.buffer.duration, context.decodedBuffers[0].duration);
+    assert.equal(audibleSource.buffer, context.decodedBuffers[0]);
     assert.equal(audibleSource.loop, true);
     assert.equal(audibleSource.loopStart, 0);
     assert.equal(audibleSource.loopEnd, loopEndForDuration(context.decodedBuffers[0].duration));

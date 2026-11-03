@@ -91,7 +91,7 @@ export function createGestureTracker(handlers) {
             if (!start) return;
 
             samples.push({ x, time });
-            samples = samples.filter((sample) => time - sample.time <= VELOCITY_WINDOW_MS);
+            while (time - samples[0].time > VELOCITY_WINDOW_MS) samples.shift();
 
             const dx = x - start.x;
             const dy = y - start.y;

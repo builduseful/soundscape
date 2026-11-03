@@ -55,10 +55,10 @@ internal object Diagnostics {
     private lateinit var app: Context
     private val reported = HashSet<String>()
 
-    /** Idempotent: the activity and the service each start it, whichever comes first. */
     /** Off, nothing is watched or written, and R8 drops the code behind each check. */
     const val ENABLED = BuildConfig.DIAGNOSTICS
 
+    /** Idempotent: the activity and the service each start it, whichever comes first. */
     fun start(context: Context) {
         if (!ENABLED) return
         if (file != null) return

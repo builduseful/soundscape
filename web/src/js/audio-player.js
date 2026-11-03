@@ -20,22 +20,23 @@ const CROSSFADE_CURVE_STEPS = 64;
 // Trimming the period is the part that makes this work: blending into the tail
 // while keeping the full length instead leaves the wrap jumping backwards by the
 // overlap, which is a discontinuity plus a duplicated head.
-export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOOP_CROSSFADE_MS) {
-    const sampleRate = sourceBuffer.sampleRate;
-    const channels = sourceBuffer.numberOfChannels;
-    const originalLength = sourceBuffer.length;
+//
+// Done in place on the decoded buffer, so a track costs one copy of its PCM
+// rather than two. Safe because the writes land in [0, overlap) and the reads
+// they depend on come from [loopEnd, end), which the clamp to half the length
+// keeps apart.
+export function applyLoopCrossfade(buffer, crossfadeMs = LOOP_CROSSFADE_MS) {
+    const sampleRate = buffer.sampleRate;
+    const channels = buffer.numberOfChannels;
+    const originalLength = buffer.length;
     const overlapSamples = Math.min(
         Math.max(1, Math.round((crossfadeMs * sampleRate) / 1000)),
         Math.floor(originalLength / 2),
     );
     const loopLength = originalLength - overlapSamples;
 
-    const output = audioContext.createBuffer(channels, originalLength, sampleRate);
-
     for (let ch = 0; ch < channels; ch++) {
-        const source = sourceBuffer.getChannelData(ch);
-        const target = output.getChannelData(ch);
-        target.set(source);
+        const samples = buffer.getChannelData(ch);
 
         for (let i = 0; i < overlapSamples; i++) {
             const t = i / overlapSamples;
@@ -43,12 +44,12 @@ export function applyLoopCrossfade(sourceBuffer, audioContext, crossfadeMs = LOO
             // noise-like ambience; linear fades create a small dip in the overlap.
             const fadeOut = Math.cos(t * Math.PI / 2);
             const fadeIn = Math.sin(t * Math.PI / 2);
-            target[i] = source[loopLength + i] * fadeOut + source[i] * fadeIn;
+            samples[i] = samples[loopLength + i] * fadeOut + samples[i] * fadeIn;
         }
     }
 
     return {
-        buffer: output,
+        buffer,
         loopStart: 0,
         loopEnd: loopLength / sampleRate,
     };
@@ -509,6 +510,7 @@ export class AudioPlayer {
         // cannot run until resume(). Mark it so the statechange handler can snap the
         // start time to the real playback start.
         this.activeSourceQueued = this.audioContext.state !== "running";
+        this.retainBuffers(source.url, supersededTrackUrl);
 
         if (!startsPlaying) {
             await this.refreshPausedBrowserPlaybackSurface();
@@ -573,14 +575,16 @@ export class AudioPlayer {
     async loadBuffer(url) {
         if (this.bufferCache.has(url)) return this.bufferCache.get(url);
 
-        const bufferPromise = this.fetchBuffer(url).then(
-            (audioBuffer) => applyLoopCrossfade(audioBuffer, this.audioContext),
-        );
+        const bufferPromise = this.fetchBuffer(url).then((audioBuffer) => applyLoopCrossfade(audioBuffer));
         this.bufferCache.set(url, bufferPromise);
 
         try {
             const loopWindow = await bufferPromise;
-            this.bufferCache.set(url, loopWindow);
+            // Not if retainBuffers let it go meanwhile: a superseded load must
+            // not put back what a newer track change dropped.
+            if (this.bufferCache.get(url) === bufferPromise) {
+                this.bufferCache.set(url, loopWindow);
+            }
             return loopWindow;
         } catch (error) {
             if (this.bufferCache.get(url) === bufferPromise) {
@@ -588,6 +592,25 @@ export class AudioPlayer {
             }
 
             throw error;
+        }
+    }
+
+    // Decoded PCM is large — all the tracks together come to about 70 MB — so
+    // only the track now on and the one it replaced stay decoded: that one may
+    // still be fading out, and a swipe back returns to it. The service worker
+    // keeps every file, so any other track costs a decode, not a download.
+    retainBuffers(...urls) {
+        for (const url of this.bufferCache.keys()) {
+            if (!urls.includes(url)) this.bufferCache.delete(url);
+        }
+    }
+
+    // Fetched again, and dropped: only so a service worker that has just taken
+    // control caches what was fetched before it could. The decoded copies stay
+    // as they are, so nothing heard changes.
+    recacheBuffers() {
+        for (const url of this.bufferCache.keys()) {
+            fetch(url).catch((error) => console.warn(`Could not cache ${url} for offline use.`, error));
         }
     }
 

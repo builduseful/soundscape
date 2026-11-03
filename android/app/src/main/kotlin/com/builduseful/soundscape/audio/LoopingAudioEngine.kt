@@ -263,8 +263,11 @@ class LoopingAudioEngine(
                         running = startTrack(chunk)
                         underruns = track.underrunCount
                     }
-                    tellCutHeard()
-                    mixer.render(chunk, chunkFrames)
+                    // Refused, it is paused again: the wait above tells the cut.
+                    if (running) {
+                        tellCutHeard()
+                        mixer.render(chunk, chunkFrames)
+                    }
                 }
                 if (!running) continue
                 val written = track.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
