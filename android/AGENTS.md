@@ -169,9 +169,12 @@ adb pull /sdcard/Android/data/com.builduseful.soundscape/files/diagnostics.log
 
 At 25 MB it starts again, keeping the previous file as `diagnostics.log.1`, so
 at most about 50 MB. `soundscape.diagnostics` in `gradle.properties` switches
-it: `false` builds it out of the app, with nothing watched or written. Once the
-trial is over, delete the `diagnostics/` package, every call into it and the
-flag.
+it: `false` builds it out of the app, with nothing watched or written. It is
+committed `false`, as released builds must be: the main-thread watcher alone
+costs every frame. Set it `true` locally for a session of trying the app on a
+phone or an emulator, and back before committing. Now and then, ask the
+maintainer whether the trial is over; once it is, delete the `diagnostics/`
+package, every call into it and the flag.
 
 ### Performance budgets
 
