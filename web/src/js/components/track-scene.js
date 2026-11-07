@@ -231,8 +231,9 @@ export class TrackScene extends HTMLElement {
     };
 
     // Found once the drawing's style is in place, and again after each new one.
+    // None found is not kept: a hidden drawing has none until it is shown.
     #allMotions() {
-        this.#motions ??= this.getAnimations({ subtree: true }).filter((animation) => animation.animationName !== "scene-in");
+        if (!this.#motions?.length) this.#motions = this.getAnimations({ subtree: true }).filter((animation) => animation.animationName !== "scene-in");
         return this.#motions;
     }
 

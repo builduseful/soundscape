@@ -29,9 +29,12 @@ export class GestureTutorial extends HTMLElement {
     }
 
     connectedCallback() {
-        if (!this.querySelector(".tutorial-card")) this.render();
+        // Rendered once, so Skip is listened to once however often it is attached.
+        if (!this.querySelector(".tutorial-card")) {
+            this.render();
+            this.querySelector(".tutorial-skip").addEventListener("click", () => this.finish(false));
+        }
         this.hidden = true;
-        this.querySelector(".tutorial-skip").addEventListener("click", () => this.finish(false));
     }
 
     /** Opens at the first step. */

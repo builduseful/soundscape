@@ -30,7 +30,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.13";
+const VERSION = "2.1.14";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -311,10 +311,12 @@ function placeSwipe(dx) {
 
 function showPeek(side, track = tracks[(currentTrackIndex + side + tracks.length) % tracks.length]) {
     peekSide = side;
+    // Shown first: a scene set playing while hidden finds no animations to move,
+    // and holds still for the whole swipe.
+    trackPeek.hidden = false;
     trackPeekScene.setAttribute("track", track.id);
     trackPeekScene.toggleAttribute("playing", trackScene.hasAttribute("playing"));
     trackPeekTitle.textContent = track.title;
-    trackPeek.hidden = false;
 }
 
 function hidePeek() {

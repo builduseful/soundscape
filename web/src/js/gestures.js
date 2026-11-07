@@ -179,12 +179,16 @@ export function attachGestures(surface, handlers) {
         pointerId = null;
         tracker.up(event.clientX, event.clientY, event.timeStamp);
     });
-    surface.addEventListener("pointercancel", (event) => {
-        if (event.pointerId !== pointerId) return;
+    // Capture lost without an up or a cancel: an end that never came would
+    // leave the tracker busy, ignoring every touch after it.
+    for (const type of ["pointercancel", "lostpointercapture"]) {
+        surface.addEventListener(type, (event) => {
+            if (event.pointerId !== pointerId) return;
 
-        pointerId = null;
-        tracker.cancel();
-    });
+            pointerId = null;
+            tracker.cancel();
+        });
+    }
 }
 
 const INTERACTIVE = "a, button, input, select, textarea, label, [popover], app-menu";
