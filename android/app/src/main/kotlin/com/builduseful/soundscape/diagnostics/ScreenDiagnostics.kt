@@ -94,6 +94,9 @@ internal class ScreenDiagnostics(private val activity: Activity) {
 
     fun action(what: String) = Diagnostics.log("action", "$what (screen)")
 
+    /** A shortcut used while the app is already open; a launch from one is in [created]. */
+    fun shortcut(track: String) = Diagnostics.log("action", "play $track (shortcut)")
+
     private fun onFrame(metrics: FrameMetrics) {
         val totalMs = metrics.getMetric(FrameMetrics.TOTAL_DURATION) / 1_000_000
         if (metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L) {

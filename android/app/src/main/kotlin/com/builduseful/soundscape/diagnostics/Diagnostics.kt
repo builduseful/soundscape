@@ -90,15 +90,15 @@ internal object Diagnostics {
     fun sinceProcessStart(): Long = SystemClock.uptimeMillis() - Process.getStartUptimeMillis()
 
     /** The battery at one moment, to compare with another. */
-    class Battery(val at: Long, val percent: Int, val chargeMicroAh: Int?, val celsius: Float?, val charging: Boolean) {
-        override fun toString() = "battery $percent%${if (charging) " charging" else ""}" +
+    class Battery(val at: Long, val percent: Int, val chargeMicroAh: Int?, val celsius: Float?, val pluggedIn: Boolean) {
+        override fun toString() = "battery $percent%${if (pluggedIn) " plugged in" else ""}" +
             (chargeMicroAh?.let { ", ${it / 1000} mAh in it" } ?: "") +
             (celsius?.let { String.format(Locale.ROOT, ", %.1f °C", it) } ?: "")
 
         /** What the whole phone drew from [earlier] to this, not the app alone. */
         fun since(earlier: Battery): String {
             val hours = (at - earlier.at) / 3_600_000.0
-            if (charging || earlier.charging || hours <= 0) return "charging, so no drain"
+            if (pluggedIn || earlier.pluggedIn || hours <= 0) return "plugged in, so no drain"
             val used = if (chargeMicroAh != null && earlier.chargeMicroAh != null) earlier.chargeMicroAh - chargeMicroAh else null
             return String.format(Locale.ROOT, "%d%% used in %.1f min", earlier.percent - percent, hours * 60) +
                 (used?.let { String.format(Locale.ROOT, " (%d mAh, about %.0f mA)", it / 1000, it / 1000 / hours) } ?: "")
@@ -116,7 +116,9 @@ internal object Diagnostics {
             battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
             battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER).takeIf { it > 0 },
             tenths?.div(10f),
-            battery.isCharging,
+            // Not BatteryManager.isCharging: a Samsung phone reported it false for
+            // the first 20 minutes on a charger, the level climbing all the while.
+            (sticky?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0,
         )
     }
 
@@ -232,7 +234,8 @@ internal object Diagnostics {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         val report = { violation: Throwable ->
             val ours = violation.stackTrace.firstOrNull { it.className.startsWith("com.builduseful") }
-            val key = "${violation.javaClass.simpleName} at $ours"
+            // A custom (slow call) violation's message names the call; the frame alone does not.
+            val key = "${violation.javaClass.simpleName} at $ours" + (violation.message?.let { ": $it" } ?: "")
             if (synchronized(reported) { reported.add(key) }) log("strictmode", key)
         }
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().detectAll().penaltyListener(writer) { report(it) }.build())

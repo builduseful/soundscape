@@ -148,6 +148,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == BuildConfig.PLAY_TRACK_ACTION) intent.getStringExtra(BuildConfig.TRACK_ID_EXTRA)?.let(diagnostics::shortcut)
         handle(intent)
     }
 

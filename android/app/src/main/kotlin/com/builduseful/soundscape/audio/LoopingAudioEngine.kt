@@ -47,7 +47,7 @@ class LoopingAudioEngine(
     private var volume = 1f
     private var onStopped: () -> Unit = {}
     private var loadId = 0
-    /** TEMPORARY diagnostics: when sound was last asked for. */
+    /** TEMPORARY diagnostics: when sound was last asked for, by a play or a cut. Guarded by [lock]. */
     private var playRequestedAt = 0L
 
     // --- Shared with the render thread, guarded by [lock] ---
@@ -152,6 +152,8 @@ class LoopingAudioEngine(
             // One this supersedes is past waiting: its switch has happened.
             tellCutHeard()
             cutHeard = switched
+            // The output restarts for the cut: timed from it, not from the play before.
+            playRequestedAt = SystemClock.uptimeMillis()
             true
         }
         loadedTrack = track
@@ -293,7 +295,8 @@ class LoopingAudioEngine(
                 if (Diagnostics.ENABLED) {
                     val startedAt = SystemClock.uptimeMillis()
                     val device = Diagnostics.deviceName(track.routedDevice)
-                    main.post { Diagnostics.log("output", "started ${startedAt - playRequestedAt} ms after play was asked for, to $device") }
+                    val askedAt = playRequestedAt
+                    main.post { Diagnostics.log("output", "started ${startedAt - askedAt} ms after it was asked for, to $device") }
                 }
                 true
             } catch (error: IllegalStateException) {

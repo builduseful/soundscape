@@ -1,5 +1,6 @@
 package com.builduseful.soundscape.playback
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -260,14 +261,23 @@ class PlaybackService : Service() {
         }
     }
 
-    // The web's artwork, drawn once at the largest size the media controls
-    // show artwork (320dp; larger is scaled down), so a card that fills its
-    // width with it, as One UI's does, never stretches it.
+    // The web's artwork, drawn once at the largest size the session keeps
+    // (AOSP's 320dp; One UI's 180dp), so it is never stretched, and never
+    // shrunk again on the main thread with each change of track.
     private fun drawArtwork(): Bitmap {
-        val size = (ARTWORK_DP * resources.displayMetrics.density).roundToInt()
+        val size = artworkLimitPx() ?: (ARTWORK_DP * resources.displayMetrics.density).roundToInt()
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         getDrawable(R.drawable.artwork)!!.apply { setBounds(0, 0, size, size) }.draw(Canvas(bitmap))
         return bitmap
+    }
+
+    // The limit MediaSession scales metadata artwork down to. Not public API,
+    // only a resource, so it is looked up by name and may be missing.
+    @SuppressLint("DiscouragedApi")
+    private fun artworkLimitPx(): Int? {
+        // Through this context's resources, as MediaSession reads it, so the pixels match.
+        val id = resources.getIdentifier("config_mediaMetadataBitmapMaxSize", "dimen", "android")
+        return if (id == 0) null else runCatching { resources.getDimensionPixelSize(id) }.getOrNull()?.takeIf { it > 0 }
     }
 
     // Stopped, the session is inactive and a key already queued for it is
