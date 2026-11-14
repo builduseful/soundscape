@@ -232,6 +232,13 @@ still to come.
 ./gradlew :e2e:connectedBenchmarkReleaseAndroidTest  # end to end, on the minified build
 ```
 
+Run the instrumented suites on an emulator, not on a phone in use:
+`PlaybackServiceTest` sends media keys to the whole system, and once the app's
+own session has ended they reach whatever music app had one last. The UI tests
+(`-e package com.builduseful.soundscape.ui`) use a fake player and are safe.
+A test that waits for something to be *absent* must first see it present, or
+the wait is met before the thing has begun.
+
 The end-to-end suite runs against `benchmarkRelease`: the release build, R8
 and all, signed with the debug key so it installs. `:e2e:connectedDebugAndroidTest`
 runs it against the debug build, which is quicker to make.

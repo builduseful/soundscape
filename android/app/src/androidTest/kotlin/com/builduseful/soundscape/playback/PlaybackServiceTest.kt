@@ -49,7 +49,7 @@ class PlaybackServiceTest {
     fun theNotificationShowsTheTrack() {
         harness.playing("fireplace")
         val id = harness.service.notificationId
-        assertTrue(notifications.activeNotifications.any { it.id == id })
+        harness.waitUntil("the notification to show") { notifications.activeNotifications.any { it.id == id } }
 
         device.openNotification()
         assertNotNull("the track's title in the notification shade", device.wait(Until.findObject(By.text(title("fireplace"))), 5_000))
@@ -159,10 +159,17 @@ class PlaybackServiceTest {
     fun stopTakesTheNotificationDownAndLaterKeysDoNothing() {
         harness.playing("rain")
         val id = harness.service.notificationId
+        // Absent before it is posted as well as after it is taken down: waiting
+        // for it to go is met at once unless it has first been seen, and the
+        // key, being asynchronous, has not been handled by then.
+        harness.waitUntil("the notification to show") { notifications.activeNotifications.any { it.id == id } }
         press(KeyEvent.KEYCODE_MEDIA_STOP)
         harness.waitUntil("the notification to go") { notifications.activeNotifications.none { it.id == id } }
         assertFalse(harness.isSounding)
         harness.unbind()
+        // The system lets go of the stopped sound a moment after: waited out,
+        // so what is heard next can only be what the key started.
+        harness.waitUntil("the stopped sound to be let go") { !audio.isMusicActive }
 
         press(KeyEvent.KEYCODE_MEDIA_PLAY)
         SystemClock.sleep(1_500)

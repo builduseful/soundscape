@@ -172,6 +172,7 @@ private fun MenuPanel(
         ThemeSelector(theme, onTheme, Modifier.align(Alignment.CenterHorizontally))
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.borderSubtle))
         GuideLink(onGuide, Modifier.fillMaxWidth().testTag(UiTags.GUIDE_LINK))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(palette.borderSubtle))
         Link(
             text = versionName,
             url = stringResource(R.string.source_url),

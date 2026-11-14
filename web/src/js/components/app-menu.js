@@ -60,7 +60,13 @@ export class AppMenu extends HTMLElement {
             installDivider.className = "menu-divider";
             panel.append(installButton, installDivider);
         }
-        if (guideButton) panel.append(guideButton);
+        if (guideButton) {
+            // Hidden along with the button, as the install button's is.
+            const guideDivider = document.createElement("div");
+
+            guideDivider.className = "menu-divider";
+            panel.append(guideButton, guideDivider);
+        }
         if (versionLink) panel.append(versionLink);
     }
 
@@ -315,6 +321,11 @@ export class AppMenu extends HTMLElement {
 
                     /* The author display above would beat the UA's [hidden] rule. */
                     .menu-guide[hidden] {
+                        display: none;
+                    }
+
+                    /* Keeps the divider hidden along with the button — see connectedCallback. */
+                    .menu-guide[hidden] + .menu-divider {
                         display: none;
                     }
 
