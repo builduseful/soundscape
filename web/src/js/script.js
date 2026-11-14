@@ -30,7 +30,7 @@ import {
     watchSystemTheme,
 } from "./theme-utils.js";
 import { tracks } from "./tracks.js";
-const VERSION = "2.1.14";
+const VERSION = "2.2.0";
 
 const PLAY_LABEL = "Play";
 const PAUSE_LABEL = "Pause";
@@ -102,6 +102,8 @@ const audioElement = document.getElementById("audioElement");
 const themeSelector = document.getElementById("themeSelector");
 const appVersion = document.getElementById("appVersion");
 const installButton = document.getElementById("installButton");
+const guideButton = document.getElementById("guideButton");
+const appMenu = document.getElementById("appMenu");
 const playbackError = document.getElementById("playbackError");
 const trackLoading = document.getElementById("trackLoading");
 const trackLoadingLabel = document.getElementById("trackLoadingLabel");
@@ -177,6 +179,10 @@ document.addEventListener("keydown", handleDocumentKeydown);
 document.addEventListener("keyup", handleDocumentKeyup);
 document.addEventListener("wheel", handleWheel, { passive: false });
 for (const type of ["pointermove", "pointerdown", "keydown"]) document.addEventListener(type, handleActivity);
+guideButton.addEventListener("click", () => {
+    appMenu.open = false;
+    showGestureTutorial();
+});
 gestureTutorial.addEventListener("tutorial-done", () => {
     savePreference(TUTORIAL_DONE_KEY, "true");
     tutorialOpen = false;
@@ -497,11 +503,20 @@ function hideGestureVolume() {
 // the guide is offered; it is finished or skipped once, and not seen again.
 function offerGestureTutorial() {
     if (!isTouchScreen()) return;
+
+    // The menu can show it again, wherever the first time left off.
+    guideButton.hidden = false;
     if (loadPreference(TUTORIAL_DONE_KEY) !== null) return;
 
     tutorialOpen = true;
     wake();
     setTimeout(() => gestureTutorial.start(), TUTORIAL_DELAY_MS);
+}
+
+function showGestureTutorial() {
+    tutorialOpen = true;
+    wake();
+    gestureTutorial.start();
 }
 
 // Left alone, the screen rests: the controls step back and the rest dims to

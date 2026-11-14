@@ -340,6 +340,33 @@ for (const touch of [true, false]) {
     });
 }
 
+// The first-run guide comes once, on a touch screen. The menu's "How to use"
+// shows it again whenever it is asked for, and closes the menu to do it.
+test("the menu's How to use shows the gesture guide again, once it has been seen", async () => {
+    const { elements } = await startAppTestEnvironment({
+        matchMediaMatches: true,
+        storageEntries: { "soundscape.gestureTutorialDone": "true" },
+    });
+    const guide = elements.get("guideButton");
+    const tutorial = elements.get("gestureTutorial");
+    const menu = elements.get("appMenu");
+
+    assert.equal(guide.hidden, false);
+    assert.equal(tutorial.started ?? 0, 0);
+
+    menu.open = true;
+    await guide.dispatch("click");
+
+    assert.equal(menu.open, false);
+    assert.equal(tutorial.started, 1);
+});
+
+test("How to use stays out of the menu where there is no touch screen", async () => {
+    const { elements } = await startAppTestEnvironment({ matchMediaMatches: false });
+
+    assert.notEqual(elements.get("guideButton").hidden, false);
+});
+
 test("reduced motion track changes show the new track without turning the page", async () => {
     const { elements, mediaActions } = await startAppTestEnvironment({ matchMediaMatches: true });
     const { current } = getTitleParts(elements);

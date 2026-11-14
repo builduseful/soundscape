@@ -40,8 +40,10 @@ import com.builduseful.soundscape.R
 import com.builduseful.soundscape.core.appearance.ThemePreference
 import com.builduseful.soundscape.core.contract.DesignTokens
 import com.builduseful.soundscape.core.contract.catalogTracks
+import com.builduseful.soundscape.core.gestures.GestureGuide
 import com.builduseful.soundscape.core.playback.Notice
 import com.builduseful.soundscape.core.playback.PlayerState
+import com.builduseful.soundscape.core.playback.PreferenceStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -64,9 +66,9 @@ class SoundscapeAppTest {
     private var theme by mutableStateOf(ThemePreference.System)
     private val player = RecordingPlayer()
 
-    private fun show(size: DpSize? = null, reducedMotion: Boolean = true) = rule.setContent {
+    private fun show(size: DpSize? = null, reducedMotion: Boolean = true, guide: GestureGuide? = null) = rule.setContent {
         val app = @Composable {
-            SoundscapeApp(state, player, theme, onTheme = { theme = it }, versionName = "1.2.3", reducedMotion = reducedMotion)
+            SoundscapeApp(state, player, theme, onTheme = { theme = it }, versionName = "1.2.3", guide = guide, reducedMotion = reducedMotion)
         }
         if (size == null) app() else DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(size)) { app() }
     }
@@ -178,15 +180,40 @@ class SoundscapeAppTest {
         tag(UiTags.themeOption(string(R.string.theme_dark))).assertIsSelected()
     }
 
-    // A press outside a panel closes it, and still reaches what it landed on: here the page.
+    // A press outside a panel only closes it: the page beneath takes nothing from it, so a tap
+    // to dismiss the menu does not also pause the sound. The next tap is the page's again.
     @Test
-    fun aPressOutsideClosesThePanelAndStillCounts() {
+    fun aPressOutsideOnlyClosesThePanel() {
         show()
         tag(UiTags.MENU_BUTTON).performClick()
         tag(UiTags.MENU_PANEL).assertExists()
         tag(UiTags.TITLE).performTouchInput { click(center) }
         tag(UiTags.MENU_PANEL).assertDoesNotExist()
+        assertEquals(emptyList<String>(), player.calls)
+
+        tag(UiTags.TITLE).performTouchInput { click(center) }
         assertEquals(listOf("playPause"), player.calls)
+    }
+
+    // The first-run guide is offered once; the menu shows it again, and closes to do it.
+    @Test
+    fun howToUseShowsTheGuideAgainOnceItHasBeenSeen() {
+        val seen = mutableMapOf("gestureTutorialDone" to "true")
+        show(guide = GestureGuide(object : PreferenceStore {
+            override fun read(key: String) = seen[key]
+
+            override fun write(key: String, value: String) {
+                seen[key] = value
+            }
+        }))
+        tag(UiTags.GUIDE).assertDoesNotExist()
+
+        tag(UiTags.MENU_BUTTON).performClick()
+        tag(UiTags.GUIDE_LINK).performClick()
+
+        tag(UiTags.MENU_PANEL).assertDoesNotExist()
+        tag(UiTags.GUIDE).assertExists()
+        rule.onNodeWithText(string(R.string.gesture_tap)).assertIsDisplayed()
     }
 
     @Test
@@ -264,7 +291,7 @@ class SoundscapeAppTest {
         show()
         press(Key.Tab, times = 2)
         press(Key.Enter)
-        press(Key.Tab, times = 5)
+        press(Key.Tab, times = 6)
         tag(UiTags.MENU_PANEL).assertDoesNotExist()
     }
 

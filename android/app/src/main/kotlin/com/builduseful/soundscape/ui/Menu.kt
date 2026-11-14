@@ -16,6 +16,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,8 +67,8 @@ import com.builduseful.soundscape.core.contract.DesignTokens
 import com.builduseful.soundscape.core.contract.TypeToken
 
 /**
- * The header's menu: the theme, and the version linking to the source. A
- * disclosure, as on the web, not a menu of items.
+ * The header's menu: the theme, the way back to the gesture guide, and the
+ * version linking to the source. A disclosure, as on the web, not a menu of items.
  */
 @Composable
 internal fun AppMenu(
@@ -75,6 +76,7 @@ internal fun AppMenu(
     theme: ThemePreference,
     onTheme: (ThemePreference) -> Unit,
     versionName: String,
+    onGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val open = panels.open == Panel.Menu
@@ -97,7 +99,7 @@ internal fun AppMenu(
                 exit = fadeOut(fade) + scaleOut(fade, DesignTokens.Motion.popoverScale, origin) + slideOutVertically(move) { -offset },
             ) {
                 with(panels) {
-                    MenuPanel(theme, onTheme, versionName, Modifier.partOf(Panel.Menu, "panel"))
+                    MenuPanel(theme, onTheme, versionName, onGuide, Modifier.partOf(Panel.Menu, "panel"))
                 }
             }
         },
@@ -140,7 +142,13 @@ private fun MenuButton(open: Boolean, onClick: () -> Unit, modifier: Modifier) {
 }
 
 @Composable
-private fun MenuPanel(theme: ThemePreference, onTheme: (ThemePreference) -> Unit, versionName: String, modifier: Modifier) {
+private fun MenuPanel(
+    theme: ThemePreference,
+    onTheme: (ThemePreference) -> Unit,
+    versionName: String,
+    onGuide: () -> Unit,
+    modifier: Modifier,
+) {
     val palette = LocalPalette.current
     val shape = RoundedCornerShape(DesignTokens.Size.menuPanelRadius.dp)
     val title = stringResource(R.string.menu)
@@ -163,6 +171,7 @@ private fun MenuPanel(theme: ThemePreference, onTheme: (ThemePreference) -> Unit
         )
         ThemeSelector(theme, onTheme, Modifier.align(Alignment.CenterHorizontally))
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.borderSubtle))
+        GuideLink(onGuide, Modifier.fillMaxWidth().testTag(UiTags.GUIDE_LINK))
         Link(
             text = versionName,
             url = stringResource(R.string.source_url),
@@ -234,6 +243,23 @@ private fun ThemeOption(label: String, glyph: Glyph, selected: Boolean, onClick:
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) { GlyphIcon(glyph, DesignTokens.Size.themeIcon.dp, color) }
+}
+
+/** Shows the gesture guide again: set as the version beneath it is, but a button, not a link. */
+@Composable
+private fun GuideLink(onClick: () -> Unit, modifier: Modifier) {
+    val palette = LocalPalette.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    BasicText(
+        stringResource(R.string.how_to_use),
+        modifier
+            .then(if (focused) Modifier.focusOutline(palette.focus) else Modifier)
+            .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+            .pointerHoverIcon(PointerIcon.Hand),
+        style = DesignTokens.Type.version.style(if (focused || hovered) palette.textMuted else palette.textSoft).copy(textAlign = TextAlign.Center),
+    )
 }
 
 /** A text link: soft, and muted while hovered or focused, as the web's byline and version are. */

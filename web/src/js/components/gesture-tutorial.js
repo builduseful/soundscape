@@ -8,7 +8,7 @@
  * so only Skip is a target of its own.
  *
  * @element gesture-tutorial
- * @fires tutorial-done - Finished or skipped; either way it should not return.
+ * @fires tutorial-done - Finished or skipped; either way it is not offered again, though the menu can start it.
  */
 const STEPS = [
     { gesture: "tap", text: "Tap anywhere to play or pause" },

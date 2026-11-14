@@ -223,7 +223,10 @@ private fun Page(
         PageLayout(
             header = {
                 Box(Modifier.arrives(arrival[0]).graphicsLayer { alpha = words.value }) {
-                    Header(narrow, panels, theme, onTheme, versionName)
+                    Header(narrow, panels, theme, onTheme, versionName) {
+                        panels.close()
+                        guide.start()
+                    }
                 }
             },
             player = {
@@ -242,7 +245,7 @@ private fun Page(
             // are inside the scroll, so they take a drag before it can.
             modifier = modifier
                 .verticalScroll(rememberScrollState())
-                .playerGestures(tracker)
+                .playerGestures(tracker, panels)
                 .heightIn(min = maxHeight)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(padding),
@@ -381,6 +384,7 @@ private fun Header(
     theme: ThemePreference,
     onTheme: (ThemePreference) -> Unit,
     versionName: String,
+    onGuide: () -> Unit,
 ) {
     val palette = LocalPalette.current
     Row(
@@ -402,7 +406,7 @@ private fun Header(
             )
         }
         Spacer(Modifier.width(DesignTokens.Size.headerGap.dp))
-        AppMenu(panels, theme, onTheme, versionName)
+        AppMenu(panels, theme, onTheme, versionName, onGuide)
     }
 }
 
@@ -456,6 +460,7 @@ object UiTags {
     const val BYLINE = "byline"
     const val MENU_BUTTON = "menuButton"
     const val MENU_PANEL = "menuPanel"
+    const val GUIDE_LINK = "guideLink"
     const val THEME_SELECTOR = "themeSelector"
     const val VERSION = "version"
     const val PEEK = "peek"

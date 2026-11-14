@@ -8,7 +8,7 @@ enum class Gesture { Tap, Swipe, Volume }
 /**
  * The first-run guide to the gestures, learnt by doing: each step names one
  * gesture and moves on when the listener makes it. Finished or skipped, it is
- * remembered and not offered again. The web's `gesture-tutorial.js` is the
+ * remembered and not offered again, though the menu can start it. The web's `gesture-tutorial.js` is the
  * reference.
  */
 class GestureGuide(private val preferences: PreferenceStore) {

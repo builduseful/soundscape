@@ -1,7 +1,7 @@
 /**
- * Top-right "more" menu: houses the theme selector, the install offer and the
- * version/source link, all secondary controls that don't need permanent header
- * space.
+ * Top-right "more" menu: houses the theme selector, the install offer, the
+ * way back to the gesture guide and the version/source link, all secondary
+ * controls that don't need permanent header space.
  *
  * The panel is a native `popover`. That hands the browser the part of this no
  * specification used to settle, and every engine answered differently:
@@ -27,7 +27,7 @@
  * `popovertarget` alone, so the button carries no `aria-expanded` — a static one
  * would override the live state.
  *
- * Its content (theme-selector, install button, version link) is authored in
+ * Its content (theme-selector, install button, guide button, version link) is authored in
  * index.html rather than built here, so component-contract.test.js — which
  * greps the raw markup for the ids script.js looks up — still finds them.
  *
@@ -48,6 +48,7 @@ export class AppMenu extends HTMLElement {
     connectedCallback() {
         const themeSelector = this.querySelector("theme-selector");
         const installButton = this.querySelector(".menu-install");
+        const guideButton = this.querySelector(".menu-guide");
         const versionLink = this.querySelector(".app-version");
         this.render();
         const panel = this.panel;
@@ -59,6 +60,7 @@ export class AppMenu extends HTMLElement {
             installDivider.className = "menu-divider";
             panel.append(installButton, installDivider);
         }
+        if (guideButton) panel.append(guideButton);
         if (versionLink) panel.append(versionLink);
     }
 
@@ -289,6 +291,49 @@ export class AppMenu extends HTMLElement {
                     .app-version:hover,
                     .app-version:focus-visible {
                         color: var(--color-text-muted);
+                    }
+
+                    /* Set like the version beneath it, as plain text, over the
+                       global button reset. Hidden until script.js reveals it,
+                       where there are gestures to be shown. */
+                    .menu-guide {
+                        margin: 0;
+                        padding: 0;
+                        border: 0;
+                        border-radius: 0;
+                        background: transparent;
+                        box-shadow: none;
+                        color: var(--color-text-soft);
+                        font: inherit;
+                        font-size: 0.75rem;
+                        font-weight: 500;
+                        letter-spacing: 0.02em;
+                        text-align: center;
+                        cursor: pointer;
+                        -webkit-tap-highlight-color: transparent;
+                    }
+
+                    /* The author display above would beat the UA's [hidden] rule. */
+                    .menu-guide[hidden] {
+                        display: none;
+                    }
+
+                    .menu-guide:active {
+                        transform: none;
+                    }
+
+                    /* The global button hover would grey it, and on a touch
+                       screen a hover is left behind by the tap. */
+                    .menu-guide:hover,
+                    .menu-guide:focus-visible {
+                        background-color: transparent;
+                        color: var(--color-text-muted);
+                    }
+
+                    .menu-guide:focus-visible {
+                        outline: 2px solid var(--color-focus);
+                        outline-offset: 2px;
+                        box-shadow: none;
                     }
 
                     /* Same button-reset override as the toggle button above. Hidden

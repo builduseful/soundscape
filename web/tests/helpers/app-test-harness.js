@@ -226,6 +226,8 @@ export function installAppTestEnvironment({
         "trackPeekTitle",
         "gestureVolume",
         "gestureTutorial",
+        "guideButton",
+        "appMenu",
     ]) {
         elements.set(id, new FakeElement());
     }
@@ -240,7 +242,7 @@ export function installAppTestEnvironment({
     elements.get("playbackError").hidden = true;
     elements.get("trackLoading").hidden = true;
     // The tutorial's own steps are the component's; the app only starts it and reports gestures.
-    Object.assign(elements.get("gestureTutorial"), { start() {}, completed() {} });
+    Object.assign(elements.get("gestureTutorial"), { start() { this.started = (this.started ?? 0) + 1; }, completed() {} });
     const container = new FakeElement();
     container.setPointerCapture = () => {};
 

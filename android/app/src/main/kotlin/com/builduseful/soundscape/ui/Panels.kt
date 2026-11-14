@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -20,8 +21,9 @@ internal enum class Panel { Menu }
 
 /**
  * Which panel is open — at most one, as with the web's `popover="auto"` — and
- * how it closes. A press outside the panel and its button closes it and still
- * reaches whatever it landed on; so does Escape, back, and focus moving away.
+ * how it closes. A press outside the panel and its button closes it, and the
+ * page beneath takes nothing from that press; it still reaches a control it
+ * landed on. So does Escape, back, and focus moving away.
  */
 @Stable
 internal class Panels {
@@ -29,6 +31,7 @@ internal class Panels {
         private set
 
     private val regions = mutableMapOf<Panel, MutableMap<String, Rect>>()
+    private var closingPress = Long.MIN_VALUE
 
     fun toggle(panel: Panel) {
         open = if (open == panel) null else panel
@@ -37,6 +40,9 @@ internal class Panels {
     fun close() {
         open = null
     }
+
+    /** Whether [down] is the press that closed a panel, and so is not the page's to act on. */
+    fun closedBy(down: PointerInputChange): Boolean = down.uptimeMillis == closingPress
 
     /** Marks this node as part of [panel] (its button or its panel), so a press on it is not "outside". */
     fun Modifier.partOf(panel: Panel, part: String): Modifier = onGloballyPositioned {
@@ -56,7 +62,10 @@ internal class Panels {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val panel = open ?: return@awaitEachGesture
-            if (regions[panel].orEmpty().values.none { it.contains(down.position) }) close()
+            if (regions[panel].orEmpty().values.none { it.contains(down.position) }) {
+                closingPress = down.uptimeMillis
+                close()
+            }
         }
     }
 }

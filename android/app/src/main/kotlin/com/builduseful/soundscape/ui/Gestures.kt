@@ -4,6 +4,7 @@ import android.os.Build
 import android.view.View
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEvent
@@ -29,19 +30,20 @@ import com.builduseful.soundscape.core.gestures.SystemReach
  * that thing's: anything that handles a press takes it before this sees it.
  * The movement is taken, so nothing beneath also scrolls.
  */
-internal fun Modifier.playerGestures(tracker: GestureTracker): Modifier = this then PlayerGesturesElement(tracker)
+internal fun Modifier.playerGestures(tracker: GestureTracker, panels: Panels): Modifier = this then PlayerGesturesElement(tracker, panels)
 
-private data class PlayerGesturesElement(val tracker: GestureTracker) : ModifierNodeElement<PlayerGesturesNode>() {
-    override fun create() = PlayerGesturesNode(tracker)
+private data class PlayerGesturesElement(val tracker: GestureTracker, val panels: Panels) : ModifierNodeElement<PlayerGesturesNode>() {
+    override fun create() = PlayerGesturesNode(tracker, panels)
 
-    override fun update(node: PlayerGesturesNode) = node.update(tracker)
+    override fun update(node: PlayerGesturesNode) = node.update(tracker, panels)
 }
 
-private class PlayerGesturesNode(private var tracker: GestureTracker) :
+private class PlayerGesturesNode(private var tracker: GestureTracker, private var panels: Panels) :
     DelegatingNode(), PointerInputModifierNode, CompositionLocalConsumerModifierNode {
     private val input = delegate(SuspendingPointerInputModifierNode { gestures() })
 
-    fun update(tracker: GestureTracker) {
+    fun update(tracker: GestureTracker, panels: Panels) {
+        this.panels = panels
         if (tracker === this.tracker) return
         this.tracker = tracker
         input.resetPointerInputHandler()
@@ -54,6 +56,11 @@ private class PlayerGesturesNode(private var tracker: GestureTracker) :
 
     private suspend fun PointerInputScope.gestures() = awaitEachGesture {
         val down = awaitFirstDown()
+        // A press that closed a panel did only that.
+        if (panels.closedBy(down)) {
+            waitForUpOrCancellation()
+            return@awaitEachGesture
+        }
         val id = down.id
         val reach = systemReach(requireLayoutCoordinates().localToWindow(down.position))
         tracker.down(down.position.x.toDp().value, down.position.y.toDp().value, down.uptimeMillis, reach)

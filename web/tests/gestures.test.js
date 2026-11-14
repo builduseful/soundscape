@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createGestureTracker, SWIPE_MIN_PX, SWIPE_PROJECTION_MS, TAP_MAX_MS, TAP_SLOP_PX, VOLUME_TRAVEL_PX } from "../src/js/gestures.js";
+import { attachGestures, createGestureTracker, SWIPE_MIN_PX, SWIPE_PROJECTION_MS, TAP_MAX_MS, TAP_SLOP_PX, VOLUME_TRAVEL_PX } from "../src/js/gestures.js";
 
 function track() {
     const calls = [];
@@ -178,4 +178,63 @@ test("the system's own gestures are left to it where they begin", () => {
 
     assert.deepEqual(calls, ["volume start", "volume 0.50", "volume end", "tap"]);
     assert.deepEqual(presses, []);
+});
+
+// A press that lands while the menu is open is the browser's, to close it. A
+// finger's tap did not count as that: it closed the menu and paused the sound.
+test("a press while a panel is open starts no gesture, for a finger or a mouse", () => {
+    const handlers = new Map();
+    const surface = { addEventListener: (type, handler) => handlers.set(type, handler), setPointerCapture() {} };
+    const taps = [];
+    const open = { value: true };
+    const unsupported = { value: false };
+    const saved = { document: globalThis.document, Element: globalThis.Element };
+    class FakeElement {
+        closest() {
+            return null;
+        }
+    }
+
+    globalThis.Element = FakeElement;
+    globalThis.document = {
+        querySelector: (selector) => {
+            if (unsupported.value) throw new SyntaxError(`${selector} is not a valid selector`);
+
+            return selector === ":popover-open" && open.value ? {} : null;
+        },
+        documentElement: { clientWidth: 400 },
+    };
+
+    try {
+        const none = () => {};
+
+        attachGestures(surface, {
+            onPress: none, onRelease: none, onTap: () => taps.push("tap"), onSwipeMove: none, onSwipe: none,
+            onSwipeCancel: none, onVolumeStart: none, onVolumeChange: none, onVolumeEnd: none, onVolumeCancel: none,
+        });
+
+        const tap = (pointerType, time) => {
+            const event = { pointerId: 1, isPrimary: true, pointerType, button: 0, clientX: 200, clientY: 300, target: new FakeElement() };
+
+            handlers.get("pointerdown")({ ...event, timeStamp: time });
+            handlers.get("pointerup")({ ...event, timeStamp: time + 50 });
+        };
+
+        tap("touch", 0);
+        tap("mouse", 1000);
+        assert.deepEqual(taps, []);
+
+        open.value = false;
+        tap("touch", 2000);
+        tap("mouse", 3000);
+        assert.deepEqual(taps, ["tap", "tap"]);
+
+        // A browser without popovers has no panel to close, and the selector throws.
+        unsupported.value = true;
+        tap("touch", 4000);
+        assert.deepEqual(taps, ["tap", "tap", "tap"]);
+    } finally {
+        globalThis.document = saved.document;
+        globalThis.Element = saved.Element;
+    }
 });

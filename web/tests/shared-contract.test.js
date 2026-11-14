@@ -343,6 +343,7 @@ describe("the web app matches shared/copy.json", () => {
         gestureSwipe: [["gestureTutorial", (v) => `{ gesture: "swipe", text: "${v}" }`]],
         gestureVolume: [["gestureTutorial", (v) => `{ gesture: "volume", text: "${v}" }`]],
         gestureDone: [["gestureTutorial", (v) => `const DONE_TEXT = "${v}";`]],
+        howToUse: [["index", (v) => `<button type="button" class="menu-guide" id="guideButton" hidden>${v}</button>`]],
         skip: [["gestureTutorial", (v) => `class="tutorial-skip">${v}</button>`]],
     };
 

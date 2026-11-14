@@ -160,8 +160,8 @@ export function attachGestures(surface, handlers) {
         if (event.target instanceof Element && event.target.closest(INTERACTIVE)) return;
 
         const mouse = event.pointerType === "mouse";
-        // A click that closes an open panel is only that.
-        if (mouse && (event.button !== 0 || document.querySelector(":popover-open"))) return;
+        // A press that closes an open panel is only that, a finger's as much as a click.
+        if (panelIsOpen() || (mouse && event.button !== 0)) return;
 
         pointerId = event.pointerId;
         surface.setPointerCapture(pointerId);
@@ -188,6 +188,15 @@ export function attachGestures(surface, handlers) {
             pointerId = null;
             tracker.cancel();
         });
+    }
+}
+
+// Where popovers are unsupported there is no panel to close, and the selector throws.
+function panelIsOpen() {
+    try {
+        return document.querySelector(":popover-open") !== null;
+    } catch {
+        return false;
     }
 }
 
