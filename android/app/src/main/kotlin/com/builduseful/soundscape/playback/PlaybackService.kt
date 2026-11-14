@@ -92,7 +92,8 @@ class PlaybackService : Service() {
             setSessionActivity(openApp)
         }
         artwork = drawArtwork()
-        notification = PlaybackNotification(this, session.sessionToken, artwork, openApp)
+        val notificationArt = drawArtwork(notificationIconPx())
+        notification = PlaybackNotification(this, session.sessionToken, notificationArt, openApp)
 
         history = ListeningHistory(
             SharedPreferenceStore(this, HISTORY),
@@ -264,19 +265,27 @@ class PlaybackService : Service() {
     // The web's artwork, drawn once at the largest size the session keeps
     // (AOSP's 320dp; One UI's 180dp), so it is never stretched, and never
     // shrunk again on the main thread with each change of track.
-    private fun drawArtwork(): Bitmap {
-        val size = artworkLimitPx() ?: (ARTWORK_DP * resources.displayMetrics.density).roundToInt()
+    private fun drawArtwork(size: Int = artworkLimitPx() ?: (ARTWORK_DP * resources.displayMetrics.density).roundToInt()): Bitmap {
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         getDrawable(R.drawable.artwork)!!.apply { setBounds(0, 0, size, size) }.draw(Canvas(bitmap))
         return bitmap
     }
 
-    // The limit MediaSession scales metadata artwork down to. Not public API,
-    // only a resource, so it is looked up by name and may be missing.
+    // The limit MediaSession scales metadata artwork down to.
+    private fun artworkLimitPx(): Int? = frameworkDimenPx("config_mediaMetadataBitmapMaxSize")
+
+    // The notification's large icon, at the size the system shrinks it to
+    // when it builds the notification: given larger, that is done on the main
+    // thread every time the notification changes.
+    private fun notificationIconPx(): Int =
+        frameworkDimenPx("notification_right_icon_size") ?: resources.getDimensionPixelSize(android.R.dimen.notification_large_icon_width)
+
+    // Not public API, only a resource, so it is looked up by name and may be
+    // missing. Through this context's resources, as the system reads it, so
+    // the pixels match.
     @SuppressLint("DiscouragedApi")
-    private fun artworkLimitPx(): Int? {
-        // Through this context's resources, as MediaSession reads it, so the pixels match.
-        val id = resources.getIdentifier("config_mediaMetadataBitmapMaxSize", "dimen", "android")
+    private fun frameworkDimenPx(name: String): Int? {
+        val id = resources.getIdentifier(name, "dimen", "android")
         return if (id == 0) null else runCatching { resources.getDimensionPixelSize(id) }.getOrNull()?.takeIf { it > 0 }
     }
 

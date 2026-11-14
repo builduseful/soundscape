@@ -107,7 +107,7 @@ internal fun TrackSceneView(trackId: String, playing: Boolean, modifier: Modifie
         while (true) {
             withFrameNanos { now ->
                 if (now - last >= SCENE_FRAME_NANOS) {
-                    time.floatValue += (now - last) / 1_000_000_000f
+                    time.floatValue += minOf(now - last, SCENE_MAX_STEP_NANOS) / 1_000_000_000f
                     last = now
                 }
             }
@@ -138,6 +138,11 @@ internal fun TrackSceneView(trackId: String, playing: Boolean, modifier: Modifie
 // for nothing seen. A step once three-quarters of one has passed keeps them
 // even on any screen: every other frame at 120 Hz, every frame at 60.
 private val SCENE_FRAME_NANOS = (750_000_000 / DesignTokens.Motion.sceneFrameRate).toLong()
+
+// The frame clock stops while the app is out of sight, so the first step back
+// spans the whole time away: hours, overnight. A longer step is a pause, not
+// time passing, and counting it would jump the clock and lose its precision.
+private const val SCENE_MAX_STEP_NANOS = 250_000_000L
 
 /**
  * Draws a scene at one moment. Each element's path is moved into place by one

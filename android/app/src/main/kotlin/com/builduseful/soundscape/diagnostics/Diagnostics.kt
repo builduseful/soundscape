@@ -3,6 +3,7 @@ package com.builduseful.soundscape.diagnostics
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
+import android.app.ApplicationStartInfo
 import android.content.BroadcastReceiver
 import android.content.ComponentCallbacks2
 import android.content.Context
@@ -73,6 +74,7 @@ internal object Diagnostics {
         watchAudioDevices()
         watchScreen()
         previousExits()
+        previousStarts()
         profileStatus()
     }
 
@@ -316,13 +318,50 @@ internal object Diagnostics {
             for (exit in exits) {
                 log(
                     "previous run",
-                    "ended ${clock.format(Date(exit.timestamp))}: ${exitReason(exit.reason)}" +
+                    "pid ${exit.pid} ended ${clock.format(Date(exit.timestamp))}: ${exitReason(exit.reason)}" +
                         (exit.description?.let { " ($it)" } ?: "") +
                         ", importance ${exit.importance}, pss ${exit.pss} KB, rss ${exit.rss} KB",
                 )
             }
             exits.lastOrNull()?.let { seen.edit().putLong("lastExit", it.timestamp).apply() }
         }
+    }
+
+    // Why each process started, so one that ran no activity or service, and
+    // so logged nothing of its own, can still be named: a broadcast, a job.
+    private fun previousStarts() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return
+        writer.execute {
+            val seen = app.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
+            val known = seen.getStringSet("starts", emptySet()).orEmpty()
+            val starts = app.getSystemService(ActivityManager::class.java)
+                .getHistoricalProcessStartReasons(20)
+                .filter { it.startType == ApplicationStartInfo.START_TYPE_COLD }
+                .associateBy { "${it.pid}@${it.startupTimestamps[ApplicationStartInfo.START_TIMESTAMP_LAUNCH]}" }
+            for (start in starts.filterKeys { it !in known }.values.sortedBy { it.startupTimestamps[ApplicationStartInfo.START_TIMESTAMP_LAUNCH] }) {
+                log(
+                    "previous start",
+                    "pid ${start.pid}: ${startReason(start.reason)}" +
+                        (start.intent?.let { " (${it.action ?: it.component?.shortClassName ?: "no action"})" } ?: ""),
+                )
+            }
+            seen.edit().putStringSet("starts", starts.keys).apply()
+        }
+    }
+
+    private fun startReason(reason: Int): String = when (reason) {
+        ApplicationStartInfo.START_REASON_ALARM -> "an alarm"
+        ApplicationStartInfo.START_REASON_BACKUP -> "a backup"
+        ApplicationStartInfo.START_REASON_BOOT_COMPLETE -> "boot"
+        ApplicationStartInfo.START_REASON_BROADCAST -> "a broadcast"
+        ApplicationStartInfo.START_REASON_CONTENT_PROVIDER -> "a content provider"
+        ApplicationStartInfo.START_REASON_JOB -> "a job"
+        ApplicationStartInfo.START_REASON_LAUNCHER -> "the launcher"
+        ApplicationStartInfo.START_REASON_LAUNCHER_RECENTS -> "the recents screen"
+        ApplicationStartInfo.START_REASON_PUSH -> "a push message"
+        ApplicationStartInfo.START_REASON_SERVICE -> "a service"
+        ApplicationStartInfo.START_REASON_START_ACTIVITY -> "an activity started by an app"
+        else -> "reason $reason"
     }
 
     private fun exitReason(reason: Int): String = when (reason) {
